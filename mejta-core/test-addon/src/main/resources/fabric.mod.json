@@ -1,0 +1,30 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtacore_example",
+	"version": "${version}",
+	"name": "MejtaCore Example Addon",
+	"description": "Minimal example addon showing how to build on MejtaCore.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.mejta.example.ExampleMod"
+		],
+		"mejtacore": [
+			"com.mejta.example.ExampleAddon"
+		],
+		"mejtacore-client": [
+			"com.mejta.example.client.ExampleAddonClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.1.0 <2.0.0"
+	}
+}

@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtacore_example_test",
+	"version": "1.0.0",
+	"name": "MejtaCore Example Addon Tests",
+	"description": "Client game tests and failure scenarios for MejtaCore. Development only.",
+	"environment": "client",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.example.test.FailureCases"
+		],
+		"fabric-client-gametest": [
+			"com.mejta.example.test.MejtaCoreClientGameTest"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtacore_example": "*"
+	}
+}

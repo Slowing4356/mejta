@@ -1,0 +1,92 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// MejtaCore during local development. Replace with the public Mejta Maven repository once published.
+	mavenLocal {
+		content {
+			includeGroup "com.mejta"
+		}
+	}
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"mejtacore_example" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+fabricApi {
+	// Client game tests (Fabric API's fabric-client-gametest-api-v1) drive a real client:
+	// they create a world, type commands into chat and click menu slots. Run with `gradlew runClientGameTest`.
+	configureTests {
+		createSourceSet = true
+		modId = "mejtacore_example_test"
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+		// Keep config/ between runs so persistence across restarts can be checked.
+		clearRunDirectory = false
+	}
+}
+
+// `gradlew runClient -PwithoutMejtaCore` starts the addon WITHOUT MejtaCore at runtime, to check
+// the dependency error players get when MejtaCore is missing.
+def withoutMejtaCore = project.hasProperty("withoutMejtaCore")
+
+if (withoutMejtaCore) {
+	loom {
+		runs {
+			client {
+				// The loader prints its dependency report to the log instead of opening a dialog.
+				vmArg "-Djava.awt.headless=true"
+			}
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Compile against MejtaCore and load it in the development runtime.
+	// Players install MejtaCore separately; fabric.mod.json declares the dependency.
+	if (withoutMejtaCore) {
+		compileOnly "com.mejta:mejtacore:${project.mejtacore_version}"
+	} else {
+		implementation "com.mejta:mejtacore:${project.mejtacore_version}"
+	}
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = "UTF-8"
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}

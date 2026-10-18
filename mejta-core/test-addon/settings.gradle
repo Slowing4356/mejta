@@ -1,0 +1,13 @@
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+// Separate build: compiles against the published MejtaCore artifact, exactly like a real addon would.
+rootProject.name = 'mejtacore-example-addon'

@@ -1,0 +1,30 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtacore",
+	"version": "${version}",
+	"name": "MejtaCore",
+	"description": "Core framework for Mejta addon mods: shared menu, client and server commands, configuration, permissions, notifications, record storage, addon registry and API.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"icon": "assets/mejtacore/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.mejta.mejtacore.core.MejtaCore"
+		],
+		"client": [
+			"com.mejta.mejtacore.core.MejtaCoreClient"
+		],
+		"server": [
+			"com.mejta.mejtacore.core.MejtaCoreServer"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": ">=0.155.0"
+	}
+}
