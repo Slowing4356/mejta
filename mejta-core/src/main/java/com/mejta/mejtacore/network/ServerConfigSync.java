@@ -18,6 +18,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionSet;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
+import com.mejta.mejtacore.api.audit.AuditActor;
+import com.mejta.mejtacore.api.audit.AuditEntry;
+import com.mejta.mejtacore.api.audit.AuditOutcome;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.config.SettingType;
@@ -147,7 +150,7 @@ public final class ServerConfigSync {
 		if (!withinRate(player.getUUID())) {
 			result = new ConfigEditing.Result(false, "Too many changes at once; slow down");
 		} else {
-			result = apply(player.permissions(), player.getGameProfile().name(), edit.configId(), edit.op(), edit.key(), edit.value(),
+			result = apply(player.permissions(), MejtaCoreAPI.actor(player), edit.configId(), edit.op(), edit.key(), edit.value(),
 					false);
 		}
 		if (ServerPlayNetworking.canSend(player, EditResult.TYPE)) {
@@ -162,10 +165,12 @@ public final class ServerConfigSync {
 	 * @param byCommand {@code true} for {@code /mejtaadmin config}: sensitive settings may then be changed
 	 *                  with {@code mejtacore.config.secrets}. Client menus never can.
 	 */
-	public static ConfigEditing.Result apply(PermissionSet permissions, String who, String configId, String opName, String key,
+	public static ConfigEditing.Result apply(PermissionSet permissions, AuditActor actor, String configId, String opName, String key,
 			String value, boolean byCommand) {
+		String who = actor.name();
 		Optional<ConfigHandle> handle = editable(permissions, configId);
 		if (handle.isEmpty()) {
+			audit(actor, configId, opName, key, AuditOutcome.DENIED);
 			return new ConfigEditing.Result(false, "You may not edit config '" + configId + "'");
 		}
 		ConfigEditing.Op op;
@@ -178,6 +183,7 @@ public final class ServerConfigSync {
 		Optional<Setting<?>> target = key == null ? Optional.empty() : handle.get().spec().setting(key);
 		if (op != ConfigEditing.Op.RESET_ALL && byCommand && !mayChangeSecrets
 				&& target.map(SettingText::isSensitive).orElse(false)) {
+			audit(actor, configId, opName, key, AuditOutcome.DENIED);
 			return new ConfigEditing.Result(false, key + " is a secret setting; changing it needs "
 					+ PermissionRegistry.CONFIG_SECRETS.node());
 		}
@@ -186,8 +192,20 @@ public final class ServerConfigSync {
 			// The message never contains a sensitive value (see ConfigEditing).
 			MejtaLog.CORE.info("[config] {} changed {}", who, result.message());
 			publishChange(who, configId, opName, key, result.message());
+			audit(actor, configId, opName, key, AuditOutcome.SUCCESS);
 		}
 		return result;
+	}
+
+	/** Audit entries name the key, never a value. */
+	private static void audit(AuditActor actor, String configId, String op, String key, AuditOutcome outcome) {
+		MejtaCoreAPI.audit().record(AuditEntry.builder(MejtaCore.MOD_ID, "config.edit")
+				.actor(actor)
+				.target("config " + configId)
+				.outcome(outcome)
+				.detail("operation", op)
+				.detail("key", key == null ? "" : key)
+				.build());
 	}
 
 	/** Whether {@code key} of {@code configId} holds a secret, so command feedback must not be broadcast. */
@@ -219,7 +237,7 @@ public final class ServerConfigSync {
 	}
 
 	public static ConfigEditing.Result apply(CommandSourceStack source, String configId, String op, String key, String value) {
-		return apply(source.permissions(), source.getTextName(), configId, op, key, value, true);
+		return apply(source.permissions(), MejtaCoreAPI.actor(source), configId, op, key, value, true);
 	}
 
 	private static boolean withinRate(UUID player) {

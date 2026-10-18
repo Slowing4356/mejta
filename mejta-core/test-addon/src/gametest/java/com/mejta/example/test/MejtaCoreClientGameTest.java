@@ -31,9 +31,12 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionLevel;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import com.mejta.example.ExampleAddon;
 import com.mejta.example.ExampleMod;
@@ -44,12 +47,18 @@ import com.mejta.mejtacore.api.addon.AddonState;
 import com.mejta.mejtacore.api.client.MenuEntry;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
+import com.mejta.mejtacore.api.menu.MenuClick;
 import com.mejta.mejtacore.api.notify.Notification;
 import com.mejta.mejtacore.api.notify.NotificationProvider;
 import com.mejta.mejtacore.api.notify.NotificationService;
 import com.mejta.mejtacore.api.notify.Severity;
 import com.mejta.mejtacore.api.permission.MejtaPermission;
+import com.mejta.mejtacore.api.server.Scheduler;
+import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtacore.api.storage.RecordLog;
+import com.mejta.mejtacore.audit.AuditChain;
+import com.mejta.mejtacore.audit.AuditTrail;
+import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.api.storage.RecordLogOptions;
 import com.mejta.mejtacore.core.CoreSettings;
 import com.mejta.mejtacore.core.MejtaCore;
@@ -97,6 +106,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 			multiplayerChecks(ctx);
 			serverCommandChecks(ctx, server);
 			remoteConfigChecks(ctx, server);
+			api4Checks(ctx, server);
 		}
 
 		resetToKnownState(ctx);
@@ -730,6 +740,175 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		example.save();
 		perms.reset(secrets);
 		perms.save();
+	}
+
+	// ---------------------------------------------------------------- API 4 (MejtaCore 1.3.0)
+
+	private void api4Checks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
+		clearChat(ctx);
+		chat(ctx, "/examplecmd");
+		check("api4: top-level addon command runs", chatContains(ctx, "example root command ok"));
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin example examplecmd");
+		check("api4: top-level command mirrored under /mejtaadmin", chatContains(ctx, "example root command ok"));
+		clearChat(ctx);
+		chat(ctx, "/list");
+		check("api4: vanilla command wins a name clash", chatContains(ctx, "players online") && !chatHas(ctx, "example list ok"));
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin example list");
+		check("api4: clashing command still reachable under /mejtaadmin", chatContains(ctx, "example list ok"));
+		check("api4: clash reported in diagnostics", Diagnostics.entries().stream()
+				.anyMatch(e -> e.message().contains("/list of addon 'example' is not registered")));
+
+		dataStoreChecks(server);
+		auditChecks(ctx);
+		serverMenuChecks(ctx, server);
+		presenceAndSchedulerChecks(ctx, server);
+	}
+
+	private void dataStoreChecks(TestDedicatedServerContext server) {
+		DataStore store = MejtaCoreAPI.dataStore(ExampleAddon.ID);
+		JsonObject doc = new JsonObject();
+		doc.addProperty("value", "kept");
+		boolean wrote;
+		try {
+			store.writeNow("test/item", doc);
+			wrote = true;
+		} catch (IOException e) {
+			LOG.error("[MejtaTest] writeNow failed", e);
+			wrote = false;
+		}
+		check("api4: data store writeNow", wrote);
+		Path file = MejtaCoreAPI.dataDirectory(ExampleAddon.ID).resolve("store/test/item.json");
+		check("api4: data store file on disk", read(file).contains("\"kept\""));
+		check("api4: data store reads it back", store.read("test/item").map(o -> o.get("value").getAsString()).orElse("").equals("kept"));
+		check("api4: data store lists the key", store.keys("test").contains("test/item"));
+		check("api4: data store rejects path traversal", throwsIae(() -> store.read("../escape")));
+		store.delete("test/item");
+		await(store.flush());
+		check("api4: data store delete", !Files.exists(file) && store.read("test/item").isEmpty());
+	}
+
+	private void auditChecks(ClientGameTestContext ctx) {
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin example audit");
+		check("api4: audit command ran", chatContains(ctx, "audit recorded"));
+		List<JsonObject> recent = await(AuditTrail.get().recent(20));
+		String me = ctx.computeOnClient(mc -> mc.player.getGameProfile().name());
+		check("api4: audit entry has actor, action, target, outcome", recent != null && recent.stream().anyMatch(r ->
+				r.get("action").getAsString().equals("example.test") && r.get("actor").getAsString().equals(me)
+						&& r.get("actor_kind").getAsString().equals("PLAYER") && r.get("target").getAsString().equals("nothing")
+						&& r.get("outcome").getAsString().equals("SUCCESS") && r.has("hash") && r.has("ts")));
+		check("api4: config edits are audited", recent != null && recent.stream().anyMatch(r ->
+				r.get("action").getAsString().equals("config.edit")));
+		AuditChain.Verification verification = await(AuditTrail.get().verify());
+		check("api4: audit chain intact", verification != null && verification.intact());
+		check("api4: audit published as notification", waitUntil(ctx, () -> !notificationLog(r ->
+				r.get("channel").getAsString().equals("example.audit")).isEmpty()));
+	}
+
+	private void serverMenuChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
+		UUID me = ctx.computeOnClient(mc -> mc.player.getUUID());
+		server.runOnServer(s -> {
+			ServerPlayer p = s.getPlayerList().getPlayer(me);
+			p.getInventory().setItem(0, new ItemStack(Items.DIAMOND, 3));
+		});
+		ctx.waitTicks(5);
+		int clicksBefore = ExampleAddon.MENU_CLICKS.get();
+		int closesBefore = ExampleAddon.MENU_CLOSES.get();
+		chat(ctx, "/mejtaadmin example menu");
+		check("api4: server menu opens on the client as a plain chest", waitUntil(ctx, () -> ctx.computeOnClient(mc ->
+				mc.screen instanceof AbstractContainerScreen<?> screen && screen.getTitle().getString().equals("Example menu"))));
+		ctx.takeScreenshot("mejtacore-11-server-menu");
+
+		clickContainerSlot(ctx, 13, 0);
+		check("api4: left click runs the button", waitUntil(ctx, () -> ExampleAddon.MENU_CLICKS.get() == clicksBefore + 1)
+				&& ExampleAddon.lastClickType == MenuClick.Type.LEFT);
+		check("api4: icon refreshed after click", waitUntil(ctx, () -> ctx.computeOnClient(mc ->
+				mc.player.containerMenu.getSlot(13).getItem().getHoverName().getString().equals("Clicks: " + (clicksBefore + 1)))));
+		check("api4: nothing on the cursor after clicking an icon", ctx.computeOnClient(mc -> mc.player.containerMenu.getCarried().isEmpty()));
+
+		clickContainerSlot(ctx, 13, 1);
+		check("api4: right click reported as RIGHT", waitUntil(ctx, () -> ExampleAddon.lastClickType == MenuClick.Type.RIGHT));
+
+		hoverContainerSlot(ctx, 4);
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_1);
+		ctx.waitTicks(5);
+		hoverContainerSlot(ctx, 13);
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_Q);
+		ctx.waitTicks(5);
+		int playerHotbar0 = 3 * 9 + 27; // menu slots, then 27 main inventory slots, then the hotbar
+		clickContainerSlot(ctx, playerHotbar0, 0);
+		ctx.waitTicks(5);
+		boolean inventoryIntact = server.computeOnServer(s -> {
+			ServerPlayer p = s.getPlayerList().getPlayer(me);
+			ItemStack hotbar = p.getInventory().getItem(0);
+			return hotbar.is(Items.DIAMOND) && hotbar.getCount() == 3 && p.containerMenu.getCarried().isEmpty()
+					&& p.getInventory().countItem(Items.PAPER) == 0 && p.getInventory().countItem(Items.EMERALD) == 0;
+		});
+		check("api4: number key, drop and own-inventory clicks move nothing (server side)", inventoryIntact);
+		check("api4: no item entity dropped", server.computeOnServer(s -> s.getPlayerList().getPlayer(me).level()
+				.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+						s.getPlayerList().getPlayer(me).getBoundingBox().inflate(8)).isEmpty()));
+		check("api4: client view re-synced", waitUntil(ctx, () -> ctx.computeOnClient(mc ->
+				mc.player.containerMenu.getSlot(4).getItem().is(Items.PAPER)
+						&& mc.player.containerMenu.getCarried().isEmpty())));
+
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		check("api4: onClose runs once", waitUntil(ctx, () -> ExampleAddon.MENU_CLOSES.get() == closesBefore + 1));
+		server.runOnServer(s -> s.getPlayerList().getPlayer(me).getInventory().setItem(0, ItemStack.EMPTY));
+	}
+
+	private void presenceAndSchedulerChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
+		UUID me = ctx.computeOnClient(mc -> mc.player.getUUID());
+		check("api4: visible by default", server.computeOnServer(s -> !MejtaCoreAPI.presence().isHidden(me)
+				&& MejtaCoreAPI.presence().publiclyOnline(s).size() == 1));
+		ExampleAddon.HIDDEN.add(me);
+		check("api4: visibility provider hides a player", server.computeOnServer(s -> MejtaCoreAPI.presence().isHidden(me)
+				&& MejtaCoreAPI.presence().publiclyOnline(s).isEmpty()
+				&& MejtaCoreAPI.presence().canSee(s.getPlayerList().getPlayer(me), me)));
+		ExampleAddon.HIDDEN.remove(me);
+
+		java.util.concurrent.atomic.AtomicInteger runs = new java.util.concurrent.atomic.AtomicInteger();
+		java.util.concurrent.atomic.AtomicBoolean onServerThread = new java.util.concurrent.atomic.AtomicBoolean();
+		server.runOnServer(s -> {
+			MejtaCoreAPI.scheduler().runLater(5, () -> onServerThread.set(s.isSameThread()));
+			Scheduler.Task task = MejtaCoreAPI.scheduler().runEvery(2, runs::incrementAndGet);
+			MejtaCoreAPI.scheduler().runLater(11, task::cancel);
+		});
+		ctx.waitTicks(30);
+		check("api4: scheduler runs later on the server thread", onServerThread.get());
+		check("api4: repeating task ran about 5 times, then stopped (" + runs.get() + ")", runs.get() >= 4 && runs.get() <= 6);
+	}
+
+	private static void clickContainerSlot(ClientGameTestContext ctx, int slot, int button) {
+		hoverContainerSlot(ctx, slot);
+		ctx.getInput().pressMouse(button);
+		ctx.waitTicks(3);
+	}
+
+	/** Moves the mouse over a slot of a vanilla container screen. */
+	private static void hoverContainerSlot(ClientGameTestContext ctx, int slot) {
+		double[] pos = ctx.computeOnClient(mc -> {
+			AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) mc.screen;
+			int left = intField(screen, "leftPos");
+			int top = intField(screen, "topPos");
+			var s = screen.getMenu().getSlot(slot);
+			double factor = (double) mc.getWindow().getScreenWidth() / mc.getWindow().getGuiScaledWidth();
+			return new double[] {(left + s.x + 8) * factor, (top + s.y + 8) * factor};
+		});
+		ctx.getInput().setCursorPos(pos[0], pos[1]);
+		ctx.waitTicks(1);
+	}
+
+	private static int intField(Object target, String name) {
+		try {
+			Field field = AbstractContainerScreen.class.getDeclaredField(name);
+			field.setAccessible(true);
+			return field.getInt(target);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Cannot read " + name, e);
+		}
 	}
 
 	private static int findSlotOn(ChestMenuScreen menu, String entryId) {

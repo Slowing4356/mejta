@@ -12,7 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 
+import com.google.gson.JsonObject;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -31,6 +33,7 @@ import com.mejta.mejtacore.api.addon.AddonInfo;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.server.ServerCommandProvider;
+import com.mejta.mejtacore.audit.AuditTrail;
 import com.mejta.mejtacore.config.ConfigEditing;
 import com.mejta.mejtacore.config.SettingText;
 import com.mejta.mejtacore.core.CoreSettings;
@@ -94,6 +97,13 @@ public final class ServerCommands {
 				.then(Commands.literal("addons")
 						.requires(MejtaCoreAPI.requires(PermissionRegistry.ADMIN))
 						.executes(ServerCommands::addons))
+				.then(Commands.literal("audit")
+						.requires(MejtaCoreAPI.requires(PermissionRegistry.ADMIN))
+						.then(Commands.literal("verify").executes(ServerCommands::auditVerify))
+						.then(Commands.literal("recent")
+								.executes(ctx -> auditRecent(ctx, 10))
+								.then(Commands.argument("count", IntegerArgumentType.integer(1, 50))
+										.executes(ctx -> auditRecent(ctx, IntegerArgumentType.getInteger(ctx, "count"))))))
 				.then(Commands.literal("config")
 						.requires(s -> MejtaCoreAPI.hasPermission(s, PermissionRegistry.ADMIN)
 								|| MejtaCoreAPI.hasPermission(s, PermissionRegistry.CONFIG_EDIT))
@@ -227,6 +237,8 @@ public final class ServerCommands {
 		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.ADMIN)) {
 			line(source, "/" + ROOT + " addons", "registered addons and their state");
 			line(source, "/" + ROOT + " config reload", "re-read every config file from disk");
+			line(source, "/" + ROOT + " audit recent [count]", "latest entries of the shared audit log");
+			line(source, "/" + ROOT + " audit verify", "check the audit log's hash chain for edits");
 		}
 		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_EDIT)) {
 			line(source, "/" + ROOT + " config get <config> [key]", "show settings");
@@ -247,6 +259,48 @@ public final class ServerCommands {
 			line(source, "/" + command.getKey() + " ...", "command of addon '" + command.getValue() + "'");
 		}
 		return 1;
+	}
+
+	private static int auditVerify(CommandContext<CommandSourceStack> ctx) {
+		CommandSourceStack source = ctx.getSource();
+		source.sendSystemMessage(Component.literal("Checking the audit log...").withStyle(ChatFormatting.GRAY));
+		AuditTrail.get().verify().thenCombine(AuditTrail.get().startsAtGenesis(), (result, genesis) -> {
+			source.getServer().execute(() -> {
+				if (result.intact()) {
+					source.sendSystemMessage(Component.literal("Audit log intact: " + result.verified() + " entries"
+							+ (genesis ? ", starting with the first entry ever written." : "; older files were rotated out."))
+							.withStyle(ChatFormatting.GREEN));
+				} else {
+					source.sendFailure(Component.literal("Audit log NOT intact after " + result.verified() + " of " + result.records()
+							+ " entries: " + result.problem()));
+				}
+			});
+			return null;
+		}).exceptionally(t -> {
+			source.getServer().execute(() -> source.sendFailure(Component.literal("Could not read the audit log: " + t)));
+			return null;
+		});
+		return 1;
+	}
+
+	private static int auditRecent(CommandContext<CommandSourceStack> ctx, int count) {
+		CommandSourceStack source = ctx.getSource();
+		AuditTrail.get().recent(count).thenAccept(lines -> source.getServer().execute(() -> {
+			source.sendSystemMessage(Component.literal("Last " + lines.size() + " audit entries (newest first):").withStyle(ChatFormatting.GOLD));
+			for (JsonObject line : lines) {
+				String target = text(line, "target");
+				source.sendSystemMessage(Component.literal(" " + text(line, "ts") + " ").withStyle(ChatFormatting.DARK_GRAY)
+						.append(Component.literal(text(line, "actor") + " " + text(line, "source") + ":" + text(line, "action")
+								+ (target.isEmpty() ? "" : " " + target) + " ").withStyle(ChatFormatting.WHITE))
+						.append(Component.literal(text(line, "outcome")).withStyle(
+								"SUCCESS".equals(text(line, "outcome")) ? ChatFormatting.GREEN : ChatFormatting.RED)));
+			}
+		}));
+		return 1;
+	}
+
+	private static String text(JsonObject line, String key) {
+		return line.has(key) && line.get(key).isJsonPrimitive() ? line.get(key).getAsString() : "";
 	}
 
 	private static int addons(CommandContext<CommandSourceStack> ctx) {
