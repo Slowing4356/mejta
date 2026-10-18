@@ -837,8 +837,8 @@ public final class AntiCheat {
 		if (cfg.recordsEnabled()) {
 			records.enforcement(d, cfg.enforcementMode().name());
 		}
-		if (cfg.alertsEnabled()) {
-			alerts.enforcement(d);
+		if (cfg.alertsEnforcement()) {
+			alerts.enforcement(d, cfg.enforcementMode().name(), cfg.kickMessage());
 		}
 		// Reset so a dry run reports again only after the level builds up anew, not on every packet.
 		violations.reset(d.playerId(), d.flag().checkId());

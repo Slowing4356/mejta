@@ -23,8 +23,11 @@ public final class CoreSettings {
 	public static final Setting<Boolean> IN_GAME_NOTIFICATIONS = Setting.bool("in_game_notifications", true)
 			.describedAs("Show addon notifications (e.g. alerts) in chat to players with the required permission");
 
+	public static final Setting<Boolean> NOTIFICATIONS_FILE_LOG = Setting.bool("notifications.file_log", true)
+			.describedAs("Write every addon notification (alerts, kicks, config changes) to mejta-data/mejtacore/notifications.jsonl; works without any Discord addon");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
-			.add(DEBUG_LOGGING, SHOW_ADDON_IDS, MENU_SOUND, MENU_ROWS, IN_GAME_NOTIFICATIONS)
+			.add(DEBUG_LOGGING, SHOW_ADDON_IDS, MENU_SOUND, MENU_ROWS, IN_GAME_NOTIFICATIONS, NOTIFICATIONS_FILE_LOG)
 			.build();
 
 	private CoreSettings() {

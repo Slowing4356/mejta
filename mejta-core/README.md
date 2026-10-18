@@ -7,6 +7,7 @@ MejtaCore (mod ID `mejtacore`) is the shared framework for Mejta addon mods. Eve
 - An addon registry, with dependency ordering and clear errors when something goes wrong.
 - Typed, validated, persistent configuration: one JSON file per addon, with migrations.
 - Logging and diagnostics that you can see in-game.
+- **Since 1.2.1:** every notification (alerts, kicks, config changes) is also archived in `mejta-data/mejtacore/notifications.jsonl`, and config changes are published as notifications.
 - **Since 1.2.0 (API version 3):** edit a **server's** settings in-game from the menu (**Configuration → Server Settings**) or with `/mejtaadmin config get/set/reset`. Every change is permission-checked, validated, saved and logged by the server.
 - **Since 1.1.0 (API version 2), server features:** server commands under `/mejtaadmin <addon id> …`, permissions based on operator levels (configurable per node), a notification service that delivers to in-game staff chat and to optional provider mods, and size-limited JSON-lines record logs for each addon.
 
@@ -27,7 +28,7 @@ MejtaCore (mod ID `mejtacore`) is the shared framework for Mejta addon mods. Eve
 1. Install **Fabric Loader 0.19.5** (or newer) for Minecraft **26.1.2**.
 2. Put these jars in `.minecraft/mods/`:
    - `fabric-api-0.155.3+26.1.2.jar` (or a newer 26.1.2 build) from Modrinth or CurseForge
-   - `mejtacore-1.2.0.jar`
+   - `mejtacore-1.2.1.jar`
    - any Mejta addons
 3. Start the game. In a world, type `/mejta` to open the menu.
 
@@ -140,16 +141,16 @@ On Windows `cmd`/PowerShell, use `gradlew.bat build`.
 
 Outputs in `build/libs/`:
 
-- `mejtacore-1.2.0.jar`: the mod. Install this one.
-- `mejtacore-1.2.0-sources.jar`: sources, for IDEs.
-- `mejtacore-1.2.0-javadoc.jar`: javadoc for the public API only.
+- `mejtacore-1.2.1.jar`: the mod. Install this one.
+- `mejtacore-1.2.1-sources.jar`: sources, for IDEs.
+- `mejtacore-1.2.1-javadoc.jar`: javadoc for the public API only.
 
 Other useful tasks:
 
 | Task | Purpose |
 |---|---|
 | `./gradlew runClient` | Starts a development client with MejtaCore loaded |
-| `./gradlew publishToMavenLocal` | Publishes `com.mejta:mejtacore:1.2.0` to `~/.m2` so addon projects can compile against it |
+| `./gradlew publishToMavenLocal` | Publishes `com.mejta:mejtacore:1.2.1` to `~/.m2` so addon projects can compile against it |
 | `./gradlew genSources` | Decompiles Minecraft so you can browse its sources in the IDE |
 
 ## 5. Project layout
@@ -212,7 +213,7 @@ dependencies {
 	minecraft "com.mojang:minecraft:26.1.2"
 	implementation "net.fabricmc:fabric-loader:0.19.5"
 	implementation "net.fabricmc.fabric-api:fabric-api:0.155.3+26.1.2"
-	implementation "com.mejta:mejtacore:1.2.0"   // compile against it + load it in dev runs
+	implementation "com.mejta:mejtacore:1.2.1"   // compile against it + load it in dev runs
 }
 ```
 
@@ -387,6 +388,14 @@ MejtaCoreAPI.notifications().publish(Notification.builder("myaddon", "myaddon.al
 - `publish` never blocks. Delivery runs on one background thread with a queue of 1024 notifications. When the queue is full, new notifications are dropped and counted (`droppedCount()`). A provider that throws is logged at most once per minute and doesn't affect other providers.
 - **Privacy:** a notification may be forwarded to external services by providers the server owner has configured. Never put passwords, tokens, IP addresses or other secrets in one. MejtaCore itself sends nothing over the network.
 - The `in_game_notifications` setting in `mejtacore.json` turns the in-game provider off.
+- **Since 1.2.1, every notification is also archived** by the built-in `file` provider in `mejta-data/mejtacore/notifications.jsonl`: one JSON object per line with time, source, channel, severity, title, message and fields. It rotates at 5 MiB and keeps 5 files for up to 30 days. This is the local log when no Discord addon is installed. Setting: `notifications.file_log` (on by default).
+- **Since 1.2.1, config changes are published** on `mejtacore.config` (who, config, key, new value), to staff with `mejtacore.config.edit`, the file log and external providers. Values of keys containing `token`, `secret`, `password` or `webhook` are hidden, also in the server log.
+
+| Channel | Published by | Content |
+|---|---|---|
+| `mejtacore.config` | MejtaCore | Config changes made in-game or with `/mejtaadmin config set/reset` |
+| `mejtaac.alert` | MejtaAC | A player was flagged (rate-limited per player and check) |
+| `mejtaac.enforcement` | MejtaAC | A player was kicked, or would have been in DRY_RUN |
 
 **Record logs.** These are append-only JSON-lines files with limits on size and age, kept in `mejta-data/<addon id>/`:
 

@@ -42,12 +42,18 @@ public final class AlertPublisher {
 				.build());
 	}
 
-	public void enforcement(Detection d) {
+	/**
+	 * A kick, or a would-be kick in DRY_RUN. Carries everything staff need to decide on a ban: player
+	 * name and UUID, the check and its measurements, the enforcement mode and the kick message.
+	 */
+	public void enforcement(Detection d, String mode, String kickMessage) {
 		boolean kicked = d.action() == Action.KICK;
 		MejtaCoreAPI.notifications().publish(fields(Notification.builder(addonId, CHANNEL_ENFORCEMENT), d)
+				.field("mode", mode)
+				.field("kick_message", kicked ? kickMessage : "")
 				.severity(kicked ? Severity.CRITICAL : Severity.WARNING)
 				.title(kicked ? d.playerName() + " was kicked" : d.playerName() + " would be kicked (dry run)")
-				.message(d.flag().checkId() + " reached VL " + format(d.violationLevel()))
+				.message(d.flag().checkId() + " reached VL " + format(d.violationLevel()) + " (" + d.flag().reason() + ")")
 				.inGameAudience(AcPermissions.ALERTS)
 				.build());
 	}

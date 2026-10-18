@@ -17,9 +17,12 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionSet;
 
+import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.config.SettingType;
+import com.mejta.mejtacore.api.notify.Notification;
+import com.mejta.mejtacore.api.notify.Severity;
 import com.mejta.mejtacore.config.ConfigEditing;
 import com.mejta.mejtacore.config.ConfigNames;
 import com.mejta.mejtacore.config.SettingText;
@@ -40,6 +43,9 @@ import com.mejta.mejtacore.permissions.PermissionRegistry;
  * MejtaCore are never sent anything.
  */
 public final class ServerConfigSync {
+	/** Notification channel for config changes made in-game or by command. */
+	public static final String CHANNEL_CONFIG = "mejtacore.config";
+
 	private static final int MAX_EDITS_PER_SECOND = 20;
 
 	private static final Map<UUID, long[]> editWindows = new ConcurrentHashMap<>();
@@ -161,9 +167,33 @@ public final class ServerConfigSync {
 		}
 		ConfigEditing.Result result = ConfigEditing.apply(handle.get(), op, key, value);
 		if (result.ok()) {
-			MejtaLog.CORE.info("[config] {} changed {}", who, result.message());
+			String change = key != null && SECRET_KEY.matcher(key).matches()
+					? configId + ": " + key + " changed (value hidden)" : result.message();
+			MejtaLog.CORE.info("[config] {} changed {}", who, change);
+			publishChange(who, configId, opName, key, change);
 		}
 		return result;
+	}
+
+	/** Keys whose values must never leave the server log in a notification (tokens, webhook URLs...). */
+	private static final java.util.regex.Pattern SECRET_KEY =
+			java.util.regex.Pattern.compile("(?i).*(token|secret|password|webhook).*");
+
+	/**
+	 * Publishes a config change on {@code mejtacore.config}, so it reaches staff chat, the notification
+	 * file log and external providers such as MejtaDiscord. Values of secret-looking keys are hidden.
+	 */
+	private static void publishChange(String who, String configId, String op, String key, String change) {
+		MejtaCoreAPI.notifications().publish(Notification.builder(MejtaCore.MOD_ID, CHANNEL_CONFIG)
+				.severity(Severity.INFO)
+				.title(who + " changed " + configId)
+				.message(change)
+				.field("by", who)
+				.field("config", configId)
+				.field("operation", op)
+				.field("key", key == null ? "" : key)
+				.inGameAudience(PermissionRegistry.CONFIG_EDIT)
+				.build());
 	}
 
 	public static ConfigEditing.Result apply(CommandSourceStack source, String configId, String op, String key, String value) {

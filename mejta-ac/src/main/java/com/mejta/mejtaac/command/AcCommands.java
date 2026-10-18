@@ -68,6 +68,7 @@ public final class AcCommands {
 		line(source, "Enabled", String.valueOf(cfg.enabled()));
 		line(source, "Enforcement", cfg.enforcementMode() + " (min confidence " + cfg.enforcementMinConfidence() + ")");
 		line(source, "Alerts", cfg.alertsEnabled() + " (min VL " + cfg.alertsMinVl() + ", cooldown " + cfg.alertsCooldownSeconds() + "s)");
+		line(source, "Kick notifications", String.valueOf(cfg.alertsEnforcement()));
 		line(source, "Log level", cfg.logLevel().name());
 		line(source, "Check protocol.invalid_move", cfg.invalidMoveEnabled() + " (kick VL " + cfg.invalidMoveKickVl() + ")");
 		line(source, "Check movement.timer", cfg.timerEnabled() + " (kick VL " + cfg.timerKickVl() + ", max ahead " + cfg.timerMaxAheadMs() + " ms)");

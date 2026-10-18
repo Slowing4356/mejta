@@ -4,8 +4,8 @@ Mejta is a family of Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.
 
 | Folder | Mod | Status | Runs on |
 |---|---|---|---|
-| [`mejta-core/`](mejta-core/README.md) | **MejtaCore**: addon registry, configuration (with in-game server editing), permissions, notifications, record logs, `/mejta` menu, `/mejtaadmin` | 1.2.0 (API 3) | Server and client |
-| [`mejta-ac/`](mejta-ac/README.md) | **MejtaAC**: server-authoritative anti-cheat with lag-compensated checks | 0.4.0 | Server only |
+| [`mejta-core/`](mejta-core/README.md) | **MejtaCore**: addon registry, configuration (with in-game server editing), permissions, notifications, record logs, `/mejta` menu, `/mejtaadmin` | 1.2.1 (API 3) | Server and client |
+| [`mejta-ac/`](mejta-ac/README.md) | **MejtaAC**: server-authoritative anti-cheat with lag-compensated checks | 0.5.0 | Server only |
 | `mejta-perf/` | **MejtaPerf**: Spark-style profiler for the ecosystem (optional) | planned | Server (+ client) |
 | `mejta-utils/` | **MejtaUtils**: admin tools (`/invsee`, `/vanish`, …) | planned | Server |
 | `mejta-qol/` | **MejtaQoL**: player commands (`/tpa`, `/homes`, …) | planned | Server |

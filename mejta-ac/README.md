@@ -11,7 +11,7 @@ MejtaAC (mod ID `mejtaac`) is a server-side anti-cheat addon for **MejtaCore**. 
 
 ## Installing
 
-Put `mejtacore-1.2.0.jar`, `mejtaac-0.5.0.jar` and Fabric API in the **server's** `mods/` folder. In single-player, MejtaAC runs on the integrated server, so install everything on the client.
+Put `mejtacore-1.2.1.jar`, `mejtaac-0.5.0.jar` and Fabric API in the **server's** `mods/` folder. In single-player, MejtaAC runs on the integrated server, so install everything on the client.
 
 | | Dedicated server | Player's client |
 |---|---|---|
@@ -219,6 +219,7 @@ Changes apply immediately, including to checks that are already running. The exc
 | `alerts.enabled` | boolean | `true` | | Publish staff alerts. |
 | `alerts.min_vl` | decimal | `1.0` | 0–10000 | Alert only once the player's VL for the check reaches this value. |
 | `alerts.cooldown_seconds` | integer | `5` | 0–3600 | Minimum time between alerts for the same player and check. |
+| `alerts.enforcement` | boolean | `true` | | Publish every kick and would-be kick on `mejtaac.enforcement` (staff chat, notification file log, Discord if installed), even when `alerts.enabled` is off. |
 | `enforcement.mode` | enum | `DRY_RUN` | `OFF`, `DRY_RUN`, `ENFORCE` | What happens when a threshold is reached. |
 | `enforcement.min_confidence` | enum | `HIGH` | `LOW`…`CERTAIN` | Flags below this confidence never lead to enforcement. |
 | `enforcement.kick_message` | string | `Disconnected by anti-cheat.` | 1–256 chars | Shown to kicked players. |
@@ -290,8 +291,9 @@ MejtaAC keeps these outputs separate:
 | Diagnostic log | Server log, logger `MejtaCore/mejtaac` (detail set by `log.level`) | Developers and false-positive investigation |
 | Staff alerts | Notification channel `mejtaac.alert`. The in-game provider shows it to `mejtaac.alerts` holders. | Moderators |
 | Violation records | `mejta-data/mejtaac/violations.jsonl` | Investigating players over time (`history`) |
-| Enforcement audit | `mejta-data/mejtaac/enforcement.jsonl` and channel `mejtaac.enforcement` | Every kick and dry-run "would kick" |
-| External notifications | Providers registered with MejtaCore (none built in) | e.g. Discord, later |
+| Enforcement audit | `mejta-data/mejtaac/enforcement.jsonl` and channel `mejtaac.enforcement` | Every kick and dry-run "would kick". The notification carries the player's name and UUID, check, reason, VL, measurements, mode and kick message: everything needed to decide on a ban. It is published even when `alerts.enabled` is off (`alerts.enforcement`, on by default). |
+| Notification archive | `mejta-data/mejtacore/notifications.jsonl`, written by MejtaCore 1.2.1+ for every notification of every addon | A local copy of everything Discord would get, also when no Discord addon is installed |
+| External notifications | Providers registered with MejtaCore, e.g. MejtaDiscord (planned), which routes each channel to its own Discord channel | Discord |
 
 Example violation record (one JSON object per line):
 

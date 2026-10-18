@@ -229,6 +229,36 @@ public final class MejtaAcClientGameTest implements FabricClientGameTest {
 				&& "WOULD_KICK".equals(str(enforcement.get(0), "action")) && "DRY_RUN".equals(str(enforcement.get(0), "mode")));
 		check("dry-run enforcement alert shown", waitUntil(ctx, () -> chatHas(ctx, name + " would be kicked (dry run)")));
 		check("VL reset after enforcement decision", !levels(server, id).containsKey(InvalidMoveCheck.ID));
+
+		// Every notification also lands in MejtaCore's notification file log (works without Discord).
+		com.mejta.mejtacore.api.storage.RecordLog fileLog = MejtaCoreAPI.recordLog("mejtacore", "notifications",
+				com.mejta.mejtacore.api.storage.RecordLogOptions.DEFAULT);
+		check("kick notification in the core notification file log, with what a ban needs", waitUntil(ctx, () -> {
+			List<JsonObject> logged = await(fileLog.readRecent(50, r -> "mejtaac.enforcement".equals(str(r, "channel"))));
+			if (logged == null || logged.isEmpty()) {
+				return false;
+			}
+			JsonObject fields = logged.get(0).getAsJsonObject("fields");
+			return name.equals(str(fields, "player")) && id.toString().equals(str(fields, "uuid"))
+					&& "DRY_RUN".equals(str(fields, "mode")) && "protocol.invalid_move".equals(str(fields, "check"));
+		}));
+
+		// Kicks are published even when flag alerts are switched off.
+		ConfigHandle config = config();
+		config.set(AcSettings.ALERTS_ENABLED, false);
+		clearChat(ctx);
+		sendPitch(ctx, 120, 5);
+		check("alerts.enabled off: kick notification still shown",
+				waitUntil(ctx, () -> chatHas(ctx, name + " would be kicked (dry run)")));
+		check("alerts.enabled off: no flag alert", !chatHas(ctx, name + " failed protocol.invalid_move"));
+		config.set(AcSettings.ALERTS_ENFORCEMENT, false);
+		clearChat(ctx);
+		sendPitch(ctx, 120, 5);
+		ctx.waitTicks(20);
+		check("alerts.enforcement off: no kick notification", !chatHas(ctx, name + " would be kicked (dry run)"));
+		config.reset(AcSettings.ALERTS_ENABLED);
+		config.reset(AcSettings.ALERTS_ENFORCEMENT);
+		server.runOnServer(s -> AntiCheat.get().orElseThrow().violations().reset(id));
 	}
 
 	private void exemptionAndReloadChecks(ClientGameTestContext ctx, TestServerContext server) {

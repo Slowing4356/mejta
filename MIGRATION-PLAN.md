@@ -169,10 +169,17 @@ None exists yet. Each will be a subfolder of the monorepo with its own Gradle pr
 | `mejta-utils` | **Admin commands:** `/invsee` (and ender chest), `/vanish`, `/freeze`, and others to be listed with you. | Server | Commands, permissions, persistence (vanish state) |
 | `mejta-qol` | **Player quality-of-life commands:** `/tpa`, `/homes`, and others in future. For now a skeleton, so the commands have a home. | Server | Commands, permissions, persistence, scheduler (teleport warm-up) |
 | `mejta-corpse` | **Corpses holding a dead player's items:** owner protection, timeout, and what happens when it expires. | Server (client optional) | Persistence, scheduler, permissions, config |
-| `mejta-discord` | **Sends MejtaCore notifications to Discord.** Webhook first, using Java's built-in `HttpClient`, so no new library. | Server | `NotificationProvider`, `secret` settings, async executor |
+| `mejta-discord` | **Sends MejtaCore notifications to Discord.** Webhook first, using Java's built-in `HttpClient`, so no new library. **Each notification channel can be routed to its own Discord channel**: for example `mejtaac.enforcement` (kicks, with everything needed to decide on a ban) to `#ac-kicks`, `mejtaac.alert` to `#ac-alerts`, `mejtacore.config` to `#staff-log`, plus a default for channels without a route. Webhook URLs are `secret` settings. Delivery is rate-limited per Discord channel and retried; nothing that fails to send is ever lost, because the core file log already holds it. | Server | `NotificationProvider`, `secret` settings, async executor |
 | ~~`mejta-logger`~~ | **Not planned for now** (rollback of chests and areas for SMPs). Not created. | | |
 
 **Persistence (decision 5):** atomic JSON files through a new core API. No database and no new library.
+
+**Logging rule (your requirement, 2026-10-18): everything that matters is published as a MejtaCore notification.** This includes anti-cheat flags, kicks, config changes, and in future addons admin actions (vanish, invsee, freeze), corpses and perf alerts. Then:
+- **MejtaDiscord** (optional) routes each channel to its own Discord channel.
+- **Without MejtaDiscord**, MejtaCore's built-in file log (`mejta-data/mejtacore/notifications.jsonl`, since 1.2.1) and each addon's own records keep everything locally.
+- Kicks are always published, independent of the flag-alert settings, so staff can decide on bans.
+
+New addons must follow this: one channel per kind of event, and no secrets or IP addresses in notifications.
 
 ## 7. Order
 

@@ -459,6 +459,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	private void notificationBusChecks(ClientGameTestContext ctx) {
 		NotificationService service = MejtaCoreAPI.notifications();
 		check("built-in in-game provider registered", service.providerIds().contains("ingame"));
+		check("built-in file log provider registered", service.providerIds().contains("file"));
 		service.registerProvider(provider("test-failing", n -> {
 			throw new IllegalStateException("intentional provider failure");
 		}));
@@ -490,6 +491,18 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("fields and severity delivered", captured.stream().anyMatch(n -> n.title().equals("Bus test")
 				&& n.severity() == Severity.WARNING && "v".equals(n.fields().get("k"))));
 		check("invalid channel rejected", throwsIae(() -> Notification.builder(ExampleAddon.ID, "nodot")));
+		check("every notification is written to the notification file log", waitUntil(ctx, () ->
+				!notificationLog(r -> r.get("title").getAsString().equals("Not for capture")
+						&& r.get("channel").getAsString().equals("other.channel")).isEmpty()));
+		check("file log keeps severity and fields", !notificationLog(r -> r.get("title").getAsString().equals("Bus test")
+				&& r.get("severity").getAsString().equals("WARNING")
+				&& r.getAsJsonObject("fields").get("k").getAsString().equals("v")).isEmpty());
+	}
+
+	private static List<JsonObject> notificationLog(java.util.function.Predicate<JsonObject> filter) {
+		List<JsonObject> found = MejtaCoreAPI.recordLog("mejtacore", "notifications", RecordLogOptions.DEFAULT)
+				.readRecent(200, filter).join();
+		return found == null ? List.of() : found;
 	}
 
 	private void inGameNotificationChecks(ClientGameTestContext ctx, TestServerContext server) {
@@ -582,7 +595,9 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ConfigHandle perms = MejtaCore.configs().find(PermissionRegistry.CONFIG_ID).orElseThrow();
 		@SuppressWarnings("unchecked")
 		Setting<PermissionLevel> edit = (Setting<PermissionLevel>) perms.spec().setting("mejtacore.config.edit").orElseThrow();
+		int launches = example.get(ExampleAddon.LAUNCH_COUNT);
 		example.resetAll();
+		example.set(ExampleAddon.LAUNCH_COUNT, launches); // the next run's persistence check compares against it
 		example.save();
 
 		chat(ctx, "/mejta gui");
@@ -635,6 +650,10 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		clearChat(ctx);
 		chat(ctx, "/mejtaadmin config set example radius 12");
 		check("command: /mejtaadmin config set", waitUntil(ctx, () -> example.get(ExampleAddon.RADIUS) == 12));
+		check("config change published on mejtacore.config (file log)", waitUntil(ctx, () -> !notificationLog(r ->
+				r.get("channel").getAsString().equals("mejtacore.config")
+						&& r.getAsJsonObject("fields").get("key").getAsString().equals("radius")
+						&& r.get("message").getAsString().contains("12")).isEmpty()));
 		clearChat(ctx);
 		chat(ctx, "/mejtaadmin config get example radius");
 		check("command: /mejtaadmin config get", chatContains(ctx, "radius = 12"));
@@ -648,7 +667,9 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ctx.runOnClient(mc -> ClientPlayNetworking.send(new ConfigPayloads.EditConfig("example", "SET", "radius", "20")));
 		ctx.waitTicks(20);
 		check("remote: edits refused after the permission is revoked", example.get(ExampleAddon.RADIUS) == 12);
+		launches = example.get(ExampleAddon.LAUNCH_COUNT);
 		example.resetAll();
+		example.set(ExampleAddon.LAUNCH_COUNT, launches); // the next run's persistence check compares against it
 		example.save();
 	}
 

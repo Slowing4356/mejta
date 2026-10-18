@@ -49,6 +49,8 @@ public final class AcSettings {
 			.describedAs("Only alert once a player's violation level for a check reaches this value");
 	public static final Setting<Integer> ALERTS_COOLDOWN = Setting.integer("alerts.cooldown_seconds", 5, 0, 3600)
 			.describedAs("Minimum seconds between alerts for the same player and check");
+	public static final Setting<Boolean> ALERTS_ENFORCEMENT = Setting.bool("alerts.enforcement", true)
+			.describedAs("Publish every kick and would-be kick (staff chat, notification file log, Discord if installed), even when alerts.enabled is off");
 
 	// ---------------------------------------------------------------- enforcement
 	public static final Setting<EnforcementMode> ENFORCEMENT_MODE = Setting.enumeration("enforcement.mode", EnforcementMode.DRY_RUN)
@@ -154,7 +156,7 @@ public final class AcSettings {
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, LOG_LEVEL,
 					DECAY_PER_MINUTE,
-					ALERTS_ENABLED, ALERTS_MIN_VL, ALERTS_COOLDOWN,
+					ALERTS_ENABLED, ALERTS_MIN_VL, ALERTS_COOLDOWN, ALERTS_ENFORCEMENT,
 					ENFORCEMENT_MODE, ENFORCEMENT_MIN_CONFIDENCE, KICK_MESSAGE,
 					BYPASS_PERMISSION,
 					RECORDS_ENABLED, RECORDS_MAX_FILE_MB, RECORDS_MAX_FILES, RECORDS_RETENTION_DAYS,
