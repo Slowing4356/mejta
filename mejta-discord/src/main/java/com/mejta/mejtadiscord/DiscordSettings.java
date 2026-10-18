@@ -73,6 +73,8 @@ public final class DiscordSettings {
 			.describedAs("Longer Discord messages are cut to this many characters");
 	public static final Setting<Integer> CHAT_RATE = Setting.integer("chat.to_minecraft.per_user_per_minute", 10, 1, 120)
 			.describedAs("Messages one Discord user can relay per minute; the rest are not shown");
+	public static final Setting<Integer> CHAT_GLOBAL_RATE = Setting.integer("chat.to_minecraft.per_minute", 30, 1, 600)
+			.describedAs("Messages relayed per minute from all Discord users together; the rest are not shown");
 	public static final Setting<String> CHAT_WORD_FILTER = Setting.string("chat.to_minecraft.word_filter", "")
 			.validatedBy(text -> text.length() <= 2000)
 			.describedAs("Comma-separated words replaced by asterisks in Discord messages shown in Minecraft");
@@ -86,7 +88,7 @@ public final class DiscordSettings {
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, WEBHOOK_DEFAULT, WEBHOOK_ALERTS, WEBHOOK_STAFF, NOTIFY_ROUTING, NOTIFY_MIN_SEVERITY, NOTIFY_USERNAME, NOTIFY_AVATAR,
 					CHAT_TO_DISCORD, CHAT_WEBHOOK, CHAT_USERNAME, CHAT_AVATAR, CHAT_JOIN_LEAVE,
-					CHAT_TO_MINECRAFT, BOT_TOKEN, CHAT_CHANNEL, CHAT_FORMAT, CHAT_MAX_LENGTH, CHAT_RATE, CHAT_WORD_FILTER,
+					CHAT_TO_MINECRAFT, BOT_TOKEN, CHAT_CHANNEL, CHAT_FORMAT, CHAT_MAX_LENGTH, CHAT_RATE, CHAT_GLOBAL_RATE, CHAT_WORD_FILTER,
 					MAX_ATTEMPTS, QUEUE_SIZE)
 			.build();
 

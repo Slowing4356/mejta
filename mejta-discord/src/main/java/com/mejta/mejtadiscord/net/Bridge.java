@@ -30,17 +30,29 @@ public final class Bridge implements AutoCloseable {
 	public static final String CHAT = "chat";
 
 	/**
-	 * @param webhooks notification webhooks by name; empty URLs mean not configured
-	 * @param token    bot token, empty if the Discord-to-Minecraft relay is not set up
+	 * @param webhooks      notification webhooks by name; empty URLs mean not configured
+	 * @param chatWebhook   the chat relay's webhook, used only with {@code chatToDiscord}, but always
+	 *                      redacted from logs
+	 * @param token         bot token, empty if the Discord-to-Minecraft relay is not set up
 	 */
-	public record Config(boolean enabled, Map<String, String> webhooks, String chatWebhook, boolean chatToMinecraft, String token,
-			String channelId, int maxAttempts, int queueSize) {
+	public record Config(boolean enabled, Map<String, String> webhooks, String chatWebhook, boolean chatToDiscord, boolean chatToMinecraft,
+			String token, String channelId, int maxAttempts, int queueSize) {
 		public Config {
 			webhooks = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(webhooks)); // keeps the order for status output
 		}
 
 		boolean gatewayWanted() {
 			return enabled && chatToMinecraft && !token.isEmpty() && !channelId.isEmpty();
+		}
+
+		/** Never prints the URLs or the token, only whether they are set. */
+		@Override
+		public String toString() {
+			Map<String, String> set = new LinkedHashMap<>();
+			webhooks.forEach((name, url) -> set.put(name, url.isEmpty() ? "not set" : "set"));
+			return "Config[enabled=" + enabled + ", webhooks=" + set + ", chatWebhook=" + (chatWebhook.isEmpty() ? "not set" : "set")
+					+ ", chatToDiscord=" + chatToDiscord + ", chatToMinecraft=" + chatToMinecraft + ", token=" + (token.isEmpty() ? "not set" : "set")
+					+ ", channelId=" + channelId + ", maxAttempts=" + maxAttempts + ", queueSize=" + queueSize + "]";
 		}
 	}
 
@@ -81,12 +93,23 @@ public final class Bridge implements AutoCloseable {
 		this.backoffMs = backoffMs;
 	}
 
-	public synchronized void apply(Config next) {
-		if (closed) {
-			return;
+	public void apply(Config next) {
+		GatewayClient old;
+		synchronized (this) {
+			if (closed) {
+				return;
+			}
+			old = applyLocked(next);
 		}
+		if (old != null) {
+			old.close(); // outside the lock: status and send() do not wait for it
+		}
+	}
+
+	/** @return the gateway client to close, if it was replaced */
+	private GatewayClient applyLocked(Config next) {
 		List<String> secrets = new ArrayList<>(next.webhooks().values());
-		secrets.add(next.chatWebhook());
+		secrets.add(next.chatWebhook()); // even when chat.to_discord is off: it is still a secret
 		secrets.add(next.token());
 		redactor.setSecrets(secrets);
 
@@ -97,69 +120,124 @@ public final class Bridge implements AutoCloseable {
 					wanted.put(name, url);
 				}
 			});
-			if (!next.chatWebhook().isEmpty()) {
+			if (next.chatToDiscord() && !next.chatWebhook().isEmpty()) {
 				wanted.put(CHAT, next.chatWebhook());
 			}
 		}
-		boolean deliveryChanged = config == null || config.maxAttempts() != next.maxAttempts() || config.queueSize() != next.queueSize();
+		boolean deliveryChanged = config != null && (config.maxAttempts() != next.maxAttempts() || config.queueSize() != next.queueSize());
 		for (String name : List.copyOf(webhooks.keySet())) {
-			if (deliveryChanged || !Objects.equals(urls.get(name), wanted.get(name))) {
+			String url = wanted.get(name);
+			if (!Objects.equals(urls.get(name), url)) {
 				retire(webhooks.remove(name));
 				urls.remove(name);
+			} else if (deliveryChanged) {
+				// Same webhook, new limits: queued messages move to the new client instead of being lost.
+				WebhookClient replaced = webhooks.remove(name);
+				WebhookClient fresh = create(name, url, next);
+				if (fresh != null) {
+					for (WebhookClient.Message m : replaced.drainQueue()) {
+						fresh.offer(m); // a smaller queue drops (and counts) routine messages first
+					}
+				} else {
+					urls.remove(name);
+				}
+				retire(replaced);
 			}
 		}
 		wanted.forEach((name, url) -> {
 			if (!webhooks.containsKey(name)) {
-				try {
-					webhooks.put(name, new WebhookClient(name, URI.create(url), http, redactor, log, listener(), next.queueSize(),
-							next.maxAttempts(), 1000));
-					urls.put(name, url);
-				} catch (IllegalArgumentException e) {
-					log.warn("[MejtaDiscord] Webhook '{}' has an invalid URL; it is not used", name);
-				}
+				create(name, url, next);
 			}
 		});
 
 		boolean gatewayChanged = config == null || config.gatewayWanted() != next.gatewayWanted() || !config.token().equals(next.token());
 		channelId = next.channelId();
 		config = next;
+		GatewayClient old = null;
 		if (gatewayChanged) {
-			if (gateway != null) {
-				gateway.close();
-				gateway = null;
-			}
+			old = gateway;
+			gateway = null;
 			if (next.gatewayWanted()) {
 				startGateway(next.token());
 			}
 		}
+		return old;
+	}
+
+	/** Creates and registers a client; {@code null} if the URL cannot be used. */
+	private WebhookClient create(String name, String url, Config settings) {
+		try {
+			WebhookClient client = new WebhookClient(name, URI.create(url), http, redactor, log, listener(), settings.queueSize(),
+					settings.maxAttempts(), 1000);
+			webhooks.put(name, client);
+			urls.put(name, url);
+			return client;
+		} catch (IllegalArgumentException e) {
+			log.warn("[MejtaDiscord] Webhook '{}' has an invalid URL; it is not used", name);
+			return null;
+		}
 	}
 
 	private void startGateway(String token) {
-		gateway = new GatewayClient(gatewayUrl, token, GatewayClient.CHAT_INTENTS, http, redactor, log, new GatewayClient.Handler() {
+		// A replaced client is closed outside the lock, so until then its callbacks are ignored here.
+		GatewayClient[] self = new GatewayClient[1];
+		GatewayClient client = new GatewayClient(gatewayUrl, token, GatewayClient.CHAT_INTENTS, http, redactor, log, new GatewayClient.Handler() {
 			@Override
 			public void onMessage(JsonObject message) {
 				GatewayClient g = gateway;
-				Inbound.from(message, channelId, g == null ? "" : g.botUserId()).ifPresent(events::inbound);
+				if (g != null && g == self[0]) {
+					Inbound.from(message, channelId, g.botUserId()).ifPresent(events::inbound);
+				}
 			}
 
 			@Override
 			public void onState(GatewayClient.State state, String detail) {
-				events.gatewayState(state, detail);
+				if (gateway == self[0]) {
+					events.gatewayState(state, detail);
+				}
 			}
 		}, backoffMs);
-		gateway.start();
+		self[0] = client; // before start(): callbacks only begin after it
+		gateway = client;
+		client.start();
 	}
 
 	/** Restarts the gateway connection, for example after fixing the Message Content intent. */
-	public synchronized boolean reconnectGateway() {
-		if (closed || config == null || !config.gatewayWanted()) {
-			return false;
+	public boolean reconnectGateway() {
+		GatewayClient old;
+		synchronized (this) {
+			if (closed || config == null || !config.gatewayWanted()) {
+				return false;
+			}
+			old = gateway;
+			startGateway(config.token());
 		}
-		if (gateway != null) {
-			gateway.close();
+		if (old != null) {
+			old.close(); // its callbacks no longer reach anyone: gateway already points at the new client
 		}
-		startGateway(config.token());
 		return true;
+	}
+
+	/**
+	 * Gives webhooks that Discord refused (401, 403 or 404) a new client, for example after the webhook
+	 * was restored or a permission fixed. A wrong URL is simply refused again.
+	 *
+	 * @return the names of the webhooks re-enabled
+	 */
+	public synchronized List<String> reenableWebhooks() {
+		List<String> names = new ArrayList<>();
+		if (closed || config == null) {
+			return names;
+		}
+		for (String name : List.copyOf(webhooks.keySet())) {
+			if (webhooks.get(name).status() == WebhookClient.Status.DISABLED) {
+				retire(webhooks.remove(name));
+				if (create(name, urls.get(name), config) != null) {
+					names.add(name);
+				}
+			}
+		}
+		return names;
 	}
 
 	private WebhookClient.Listener listener() {
@@ -181,9 +259,7 @@ public final class Bridge implements AutoCloseable {
 		if (client == null) {
 			return;
 		}
-		Thread t = new Thread(() -> client.close(Duration.ofSeconds(3)), "MejtaDiscord-Retire-" + client.name());
-		t.setDaemon(true);
-		t.start();
+		Threads.daemon("MejtaDiscord-Retire-" + client.name(), () -> client.close(Duration.ofSeconds(3)), redactor, log).start();
 	}
 
 	/** Queues a payload for the named webhook. {@code false} if it is not configured, disabled or full. */

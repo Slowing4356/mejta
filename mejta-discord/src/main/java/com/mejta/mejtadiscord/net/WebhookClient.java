@@ -7,7 +7,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -31,7 +33,7 @@ import com.mejta.mejtadiscord.text.Redactor;
  * <li>Server errors and network failures are retried with exponential backoff, up to the configured
  * number of attempts; then the message is dropped (it stays in MejtaCore's notification file log).</li>
  * <li>{@code 401}, {@code 403} or {@code 404} mean the webhook was deleted or is wrong: it is disabled
- * and the owner is told once.</li>
+ * and the owner is told once. Only a new client (a changed URL, or a reconnect) sends to it again.</li>
  * <li>Every request disables mentions ({@code allowed_mentions: {parse: []}}).</li>
  * <li>The queue is bounded. When it is full, routine messages are dropped first and counted.</li>
  * </ul>
@@ -93,8 +95,7 @@ public final class WebhookClient implements AutoCloseable {
 		this.maxAttempts = Math.max(1, maxAttempts);
 		this.baseBackoffMs = Math.max(1, baseBackoffMs);
 		this.queue = new ArrayBlockingQueue<>(Math.max(1, queueSize));
-		this.worker = new Thread(this::run, "MejtaDiscord-Webhook-" + name);
-		this.worker.setDaemon(true);
+		this.worker = Threads.daemon("MejtaDiscord-Webhook-" + name, this::run, redactor, log);
 		this.worker.start();
 	}
 
@@ -149,6 +150,18 @@ public final class WebhookClient implements AutoCloseable {
 		return false;
 	}
 
+	/**
+	 * Takes out everything still queued, in order, for a client replacing this one. A message offered
+	 * after this is still delivered by this client, while it closes.
+	 */
+	public List<Message> drainQueue() {
+		List<Message> out = new ArrayList<>();
+		synchronized (queue) {
+			queue.drainTo(out);
+		}
+		return out;
+	}
+
 	private void countDrop() {
 		long total = dropped.incrementAndGet();
 		if (total == 1 || total % 100 == 0) {
@@ -177,7 +190,13 @@ public final class WebhookClient implements AutoCloseable {
 			try {
 				deliver(message);
 			} catch (InterruptedException e) {
+				countDrop(); // stopped by close() in the middle of this message
 				return;
+			} catch (RuntimeException e) {
+				// A bug must not stop the webhook: drop this one message and carry on.
+				lastError = "internal error: " + redactor.describe(e);
+				log.warn("[MejtaDiscord] Webhook '{}': dropped a message after an {}", name, lastError);
+				countDrop();
 			}
 		}
 	}
@@ -320,6 +339,11 @@ public final class WebhookClient implements AutoCloseable {
 			Thread.currentThread().interrupt();
 		}
 		worker.interrupt();
+		List<Message> left = new ArrayList<>();
+		queue.drainTo(left);
+		for (int i = 0; i < left.size(); i++) {
+			countDrop(); // not sent in time: counted, so status shows the loss
+		}
 	}
 
 	/** Text helpers shared with the gateway client. */

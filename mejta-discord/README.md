@@ -19,10 +19,10 @@ It never talks to MejtaAC directly: MejtaAC publishes notifications to MejtaCore
 
 This release was written without access to the Minecraft jars or to Discord, so it has **not been compiled against Minecraft, run on a server, or connected to Discord yet**.
 
-- The network and text code contains no Minecraft code and is unit-tested: **38 JUnit tests**.
-  - Webhooks are tested against a local HTTP server: ordering, `allowed_mentions`, 429 handling, rate-limit headers, retries, deleted webhooks, a full queue, and no URLs in errors.
-  - The gateway is tested against a local WebSocket server that speaks Discord's protocol: identify, heartbeats, zombie connections, resume, reconnect requests, invalid sessions, and fatal close codes.
-  - The rest covers the bridge, sanitising, redaction, routing, embeds and inbound message parsing.
+- The network and text code contains no Minecraft code and is unit-tested: **54 JUnit tests**.
+  - Webhooks are tested against a local HTTP server: ordering, `allowed_mentions`, 429 handling, rate-limit headers, retries, deleted webhooks, a full queue, a failing message, and no URLs in errors.
+  - The gateway is tested against a local WebSocket server that speaks Discord's protocol: identify, heartbeats, zombie connections, resume, reconnect requests, invalid sessions, fatal close codes, stalled handshakes, repeatedly failing resumes, and a prompt close.
+  - The rest covers the bridge (settings changes keep queued messages, re-enabling refused webhooks), sanitising, redaction, rate limits, routing, embeds and inbound message parsing.
 - The Minecraft side (settings, commands, chat events) is covered by a client game test, but it has not run yet.
 - Delivery to real Discord has to be checked by hand: see [Checking it by hand](#checking-it-by-hand).
 
@@ -118,8 +118,9 @@ This needs a bot, because webhooks cannot read messages.
   - other channels.
 - Mentions become `@name`, and custom emoji become `:name:`.
 - Attachments and stickers are noted but never linked.
-- Formatting codes and line breaks are removed, and long messages are cut (`chat.to_minecraft.max_length`).
-- Each Discord user can relay `chat.to_minecraft.per_user_per_minute` messages per minute.
+- Formatting codes, line breaks, invisible, private-use and unassigned characters are removed. Runs of spaces and blank-looking characters (such as Braille blanks and Hangul fillers) become one space, so names and messages cannot look empty or padded. A name with nothing left shows as `Discord user`.
+- Long messages are cut (`chat.to_minecraft.max_length`).
+- At most `chat.to_minecraft.per_minute` messages per minute are shown from all Discord users together, and at most `chat.to_minecraft.per_user_per_minute` from each user. A message refused by one limit does not count against the other.
 - `chat.to_minecraft.word_filter` replaces listed words with asterisks.
 
 ## Commands
@@ -130,9 +131,9 @@ Under `/mejtaadmin mejtadiscord`:
 |---|---|---|
 | `status` | `mejtadiscord.status` | For each webhook: state, messages sent, dropped and queued, and the last error. Also the bot connection's state. Never shows URLs or tokens. |
 | `test <default\|alerts\|staff\|chat>` | `mejtadiscord.admin` | Sends a test embed to that webhook. Audited. |
-| `reconnect` | `mejtadiscord.admin` | Reconnects the bot, for example after fixing the Message Content intent. Audited. |
+| `reconnect` | `mejtadiscord.admin` | Reconnects the bot, for example after fixing the Message Content intent, and gives stopped webhooks (Discord answered 401, 403 or 404) another try, for example after fixing a permission. Says which webhooks were enabled again. Audited. |
 
-Settings are changed with MejtaCore's `/mejtaadmin config set mejtadiscord <key> <value>`, or in the Server Settings menu. Changes apply immediately: only the connections whose settings changed are rebuilt, and queued alerts are kept.
+Settings are changed with MejtaCore's `/mejtaadmin config set mejtadiscord <key> <value>`, or in the Server Settings menu. Changes apply immediately: only the connections whose settings changed are rebuilt, and queued alerts are kept. Changing `delivery.max_attempts` or `delivery.queue_size` moves queued messages to the rebuilt webhook client; if the new queue is smaller, what does not fit is dropped (routine messages first) and counted in `status`.
 
 ## Permissions
 
@@ -167,6 +168,7 @@ Stored in `config/mejta/mejtadiscord.json`. Settings marked secret are stored in
 | `chat.to_minecraft.format` | `[Discord] {user}: {message}` | Must contain `{message}` |
 | `chat.to_minecraft.max_length` | `256` | 16–1000 |
 | `chat.to_minecraft.per_user_per_minute` | `10` | 1–120 |
+| `chat.to_minecraft.per_minute` | `30` | 1–600. Messages shown per minute from all Discord users together |
 | `chat.to_minecraft.word_filter` | empty | Comma-separated words |
 | `delivery.max_attempts` | `5` | Attempts per message on server or network errors (rate limits are always waited out) |
 | `delivery.queue_size` | `200` | Messages waiting per webhook |
@@ -179,15 +181,18 @@ Only HTTPS Discord webhook URLs (`discord.com`, `discordapp.com`, `canary.` or `
 - Discord's rate-limit headers pause sending before a limit is hit. A `429` answer is waited out, then the message is retried.
 - Server errors (5xx) and network errors are retried with exponential backoff, up to `delivery.max_attempts`, then the message is dropped.
   - Dropped alerts are not lost: MejtaCore's notification file log (`mejta-data/mejtacore/notifications.jsonl`) and MejtaAC's own records keep them.
-- `401`, `403` or `404` mean the webhook was deleted or its URL is wrong. That webhook stops, and admins are told in game once.
+- `401`, `403` or `404` mean the webhook was deleted or its URL is wrong. That webhook stops, and admins are told in game once. It starts again when its URL is changed, or with `/mejtaadmin mejtadiscord reconnect`.
+- A message that fails with an internal error is dropped and counted; the webhook keeps going.
 - When a queue is full, routine messages (INFO) are dropped before alerts and kicks.
 - The bot connection:
   - keeps a heartbeat;
   - detects dead connections;
+  - drops a connection whose handshake stalls: no HELLO within 20 seconds of connecting, or no READY/RESUMED within 20 seconds of identifying or resuming;
   - resumes after disconnects, without missing messages where Discord allows;
-  - reconnects with backoff, up to one minute.
+  - after 3 failed resumes in a row, or 2 minutes without being ready, starts a new session instead;
+  - reconnects with backoff, up to one minute. The backoff is reset only once a connection has stayed ready for a minute, so a connection that keeps dropping keeps backing off.
 - If Discord refuses the bot (invalid token, intent not enabled), it stops and says why instead of retrying forever.
-- On shutdown, queued messages get up to 3 seconds to go out.
+- On shutdown, queued messages get up to 3 seconds to go out. What is still queued after that is counted as dropped. The bot connection closes at once, even while it is waiting to reconnect.
 
 ## Security
 
@@ -198,7 +203,7 @@ Only HTTPS Discord webhook URLs (`discord.com`, `discordapp.com`, `canary.` or `
     - menus and `config get` show only `(set)` or `(not set)`;
     - setting one is not broadcast to other operators.
   - **Who can set them:** only the console and holders of `mejtacore.config.secrets`. Set them from the console, because the game client keeps typed commands in `command_history.txt`.
-  - **Logs:** MejtaDiscord's logs and status output pass through a redactor that removes webhook URLs, anything shaped like a bot token, and the configured secret values. Raw exception messages, which can contain request URLs, are never logged.
+  - **Logs:** MejtaDiscord's logs and status output pass through a redactor that removes webhook URLs, anything shaped like a bot token, and the configured secret values (all webhook URLs and the token, including `chat.webhook.url` while `chat.to_discord.enabled` is off). Raw exception messages, which can contain request URLs, are never logged, including failures of MejtaDiscord's own threads.
   - **Keep them out of shared places:** keep `config/mejta/secrets/` out of backups you share and out of version control.
 - **Nothing from Discord runs anything.** Discord messages are only displayed, as plain text with no click actions. There is no command execution from Discord of any kind.
 - **No pings.** Every webhook request disables mentions (`allowed_mentions: {"parse": []}`), and `@everyone`, `@here` and raw mention syntax are neutralised in the text as a second layer. Players cannot post masked links, because markdown is escaped.
@@ -218,7 +223,7 @@ Use a test Discord server:
 
 1. Set `webhook.default.url`, then run `/mejtaadmin mejtadiscord test default`. The embed should arrive, and `status` should show `ok, 1 sent`.
 2. Trigger a MejtaAC alert (see MejtaAC's README). An orange embed should arrive with the check's fields. A kick should arrive as a red embed.
-3. Delete the webhook in Discord and trigger another alert. In game, admins should get "Discord webhook 'default' stopped", and `status` should show `disabled`.
+3. Delete the webhook in Discord and trigger another alert. In game, admins should get "Discord webhook 'default' stopped", and `status` should show `disabled`. Run `reconnect`: it should say the webhook was enabled again, and the next alert should stop it again.
 4. Set `chat.webhook.url` and chat in game. The message should appear under your name, and `@everyone` in it should not ping.
 5. Set up the bot and post in the channel. It should appear in game. Post 12 messages quickly: only 10 should appear.
 6. Turn off the Message Content intent and run `reconnect`. Admins should be told about code 4014, and `status` should show `failed`.
@@ -229,7 +234,7 @@ Use a test Discord server:
 ```
 cd ../mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.3.0 first
 cd ../mejta-discord
-./gradlew test                  # the 38 unit tests
+./gradlew test                  # the 54 unit tests
 ./gradlew build
 ./gradlew runClientGameTest     # client game test: unconfigured, secrets, inbound relay, routing
 ```

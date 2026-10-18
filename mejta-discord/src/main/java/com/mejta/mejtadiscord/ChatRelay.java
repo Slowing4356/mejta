@@ -70,10 +70,13 @@ final class ChatRelay {
 		if (s == null || server == null || !s.enabled() || !s.chatToMinecraft()) {
 			return;
 		}
-		if (!limiter.tryAcquire(in.userId(), s.ratePerMinute())) {
+		if (!limiter.tryAcquire(in.userId(), s.ratePerMinute(), s.globalPerMinute())) {
 			return;
 		}
 		String user = Sanitizer.forMinecraft(in.name(), 32, s.filteredWords());
+		if (user.isEmpty()) {
+			user = "Discord user"; // a name made only of blank or invisible characters
+		}
 		String message = Sanitizer.forMinecraft(in.content(), s.maxLength(), s.filteredWords());
 		if (message.isBlank()) {
 			return;

@@ -34,10 +34,22 @@ class GatewayClientTest {
 	@BeforeEach
 	void start() throws Exception {
 		gateway = new FakeGateway();
+		client = newClient(10, GatewayClient.HANDSHAKE_TIMEOUT_MS);
+		client.start();
+	}
+
+	GatewayClient newClient(long backoffMs, long handshakeTimeoutMs) {
 		Redactor redactor = new Redactor();
 		redactor.setSecrets(List.of(TOKEN));
-		client = new GatewayClient(gateway.uri(), TOKEN, GatewayClient.CHAT_INTENTS, HttpClient.newHttpClient(), redactor, LOG,
-				message -> messages.add(message.get("content").getAsString()), 10);
+		return new GatewayClient(gateway.uri(), TOKEN, GatewayClient.CHAT_INTENTS, HttpClient.newHttpClient(), redactor, LOG,
+				message -> messages.add(message.get("content").getAsString()), backoffMs, handshakeTimeoutMs);
+	}
+
+	/** Replaces the default client (after its first connection) with one using these timings. */
+	void restart(long backoffMs, long handshakeTimeoutMs) throws Exception {
+		assertNotNull(gateway.next(WAIT), "the default client connected");
+		client.close();
+		client = newClient(backoffMs, handshakeTimeoutMs);
 		client.start();
 	}
 
@@ -232,5 +244,67 @@ class GatewayClientTest {
 		assertTrue(waitFor(() -> conn.closeCode == 1000), "close code " + conn.closeCode);
 		assertEquals(GatewayClient.State.STOPPED, client.state());
 		assertNull(gateway.next(200), "no reconnect after close");
+	}
+
+	@Test
+	void stalledHandshakeIsDroppedAndRetried() throws Exception {
+		restart(10, 300);
+		FakeGateway.Conn silent = gateway.next(WAIT);
+		assertNotNull(silent, "connected");
+		// The server accepted the upgrade but never says HELLO.
+		FakeGateway.Conn second = gateway.next(WAIT);
+		assertNotNull(second, "reconnected after no HELLO");
+		assertTrue(client.lastError().contains("HELLO"), client.lastError());
+		assertTrue(waitFor(() -> silent.closeCode == 4000), "the stalled connection was closed: " + silent.closeCode);
+		second.hello(45_000);
+		assertNotNull(second.expect(2, WAIT), "identified");
+		// HELLO came, but READY never does.
+		FakeGateway.Conn third = gateway.next(WAIT);
+		assertNotNull(third, "reconnected after no READY");
+		assertTrue(client.lastError().contains("IDENTIFY"), client.lastError());
+		third.hello(45_000);
+		assertNotNull(third.expect(2, WAIT));
+		JsonObject d = new JsonObject();
+		d.addProperty("session_id", "sess-1");
+		third.dispatch("READY", 1, d);
+		assertTrue(waitFor(() -> client.state() == GatewayClient.State.READY));
+		assertNull(gateway.next(500), "a ready connection is kept");
+	}
+
+	@Test
+	void repeatedFailedResumesStartANewSession() throws Exception {
+		FakeGateway.Conn conn = ready(45_000, 5);
+		conn.close(4000); // resumable
+		for (int attempt = 1; attempt <= 3; attempt++) {
+			FakeGateway.Conn next = gateway.next(WAIT);
+			assertNotNull(next, "resume attempt " + attempt);
+			next.hello(45_000);
+			assertNotNull(next.expect(6, WAIT), "resumed, attempt " + attempt);
+			next.close(4000); // but the resume fails
+		}
+		FakeGateway.Conn fresh = gateway.next(WAIT);
+		assertNotNull(fresh, "connected again");
+		fresh.hello(45_000);
+		assertNotNull(fresh.expect(2, WAIT), "identifies after three failed resumes");
+		fresh.op(1, null);
+		JsonObject beat = fresh.expect(1, WAIT);
+		assertNotNull(beat);
+		assertTrue(beat.get("d").isJsonNull(), "the old sequence is forgotten with the session: " + beat);
+	}
+
+	@Test
+	void closeDoesNotWaitForAPendingReconnect() throws Exception {
+		restart(10_000, GatewayClient.HANDSHAKE_TIMEOUT_MS);
+		FakeGateway.Conn conn = gateway.next(WAIT);
+		assertNotNull(conn);
+		conn.hello(45_000);
+		assertNotNull(conn.expect(2, WAIT));
+		conn.close(4000); // the next attempt is 10 s or more away
+		assertTrue(waitFor(() -> client.state() == GatewayClient.State.BACKOFF));
+		long start = System.nanoTime();
+		client.close();
+		long ms = (System.nanoTime() - start) / 1_000_000;
+		assertTrue(ms < 1000, "close took " + ms + " ms");
+		assertEquals(GatewayClient.State.STOPPED, client.state());
 	}
 }

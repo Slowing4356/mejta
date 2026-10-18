@@ -198,4 +198,15 @@ class WebhookClientTest {
 			assertFalse(c.lastError().contains("secretpart"), c.lastError());
 		}
 	}
+
+	@Test
+	void aFailingMessageDoesNotStopTheWorker() throws Exception {
+		try (WebhookClient c = client(10, 3)) {
+			assertTrue(c.offer(new WebhookClient.Message(null, false))); // makes delivery throw
+			assertTrue(c.offer(msg("after", false)));
+			assertTrue(waitFor(() -> c.sentCount() == 1), "the next message still goes out");
+			assertEquals(1, c.droppedCount());
+			assertTrue(c.lastError().startsWith("internal error"), c.lastError());
+		}
+	}
 }

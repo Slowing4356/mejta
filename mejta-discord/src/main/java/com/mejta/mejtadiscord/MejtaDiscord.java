@@ -59,13 +59,16 @@ public final class MejtaDiscord implements MejtaAddon {
 	/** Settings read once per change, so the notification, gateway and server threads never read the config file. */
 	record Snapshot(boolean enabled, Routing routing, Severity minSeverity, String notifyUsername, String notifyAvatar,
 			boolean chatToDiscord, String chatUsername, String chatAvatar, boolean joinLeave,
-			boolean chatToMinecraft, String minecraftFormat, int maxLength, int ratePerMinute, List<String> filteredWords) {
+			boolean chatToMinecraft, String minecraftFormat, int maxLength, int ratePerMinute, int globalPerMinute,
+			List<String> filteredWords) {
 	}
 
 	private static volatile ConfigHandle config;
 	private static volatile Logger log;
 	private static volatile Snapshot snapshot;
 	private static volatile Bridge bridge;
+	/** Created with the bridge and shut down after it, so no HTTP client threads outlive a server run. */
+	private static volatile HttpClient http;
 	private static volatile MinecraftServer server;
 	private static final DiscordNotifications NOTIFICATIONS = new DiscordNotifications();
 	private static final ChatRelay RELAY = new ChatRelay();
@@ -100,11 +103,12 @@ public final class MejtaDiscord implements MejtaAddon {
 
 	private static void serverStarted(MinecraftServer started) {
 		server = started;
-		HttpClient http = HttpClient.newBuilder()
+		HttpClient client = HttpClient.newBuilder()
 				.connectTimeout(Duration.ofSeconds(10))
 				.proxy(ProxySelector.getDefault())
 				.build();
-		Bridge b = new Bridge(http, new Redactor(), log, new BridgeEvents(), GATEWAY, 1000);
+		http = client;
+		Bridge b = new Bridge(client, new Redactor(), log, new BridgeEvents(), GATEWAY, 1000);
 		b.apply(bridgeConfig());
 		bridge = b;
 		String status = String.join("; ", b.statusLines());
@@ -116,6 +120,11 @@ public final class MejtaDiscord implements MejtaAddon {
 		bridge = null;
 		if (b != null) {
 			b.close(Duration.ofSeconds(3)); // gives the last alerts (for example kicks during shutdown) a moment to go out
+		}
+		HttpClient client = http;
+		http = null;
+		if (client != null) {
+			client.shutdownNow(); // after the bridge: anything still in flight has had its chance
 		}
 	}
 
@@ -134,7 +143,7 @@ public final class MejtaDiscord implements MejtaAddon {
 				c.get(DiscordSettings.NOTIFY_MIN_SEVERITY), c.get(DiscordSettings.NOTIFY_USERNAME), c.get(DiscordSettings.NOTIFY_AVATAR),
 				c.get(DiscordSettings.CHAT_TO_DISCORD), c.get(DiscordSettings.CHAT_USERNAME), c.get(DiscordSettings.CHAT_AVATAR),
 				c.get(DiscordSettings.CHAT_JOIN_LEAVE), c.get(DiscordSettings.CHAT_TO_MINECRAFT), c.get(DiscordSettings.CHAT_FORMAT),
-				c.get(DiscordSettings.CHAT_MAX_LENGTH), c.get(DiscordSettings.CHAT_RATE),
+				c.get(DiscordSettings.CHAT_MAX_LENGTH), c.get(DiscordSettings.CHAT_RATE), c.get(DiscordSettings.CHAT_GLOBAL_RATE),
 				Sanitizer.words(c.get(DiscordSettings.CHAT_WORD_FILTER)));
 	}
 
@@ -144,10 +153,10 @@ public final class MejtaDiscord implements MejtaAddon {
 		webhooks.put("default", c.get(DiscordSettings.WEBHOOK_DEFAULT));
 		webhooks.put("alerts", c.get(DiscordSettings.WEBHOOK_ALERTS));
 		webhooks.put("staff", c.get(DiscordSettings.WEBHOOK_STAFF));
-		return new Bridge.Config(c.get(DiscordSettings.ENABLED), webhooks,
-				c.get(DiscordSettings.CHAT_TO_DISCORD) ? c.get(DiscordSettings.CHAT_WEBHOOK) : "",
-				c.get(DiscordSettings.CHAT_TO_MINECRAFT), c.get(DiscordSettings.BOT_TOKEN), c.get(DiscordSettings.CHAT_CHANNEL),
-				c.get(DiscordSettings.MAX_ATTEMPTS), c.get(DiscordSettings.QUEUE_SIZE));
+		// The chat webhook is passed even when chat.to_discord is off, so it is still redacted from logs.
+		return new Bridge.Config(c.get(DiscordSettings.ENABLED), webhooks, c.get(DiscordSettings.CHAT_WEBHOOK),
+				c.get(DiscordSettings.CHAT_TO_DISCORD), c.get(DiscordSettings.CHAT_TO_MINECRAFT), c.get(DiscordSettings.BOT_TOKEN),
+				c.get(DiscordSettings.CHAT_CHANNEL), c.get(DiscordSettings.MAX_ATTEMPTS), c.get(DiscordSettings.QUEUE_SIZE));
 	}
 
 	/** Runs on MejtaDiscord's threads. Problems reach admins in game and in the log, never in Discord itself. */
@@ -162,7 +171,8 @@ public final class MejtaDiscord implements MejtaAddon {
 			String key = webhook.equals(Bridge.CHAT) ? "chat.webhook.url" : "webhook." + webhook + ".url";
 			warnAdmins("Discord webhook '" + webhook + "' stopped",
 					"Discord answered " + httpStatus + ": the webhook was deleted or its URL is wrong. Set a new one with "
-							+ "/mejtaadmin config set " + ID + " " + key + " <url>.");
+							+ "/mejtaadmin config set " + ID + " " + key + " <url>, or, if the problem was fixed in Discord, run /mejtaadmin "
+							+ ID + " reconnect.");
 		}
 
 		@Override
@@ -237,18 +247,25 @@ public final class MejtaDiscord implements MejtaAddon {
 		return 1;
 	}
 
+	/** Reconnects the bot and gives stopped (refused) webhooks another try. */
 	private static int reconnect(CommandContext<CommandSourceStack> ctx) {
 		Bridge b = bridge;
 		boolean started = b != null && b.reconnectGateway();
+		List<String> reenabled = b == null ? List.of() : b.reenableWebhooks();
+		boolean done = started || !reenabled.isEmpty();
 		MejtaCoreAPI.audit().record(AuditEntry.builder(ID, "discord.reconnect")
 				.actor(MejtaCoreAPI.actor(ctx.getSource()))
-				.outcome(started ? AuditOutcome.SUCCESS : AuditOutcome.FAILED)
+				.outcome(done ? AuditOutcome.SUCCESS : AuditOutcome.FAILED)
 				.build());
-		if (!started) {
-			ctx.getSource().sendFailure(Component.literal("The Discord to Minecraft relay is off or not set up (bot.token and chat.to_minecraft.channel_id)."));
+		if (!done) {
+			ctx.getSource().sendFailure(Component.literal("Nothing to reconnect: the Discord to Minecraft relay is off or not set up "
+					+ "(bot.token and chat.to_minecraft.channel_id), and no webhook is stopped."));
 			return 0;
 		}
-		ctx.getSource().sendSuccess(() -> Component.literal("Reconnecting to Discord."), true);
+		String message = (started ? "Reconnecting the bot to Discord." : "The bot is off or not set up; not reconnected.")
+				+ (reenabled.isEmpty() ? " No webhook was stopped." : " Webhooks enabled again: " + String.join(", ", reenabled)
+						+ ". If Discord still refuses them, they stop again and you are told.");
+		ctx.getSource().sendSuccess(() -> Component.literal(message), true);
 		return 1;
 	}
 

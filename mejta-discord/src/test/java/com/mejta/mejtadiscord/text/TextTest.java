@@ -51,6 +51,22 @@ class TextTest {
 		assertEquals(10, Sanitizer.forMinecraft("x".repeat(50), 10, List.of()).length());
 	}
 
+	@Test
+	void minecraftTextCollapsesBlankLookingCharacters() {
+		// Braille blank, Hangul fillers, ideographic and no-break spaces, tabs: one space between words, none around them.
+		assertEquals("a b c d", Sanitizer.forMinecraft(" \u2800a \t\u3164\u3000 b\u115F\u1160\uFFA0c\u00A0\u2003\u2028d\r\n ", 100, List.of()));
+		assertEquals("", Sanitizer.forMinecraft("\u3164\u2800 \u115F", 32, List.of()), "a name of fillers is empty");
+		assertEquals("a b", Sanitizer.forMinecraft("a §l b", 100, List.of()), "removing a code does not leave two spaces");
+		assertEquals("a b", Sanitizer.forMinecraft("a \u200B\u0007 b", 100, List.of()), "nor does removing an invisible character");
+	}
+
+	@Test
+	void minecraftTextDropsPrivateUseUnassignedAndLoneSurrogates() {
+		assertEquals("xyz", Sanitizer.forMinecraft("x\uE000y\uDBFF\u0378z\uD800", 100, List.of()));
+		assertEquals("\uD83D\uDE00 ok", Sanitizer.forMinecraft("\uD83D\uDE00 ok", 100, List.of()), "a valid emoji pair stays");
+		assertEquals("ab", Sanitizer.forMinecraft("a\uDB80\uDC00b", 100, List.of()), "supplementary private use");
+	}
+
 	// ---------------------------------------------------------------- Redactor
 
 	@Test
@@ -62,6 +78,26 @@ class TextTest {
 		r.setSecrets(List.of("hunter2-very-secret"));
 		assertEquals("pw <secret>", r.scrub("pw hunter2-very-secret"));
 		assertFalse(r.describe(new RuntimeException("wrap", new java.io.IOException(WEBHOOK))).contains("abcdefghij"));
+	}
+
+	@Test
+	void everyAcceptedTokenShapeIsRedacted() {
+		Redactor r = new Redactor();
+		String shortest = String.join(".", "a".repeat(20), "b".repeat(4), "c".repeat(20));
+		String longest = String.join(".", "a".repeat(100), "b".repeat(20), "c".repeat(200));
+		for (String token : List.of(shortest, longest, TOKEN)) {
+			assertTrue(WebhookUrls.isTokenShapeOrEmpty(token));
+			assertEquals("x <token> y", r.scrub("x " + token + " y"), token);
+		}
+	}
+
+	@Test
+	void replacingSecretsForgetsTheOldOnesAndKeepsTheNew() {
+		Redactor r = new Redactor();
+		r.setSecrets(List.of("old-secret-value"));
+		r.setSecrets(java.util.Arrays.asList("new-secret-value", null, "short", "new-secret-value-longer"));
+		assertEquals("old-secret-value", r.scrub("old-secret-value"));
+		assertEquals("<secret> <secret>", r.scrub("new-secret-value new-secret-value-longer"), "the longer one is replaced whole");
 	}
 
 	// ---------------------------------------------------------------- Routing
@@ -94,6 +130,34 @@ class TextTest {
 		assertTrue(limiter.tryAcquire("other", 3), "per sender");
 		now.addAndGet(60_000);
 		assertTrue(limiter.tryAcquire("u", 3));
+	}
+
+	@Test
+	void globalRateLimitCapsEveryoneTogether() {
+		AtomicLong now = new AtomicLong(1_000_000);
+		UserRateLimiter limiter = new UserRateLimiter(now::get);
+		assertTrue(limiter.tryAcquire("a", 10, 3));
+		assertTrue(limiter.tryAcquire("b", 10, 3));
+		assertFalse(limiter.tryAcquire("b", 1, 3), "per sender");
+		assertTrue(limiter.tryAcquire("c", 10, 3), "a refused message does not use up the global budget");
+		assertFalse(limiter.tryAcquire("d", 10, 3), "global cap reached");
+		now.addAndGet(60_000);
+		assertTrue(limiter.tryAcquire("d", 10, 3));
+	}
+
+	@Test
+	void rateLimiterForgetsIdleSendersAndStaysBounded() {
+		AtomicLong now = new AtomicLong(1_000_000);
+		UserRateLimiter limiter = new UserRateLimiter(now::get, 3);
+		for (int i = 0; i < 10; i++) {
+			assertTrue(limiter.tryAcquire("user" + i, 5, 100));
+			now.addAndGet(10);
+		}
+		assertEquals(3, limiter.trackedSenders(), "the least recently active are dropped past the cap");
+		assertTrue(limiter.tryAcquire("user9", 5, 100));
+		now.addAndGet(60_000);
+		assertTrue(limiter.tryAcquire("new", 5, 100));
+		assertEquals(1, limiter.trackedSenders(), "senders with an empty window are forgotten");
 	}
 
 	// ---------------------------------------------------------------- WebhookUrls

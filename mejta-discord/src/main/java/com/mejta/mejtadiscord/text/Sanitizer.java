@@ -14,6 +14,10 @@ public final class Sanitizer {
 	private static final String ZWSP = "\u200B"; // zero-width space
 	private static final Pattern SECTION_CODES = Pattern.compile("§.?");
 	private static final Pattern CONTROL = Pattern.compile("[\\p{Cc}\\p{Cf}&&[^\\n]]");
+	/** For Minecraft: also private-use, unassigned and lone surrogate code points, which render as boxes or nothing. */
+	private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cc}\\p{Cf}\\p{Co}\\p{Cn}\\p{Cs}]");
+	/** Whitespace and characters that render blank (Braille blank, Hangul fillers), so a name or message cannot look empty or padded. */
+	private static final Pattern BLANK = Pattern.compile("[\\s\\p{Z}\\u2800\\u3164\\u115F\\u1160\\uFFA0\\u3000]+");
 	private static final Pattern DISCORD_MENTION = Pattern.compile("<(@[!&]?|#)\\d{5,25}>");
 	/** Formatting characters, plus brackets so a player cannot post masked links. URLs stay clickable. */
 	private static final Pattern MARKDOWN = Pattern.compile("([\\\\*_~`|>\\[\\]])");
@@ -44,13 +48,15 @@ public final class Sanitizer {
 	}
 
 	/**
-	 * Discord text for Minecraft: one line, no control characters or § codes, bounded, and with the word
+	 * Discord text for Minecraft: one line, no control, invisible or unassigned characters or § codes,
+	 * runs of whitespace and blank-looking characters collapsed to one space, bounded, and with the word
 	 * filter applied (each listed word becomes asterisks, case-insensitively).
 	 */
 	public static String forMinecraft(String text, int maxLength, List<String> filteredWords) {
-		String out = text.replace('\n', ' ').replace('\r', ' ');
-		out = CONTROL.matcher(out).replaceAll("");
+		String out = BLANK.matcher(text).replaceAll(" "); // first: line breaks and tabs are controls, but separate words
+		out = INVISIBLE.matcher(out).replaceAll("");
 		out = SECTION_CODES.matcher(out).replaceAll(""); // the code letter too: "§chello" is "hello", not "chello"
+		out = BLANK.matcher(out).replaceAll(" "); // again: removing characters can join two runs
 		for (String word : filteredWords) {
 			if (!word.isBlank()) {
 				out = Pattern.compile(Pattern.quote(word.strip()), Pattern.CASE_INSENSITIVE).matcher(out)
