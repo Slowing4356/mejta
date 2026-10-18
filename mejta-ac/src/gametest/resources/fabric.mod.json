@@ -1,0 +1,21 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtaac_test",
+	"version": "1.0.0",
+	"name": "MejtaAC Tests",
+	"description": "Client game tests for MejtaAC. Development only.",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"com.mejta.mejtaac.test.MejtaAcClientGameTest",
+			"com.mejta.mejtaac.test.MejtaAcStage4GameTest"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtaac": "*"
+	},
+	"mixins": [
+		"mejtaac_test.mixins.json"
+	]
+}

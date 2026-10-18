@@ -1,0 +1,126 @@
+package com.mejta.mejtaac;
+
+import com.mejta.mejtaac.check.Confidence;
+import com.mejta.mejtacore.api.config.ConfigSpec;
+import com.mejta.mejtacore.api.config.Setting;
+
+/**
+ * MejtaAC configuration, stored by MejtaCore in {@code config/mejta/mejtaac.json}. Keys are stable
+ * IDs: renaming one requires bumping the spec version and adding a migration.
+ *
+ * <p>Every setting applies immediately on change or {@code /mejtaadmin config reload}, except the
+ * {@code records.*} size limits, which apply after a restart.
+ */
+public final class AcSettings {
+	public enum LogLevel {
+		/** Only enforcement actions. */
+		QUIET,
+		/** Flags (rate-limited per player and check) and enforcement. */
+		NORMAL,
+		/** Like NORMAL, plus measurements and latency. */
+		VERBOSE,
+		/** Every flag without rate limiting, plus exemptions. For investigating false positives. */
+		DEBUG
+	}
+
+	public enum EnforcementMode {
+		/** Never act. */
+		OFF,
+		/** Record and alert what would have happened, but do not act. */
+		DRY_RUN,
+		/** Act (kick) when thresholds are reached. */
+		ENFORCE
+	}
+
+	// ---------------------------------------------------------------- general
+	public static final Setting<Boolean> ENABLED = Setting.bool("enabled", true)
+			.describedAs("Master switch. When off, no check runs and existing violation levels are kept");
+	public static final Setting<LogLevel> LOG_LEVEL = Setting.enumeration("log.level", LogLevel.NORMAL)
+			.describedAs("Server log detail: QUIET, NORMAL, VERBOSE (with measurements) or DEBUG (every flag)");
+
+	// ---------------------------------------------------------------- violations
+	public static final Setting<Double> DECAY_PER_MINUTE = Setting.decimal("violations.decay_per_minute", 2.0, 0.0, 600.0)
+			.describedAs("Violation level removed per minute, per check. 0 = levels only reset on disconnect");
+
+	// ---------------------------------------------------------------- alerts
+	public static final Setting<Boolean> ALERTS_ENABLED = Setting.bool("alerts.enabled", true)
+			.describedAs("Publish alerts (in-game staff chat, and external providers if installed and configured)");
+	public static final Setting<Double> ALERTS_MIN_VL = Setting.decimal("alerts.min_vl", 1.0, 0.0, 10_000.0)
+			.describedAs("Only alert once a player's violation level for a check reaches this value");
+	public static final Setting<Integer> ALERTS_COOLDOWN = Setting.integer("alerts.cooldown_seconds", 5, 0, 3600)
+			.describedAs("Minimum seconds between alerts for the same player and check");
+
+	// ---------------------------------------------------------------- enforcement
+	public static final Setting<EnforcementMode> ENFORCEMENT_MODE = Setting.enumeration("enforcement.mode", EnforcementMode.DRY_RUN)
+			.describedAs("OFF, DRY_RUN (log and alert only) or ENFORCE (kick). Starts in DRY_RUN so you can review flags first");
+	public static final Setting<Confidence> ENFORCEMENT_MIN_CONFIDENCE = Setting.enumeration("enforcement.min_confidence", Confidence.HIGH)
+			.describedAs("Flags below this confidence never lead to enforcement, whatever the violation level");
+	public static final Setting<String> KICK_MESSAGE = Setting.string("enforcement.kick_message", "Disconnected by anti-cheat.")
+			.validatedBy(text -> !text.isBlank() && text.length() <= 256)
+			.describedAs("Message shown to kicked players (1-256 characters)");
+
+	// ---------------------------------------------------------------- exemptions
+	public static final Setting<Boolean> BYPASS_PERMISSION = Setting.bool("exemptions.bypass_permission", true)
+			.describedAs("Exempt players who have the mejtaac.bypass permission (OWNERS level by default)");
+
+	// ---------------------------------------------------------------- records
+	public static final Setting<Boolean> RECORDS_ENABLED = Setting.bool("records.enabled", true)
+			.describedAs("Write violation and enforcement records to mejta-data/mejtaac/");
+	public static final Setting<Integer> RECORDS_MAX_FILE_MB = Setting.integer("records.max_file_mb", 5, 1, 256)
+			.describedAs("Rotate a record file at this size in MiB (applies after restart)");
+	public static final Setting<Integer> RECORDS_MAX_FILES = Setting.integer("records.max_files", 5, 1, 100)
+			.describedAs("Record files kept per log, including the current one (applies after restart)");
+	public static final Setting<Integer> RECORDS_RETENTION_DAYS = Setting.integer("records.retention_days", 30, 0, 3650)
+			.describedAs("Delete rotated record files older than this; 0 = keep until max_files (applies after restart)");
+
+	// ---------------------------------------------------------------- check: protocol.invalid_move
+	public static final Setting<Boolean> INVALID_MOVE_ENABLED = Setting.bool("checks.protocol.invalid_move.enabled", true)
+			.describedAs("Flag movement packets with values the vanilla client can never send (NaN, out of bounds, pitch > 90)");
+	public static final Setting<Double> INVALID_MOVE_KICK_VL = Setting.decimal("checks.protocol.invalid_move.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (each invalid packet adds 1)");
+
+	// ---------------------------------------------------------------- check: movement.timer
+	public static final Setting<Boolean> TIMER_ENABLED = Setting.bool("checks.movement.timer.enabled", true)
+			.describedAs("[Experimental] Flag clients that run more game ticks than real time allows (timer/speed-up)");
+	public static final Setting<Double> TIMER_KICK_VL = Setting.decimal("checks.movement.timer.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (each flag adds 1)");
+	public static final Setting<Integer> TIMER_MAX_AHEAD_MS = Setting.integer("checks.movement.timer.max_ahead_ms", 500, 200, 5000)
+			.describedAs("How far ahead of real time (ms, beyond jitter and lag allowances) a client may get before a flag");
+
+	// ---------------------------------------------------------------- check: movement.ground_spoof
+	public static final Setting<Boolean> GROUND_SPOOF_ENABLED = Setting.bool("checks.movement.ground_spoof.enabled", true)
+			.describedAs("[Experimental] Flag clients that claim to stand on the ground with nothing below them (also NoFall)");
+	public static final Setting<Double> GROUND_SPOOF_KICK_VL = Setting.decimal("checks.movement.ground_spoof.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (each flag adds 1)");
+
+	// ---------------------------------------------------------------- check: combat.reach
+	public static final Setting<Boolean> REACH_ENABLED = Setting.bool("checks.combat.reach.enabled", true)
+			.describedAs("[Experimental] Flag attacks beyond the weapon's range, compensating for each player's latency");
+	public static final Setting<Double> REACH_KICK_VL = Setting.decimal("checks.combat.reach.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 but never enforce by default)");
+	public static final Setting<Double> REACH_TOLERANCE = Setting.decimal("checks.combat.reach.tolerance", 0.1, 0.0, 3.0)
+			.describedAs("Extra blocks allowed beyond the weapon's range before any flag");
+
+	// ---------------------------------------------------------------- check: combat.multi_target
+	public static final Setting<Boolean> MULTI_TARGET_ENABLED = Setting.bool("checks.combat.multi_target.enabled", true)
+			.describedAs("Flag attacks on two different entities within one client tick (impossible for the vanilla client)");
+	public static final Setting<Double> MULTI_TARGET_KICK_VL = Setting.decimal("checks.combat.multi_target.kick_vl", 3.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (each flag adds 1)");
+
+	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
+			.add(ENABLED, LOG_LEVEL,
+					DECAY_PER_MINUTE,
+					ALERTS_ENABLED, ALERTS_MIN_VL, ALERTS_COOLDOWN,
+					ENFORCEMENT_MODE, ENFORCEMENT_MIN_CONFIDENCE, KICK_MESSAGE,
+					BYPASS_PERMISSION,
+					RECORDS_ENABLED, RECORDS_MAX_FILE_MB, RECORDS_MAX_FILES, RECORDS_RETENTION_DAYS,
+					INVALID_MOVE_ENABLED, INVALID_MOVE_KICK_VL,
+					TIMER_ENABLED, TIMER_KICK_VL, TIMER_MAX_AHEAD_MS,
+					GROUND_SPOOF_ENABLED, GROUND_SPOOF_KICK_VL,
+					REACH_ENABLED, REACH_KICK_VL, REACH_TOLERANCE,
+					MULTI_TARGET_ENABLED, MULTI_TARGET_KICK_VL)
+			.build();
+
+	private AcSettings() {
+	}
+}

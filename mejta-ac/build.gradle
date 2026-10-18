@@ -1,0 +1,70 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// MejtaCore during local development. Replace with the public Mejta Maven repository once published.
+	mavenLocal {
+		content {
+			includeGroup "com.mejta"
+		}
+	}
+}
+
+loom {
+	mods {
+		"mejtaac" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+fabricApi {
+	// End-to-end tests: a real client joins a singleplayer world and a dedicated server and sends
+	// both legitimate and malformed movement packets. Run with `gradlew runClientGameTest`.
+	configureTests {
+		createSourceSet = true
+		modId = "mejtaac_test"
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Compile against MejtaCore and load it in development runs. Players install it separately;
+	// it is never bundled (no `include`).
+	implementation "com.mejta:mejtacore:${project.mejtacore_version}"
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = "UTF-8"
+}
+
+java {
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}

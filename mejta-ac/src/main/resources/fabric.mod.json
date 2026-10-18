@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtaac",
+	"version": "${version}",
+	"name": "MejtaAC",
+	"description": "Server-side anti-cheat addon for MejtaCore.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.mejtaac.MejtaAC"
+		]
+	},
+	"mixins": [
+		"mejtaac.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.1.0 <2.0.0"
+	}
+}
