@@ -6,6 +6,11 @@ name: Release
 on:
   push:
     tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)publish, for example v2026.10.0
+        required: true
 
 permissions:
   contents: write
@@ -20,6 +25,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -43,4 +50,12 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.jar dist/SHA256SUMS.txt --title "Mejta $GITHUB_REF_NAME" --notes-file RELEASE-NOTES.md --verify-tag
+          TAG: ${{ inputs.tag || github.ref_name }}
+        # A release made by hand on GitHub for the same tag is reused: its notes are replaced and the jars attached.
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "Mejta $TAG" --notes-file RELEASE-NOTES.md
+            gh release upload "$TAG" dist/*.jar dist/SHA256SUMS.txt --clobber
+          else
+            gh release create "$TAG" dist/*.jar dist/SHA256SUMS.txt --title "Mejta $TAG" --notes-file RELEASE-NOTES.md --verify-tag
+          fi
