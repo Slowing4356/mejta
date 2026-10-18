@@ -18,6 +18,7 @@ public final class Diagnostics {
 
 	private static final int MAX_ENTRIES = 200;
 	private static final List<Entry> ENTRIES = new ArrayList<>();
+	private static long total;
 
 	private Diagnostics() {
 	}
@@ -42,6 +43,12 @@ public final class Diagnostics {
 			ENTRIES.remove(0);
 		}
 		ENTRIES.add(entry);
+		total++;
+	}
+
+	/** Problems reported since startup, including those no longer kept in {@link #entries()}. */
+	public static synchronized long total() {
+		return total;
 	}
 
 	public static synchronized List<Entry> entries() {

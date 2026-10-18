@@ -60,4 +60,38 @@ class PipelineTest {
 		assertEquals(Action.KICK, EnforcementPolicy.decide(EnforcementMode.ENFORCE, Confidence.HIGH, flag(Confidence.HIGH), 5, 5));
 		assertEquals(Action.WOULD_KICK, EnforcementPolicy.decide(EnforcementMode.DRY_RUN, Confidence.HIGH, flag(Confidence.HIGH), 5, 5));
 	}
+
+	/** Runs flags through tracker and policy the way the pipeline does (min confidence HIGH, kick at 5). */
+	private static Action feed(ViolationTracker t, Confidence confidence, double vl) {
+		Flag flag = new Flag("x", "y", confidence, vl, Map.of());
+		ViolationTracker.Levels levels = t.add(PLAYER, "x", vl, confidence.atLeast(Confidence.HIGH), 0, 0);
+		return EnforcementPolicy.decide(EnforcementMode.ENFORCE, Confidence.HIGH, flag, levels.enforceable(), 5);
+	}
+
+	@Test
+	void mediumNoiseNeverAddsUpWithOneConfidentFlagToAKick() {
+		ViolationTracker t = new ViolationTracker();
+		for (int i = 0; i < 20; i++) {
+			assertEquals(Action.NONE, feed(t, Confidence.MEDIUM, 0.5));
+		}
+		assertEquals(Action.NONE, feed(t, Confidence.HIGH, 1.0));
+		assertEquals(11.0, t.get(PLAYER, "x", 0, 0)); // reported VL: every flag
+		assertEquals(1.0, t.getEnforceable(PLAYER, "x", 0, 0)); // VL that can kick: confident flags only
+		for (int i = 0; i < 3; i++) {
+			assertEquals(Action.NONE, feed(t, Confidence.HIGH, 1.0));
+		}
+		assertEquals(Action.KICK, feed(t, Confidence.HIGH, 1.0)); // the fifth HIGH flag
+	}
+
+	@Test
+	void enforceableLevelDecaysAndResetsWithTheTotal() {
+		ViolationTracker t = new ViolationTracker();
+		t.add(PLAYER, "x", 2.0, true, 2.0, 0);
+		t.add(PLAYER, "x", 1.0, false, 2.0, 0);
+		assertEquals(3.0, t.get(PLAYER, "x", 2.0, 0));
+		assertEquals(1.0, t.getEnforceable(PLAYER, "x", 2.0, 30_000), 1e-9);
+		assertEquals(0.0, t.getEnforceable(PLAYER, "x", 2.0, 60_000));
+		t.reset(PLAYER, "x");
+		assertEquals(0.0, t.getEnforceable(PLAYER, "x", 2.0, 0));
+	}
 }

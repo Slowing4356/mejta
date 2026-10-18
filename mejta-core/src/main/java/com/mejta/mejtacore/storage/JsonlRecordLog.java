@@ -92,27 +92,71 @@ final class JsonlRecordLog implements RecordLog {
 		}
 	}
 
+	/**
+	 * A record built on the I/O thread just before it is written, in queue order. {@code build} gets the newest
+	 * existing records lazily (see {@link RecordLogs.Reader}) and returns the record, or {@code null} to write nothing;
+	 * {@code written} is told whether the line reached the file. Used by the audit chain, whose links must
+	 * match the order on disk. When the queue is full this waits up to two seconds for room instead of
+	 * dropping; called on the I/O thread itself, it runs at once.
+	 *
+	 * @return {@code false} if the record could not be queued
+	 */
+	boolean appendBuilt(java.util.function.Function<RecordLogs.Reader, JsonObject> build, java.util.function.BiConsumer<JsonObject, Boolean> written) {
+		Runnable task = () -> {
+			JsonObject record;
+			try {
+				record = build.apply(this::readNow);
+			} catch (RuntimeException e) {
+				Diagnostics.error("storage", "Could not build a record for log '" + name + "'", e);
+				return;
+			}
+			if (record != null) {
+				written.accept(record, write(GSON.toJson(record)));
+			}
+		};
+		if (Thread.currentThread().getName().equals(RecordLogs.IO_THREAD_NAME)) {
+			task.run();
+			return true;
+		}
+		long deadline = System.nanoTime() + 2_000_000_000L;
+		while (true) {
+			try {
+				io.execute(task);
+				return true;
+			} catch (RejectedExecutionException e) {
+				if (io.isShutdown() || System.nanoTime() > deadline) {
+					long count = dropped.incrementAndGet();
+					Diagnostics.warn("storage", "I/O queue full, dropped " + count + " record(s) for log '" + name + "'");
+					return false;
+				}
+				java.util.concurrent.locks.LockSupport.parkNanos(5_000_000L);
+			}
+		}
+	}
+
+	private List<JsonObject> readNow(int limit, Predicate<JsonObject> filter) throws IOException {
+		flushWriter();
+		List<JsonObject> out = new ArrayList<>();
+		for (int i = 0; i < options.maxFiles() && out.size() < limit; i++) {
+			Path file = file(i);
+			if (!Files.exists(file)) {
+				continue;
+			}
+			List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+			for (int j = lines.size() - 1; j >= 0 && out.size() < limit; j--) {
+				JsonObject parsed = parse(lines.get(j));
+				if (parsed != null && filter.test(parsed)) {
+					out.add(parsed);
+				}
+			}
+		}
+		return out;
+	}
+
 	@Override
 	public CompletableFuture<List<JsonObject>> readRecent(int limit, Predicate<JsonObject> filter) {
 		Objects.requireNonNull(filter, "filter");
-		return submit(() -> {
-			flushWriter();
-			List<JsonObject> out = new ArrayList<>();
-			for (int i = 0; i < options.maxFiles() && out.size() < limit; i++) {
-				Path file = file(i);
-				if (!Files.exists(file)) {
-					continue;
-				}
-				List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-				for (int j = lines.size() - 1; j >= 0 && out.size() < limit; j--) {
-					JsonObject parsed = parse(lines.get(j));
-					if (parsed != null && filter.test(parsed)) {
-						out.add(parsed);
-					}
-				}
-			}
-			return out;
-		});
+		return submit(() -> readNow(limit, filter));
 	}
 
 	@Override
@@ -150,7 +194,7 @@ final class JsonlRecordLog implements RecordLog {
 
 	// ---------------------------------------------------------------- I/O thread only
 
-	private void write(String line) {
+	private boolean write(String line) {
 		try {
 			byte[] bytes = (line + "\n").getBytes(StandardCharsets.UTF_8);
 			if (writer == null) {
@@ -166,12 +210,14 @@ final class JsonlRecordLog implements RecordLog {
 				writer.flush();
 			}
 			writeErrorReported = false;
+			return true;
 		} catch (IOException e) {
 			closeQuietly();
 			if (!writeErrorReported) {
 				writeErrorReported = true;
 				Diagnostics.error("storage", "Could not write record log '" + name + "' in " + directory, e);
 			}
+			return false;
 		}
 	}
 
@@ -180,7 +226,24 @@ final class JsonlRecordLog implements RecordLog {
 		Path current = file(0);
 		currentSize = Files.exists(current) ? Files.size(current) : 0;
 		writer = Files.newBufferedWriter(current, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+		if (currentSize > 0 && !endsWithNewline(current)) {
+			// A crash left half a line: end it, so the next record starts on its own line.
+			writer.write('\n');
+			currentSize++;
+		}
 		pruneExpired();
+	}
+
+	private static boolean endsWithNewline(Path file) throws IOException {
+		try (java.nio.channels.SeekableByteChannel ch = Files.newByteChannel(file, StandardOpenOption.READ)) {
+			if (ch.size() == 0) {
+				return true;
+			}
+			java.nio.ByteBuffer last = java.nio.ByteBuffer.allocate(1);
+			ch.position(ch.size() - 1);
+			ch.read(last);
+			return last.get(0) == '\n';
+		}
 	}
 
 	private void rotate() throws IOException {

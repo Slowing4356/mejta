@@ -138,4 +138,10 @@ public final class TickSync {
 	public void forget(UUID player) {
 		players.remove(player);
 	}
+
+	/** Forgets everything, e.g. when the server stops (a new one counts ticks from 0 again). */
+	public void clear() {
+		players.clear();
+		currentTick = 0;
+	}
 }

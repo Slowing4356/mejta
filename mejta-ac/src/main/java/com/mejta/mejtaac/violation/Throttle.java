@@ -41,4 +41,8 @@ public final class Throttle {
 	public void forget(UUID player) {
 		states.keySet().removeIf(k -> k.player().equals(player));
 	}
+
+	public void clear() {
+		states.clear();
+	}
 }

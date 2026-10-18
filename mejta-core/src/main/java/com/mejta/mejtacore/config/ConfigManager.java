@@ -10,8 +10,14 @@ import java.util.Optional;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.ConfigSpec;
 
-/** Owns every loaded config file. Each owner (core or addon) gets {@code <configDir>/<id>.json}. */
+/**
+ * Owns every loaded config file. Each owner (core or addon) gets {@code <configDir>/<id>.json}, plus
+ * {@code <configDir>/secrets/<id>.json} if it declares secret settings.
+ */
 public final class ConfigManager {
+	/** Subfolder of the config directory holding secret values ({@code Setting#secret()}). */
+	public static final String SECRETS_DIRECTORY = "secrets";
+
 	private final Path directory;
 	private final Map<String, ConfigFile> files = new LinkedHashMap<>();
 
@@ -28,7 +34,9 @@ public final class ConfigManager {
 		if (files.containsKey(ownerId)) {
 			throw new IllegalStateException("Config '" + ownerId + "' is already open");
 		}
-		ConfigFile file = new ConfigFile(ownerId, spec, directory.resolve(ownerId + ".json"));
+		boolean hasSecrets = spec.settings().stream().anyMatch(s -> s.isSecret());
+		Path secrets = hasSecrets ? directory.resolve(SECRETS_DIRECTORY).resolve(ownerId + ".json") : null;
+		ConfigFile file = new ConfigFile(ownerId, spec, directory.resolve(ownerId + ".json"), secrets);
 		file.load();
 		files.put(ownerId, file);
 		return file;

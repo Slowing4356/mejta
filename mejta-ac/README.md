@@ -4,14 +4,14 @@ MejtaAC (mod ID `mejtaac`) is a server-side anti-cheat addon for **MejtaCore**. 
 
 | | |
 |---|---|
-| Version | 0.5.0 (12 checks: protocol, timer, ground spoof, fly, jump, speed, reach, hitbox, multi-target, block reach, fast break, boat fly) |
+| Version | 1.0.0, the first release (12 checks: protocol, timer, ground spoof, fly, jump, speed, reach, hitbox, multi-target, block reach, fast break, boat fly). See [CHANGELOG.md](CHANGELOG.md). |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5, Fabric API 0.155.3+26.1.2, Java 25 |
-| Requires | **MejtaCore 1.1.0 or newer, below 2.0.0** (API version 2). MejtaCore 1.2.0+ adds in-game editing of MejtaAC's settings |
+| Requires | **MejtaCore 1.3.0 or newer, below 2.0.0** (API version 4) |
 | Third-party libraries | None |
 
 ## Installing
 
-Put `mejtacore-1.2.1.jar`, `mejtaac-0.5.0.jar` and Fabric API in the **server's** `mods/` folder. In single-player, MejtaAC runs on the integrated server, so install everything on the client.
+Put `mejtacore-1.3.0.jar`, `mejtaac-1.0.0.jar` and Fabric API in the **server's** `mods/` folder. In single-player, MejtaAC runs on the integrated server, so install everything on the client.
 
 | | Dedicated server | Player's client |
 |---|---|---|
@@ -29,7 +29,10 @@ Each piece of evidence goes through separate stages, and each stage is configure
 
 1. **Detect.** A check looks at server-side evidence: the raw packet values, before vanilla clamps or wraps them. It returns a *flag* with a reason, a confidence level (`LOW`, `MEDIUM`, `HIGH` or `CERTAIN`) and the measurements it used.
 2. **Assess.** Players with the bypass permission are skipped. Otherwise the flag adds to the player's violation level (VL) for that check. VLs decay over time and are cleared when the player disconnects.
-3. **Decide.** Enforcement happens only if the flag's confidence is at least `enforcement.min_confidence` **and** the VL has reached the check's threshold. One weak or ambiguous signal never leads to a punishment.
+3. **Decide.** Enforcement happens only if the flag's confidence is at least `enforcement.min_confidence` **and** the check's *enforceable* VL has reached its `kick_vl` threshold. One weak or ambiguous signal never leads to a punishment.
+   - Each check keeps two VLs that decay alike. The **reported VL** counts every flag; it is what alerts (`alerts.min_vl`), records, logs and the `vl` command show. The **enforceable VL** counts only flags at `enforcement.min_confidence` or above, and only it is compared with `kick_vl`.
+   - So MEDIUM flags (with the default minimum `HIGH`) never bring a player closer to a kick: twenty MEDIUM flags followed by one HIGH flag are one HIGH flag's worth (1 VL) towards the threshold, not 11.
+   - A flag counts as enforceable by the minimum confidence set when it happens. An enforcement decision resets both VLs of that check.
 4. **Report.** MejtaAC writes to the server log, writes a violation record and publishes a staff alert. Records and log lines are limited to one per second for each player and check, and the next one reports how many similar flags were skipped ("+N similar"). Alerts have a configurable cooldown.
 5. **Act.** In `ENFORCE` mode the player is kicked. In `DRY_RUN` mode MejtaAC records and alerts "would be kicked" instead. Either way an audit record is written.
 
@@ -72,7 +75,8 @@ This check flags a client that runs more game ticks than real time allows: "time
 - **Latency handling:**
   - Up to 1 s of credit absorbs jitter.
   - After a gap of more than 300 ms (a network stall or client freeze), the vanilla client sends the missed ticks in a burst. The gap becomes temporary credit that the burst can spend; it expires after 2 s, so it can't be saved for a later speed-up.
-  - Slow play can't build up credit beyond 1 s.
+  - Arrivals that fall behind gradually (a network delay that keeps growing, then drains) are kept the same way: real time beyond the 1 s cap becomes temporary credit, each part for 2 s after it was earned. Only arrivals less than 10 ms apart, the burst that drains the backlog, may spend it.
+  - Slow play can't pay for a later even-paced speed-up, and no credit lasts longer than 2 s.
   - The check pauses while the server tick rate is changed, frozen or sprinting (`/tick`).
 - **Flags:** HIGH confidence, once a client is more than `max_ahead_ms` (default 500 ms) ahead beyond those allowances. A 2× timer is caught after about 1.5 s of running ahead; a 1.3× timer takes about 5 s. Speed-ups below about 1.05× stay within the tolerances by design. See the results table below.
 
@@ -81,8 +85,11 @@ This check flags a client that runs more game ticks than real time allows: "time
 This check flags a client that claims to stand on the ground while nothing is below it. This also catches most NoFall cheats, which claim ground to avoid fall damage.
 
 - **How:** the on-ground flag of the latest movement packet is compared, once per client tick, with the server's own collision test of a box from the player's feet to 0.5 blocks below, widened by 0.1 blocks.
-- **Latency handling:** a legitimate client keeps claiming ground until it learns that the block below is gone, which takes up to one round trip. A flag therefore needs `6 + ceil(highest RTT of the last 2 s / 50 ms)` consecutive ticks of the claim, or 26 ticks if the RTT is unknown.
-- **Exempt:** riding, flying, elytra, riptide, climbing, water, lava, levitation, sleeping, dimension change, and while a server teleport is unconfirmed.
+- **Latency handling:** a legitimate client keeps claiming ground until it learns that the block below is gone.
+  - With tick sync, claims only start to count once the client has answered a ping sent after the ground was found missing, so it has seen the change. A network stall therefore never adds to the count.
+  - Without tick sync (no answer for 3 s), claims count by real arrival time, at most one tick's worth each, so the burst of ticks a client sends after a stall counts as the few milliseconds it took to arrive.
+  - Either way, a flag then needs `6 + ceil(highest RTT of the last 2 s / 50 ms)` ticks of the claim, or 26 ticks if the RTT is unknown.
+- **Exempt:** riding, flying, elytra, riptide, climbing, water, lava, levitation, sleeping, dimension change, the End credits, and while a server teleport is unconfirmed.
 - **Flags:** HIGH confidence.
 
 ### `movement.speed` (experimental)
@@ -92,9 +99,9 @@ This check flags horizontal movement faster than vanilla physics allows: speed, 
 - **How:** vanilla horizontal movement per tick is `previous × decay + acceleration`.
   - **On the ground:** decay is `block friction × 0.91` and acceleration is `movement speed × 0.216 / friction³`.
   - **In the air:** 0.91 and 0.02 (0.026 when sprinting).
-  - **Sprint-jump:** adds 0.2 once, on take-off.
+  - **Sprint-jump:** adds 0.2 once, on take-off. Under a ceiling just above the head the jump barely leaves the ground, so while sprinting there the boost is always allowed.
 - **Allowances:** the check uses the player's real movement-speed attribute, which includes sprinting, Speed effects and Soul Speed. It always picks the most permissive possibility, for example the slipperiest block under the feet across the last three ticks, matching vanilla's tick order, and sprinting assumed possible. Sneaking, items in use, soul sand, cobwebs and collisions only make players slower.
-- **Not judged (prediction reset):** liquids, vehicles, elytra, riptide, flight, unconfirmed teleports, and server-applied velocity until the client confirms it.
+- **Not judged (prediction reset):** liquids, vehicles, elytra, riptide, flight, unconfirmed teleports, pistons next to the player, and server-applied velocity or abilities (flight, game mode) until the client confirms them.
 - **Latency:** none needed, because only the sequence of client positions is used. A tolerance of 0.06 blocks per tick absorbs entities pushing the player.
 - **Flags:** MEDIUM after the excess builds up; HIGH after 20 consecutive ticks.
 
@@ -108,6 +115,7 @@ This check flags attacks on targets farther away than the held weapon allows.
   - Consecutive positions are merged into one box, because the client draws the target part-way between them.
   - The attacker's eye is tried at standing and crouching height.
   - If the client hasn't confirmed a tick in the last 3 s, one second of positions is used and flags are at most MEDIUM.
+- **Not judged after a teleport or respawn:** the server measures from the new position while the client may still attack from the old one. Attacks aren't judged until the client has confirmed the teleport and answered a ping sent after it (1 s if tick sync is unavailable). The same applies to `combat.hitbox` and `interaction.block_reach`.
 - **Flags:**
   - Up to `tolerance` (default 0.1) blocks over the limit: none.
   - Up to 0.5 blocks over: MEDIUM, which alerts and records but never enforces by default.
@@ -122,8 +130,8 @@ This check flags vertical movement in the air that ignores gravity: hovering, fl
   - the client claims to be on the ground; false claims are `movement.ground_spoof`'s job, and this also covers a floor that disappeared before a lagging client noticed;
   - real ground below, or a collision on the predicted path;
   - water, lava, climbing, cobwebs, berry bushes, honey, scaffolding, bubble columns, powder snow;
-  - slow falling or levitation, elytra, riptide, vehicles, creative flight, unconfirmed teleports.
-- **Server velocity (knockback, explosions, wind charges):** while the server's change is in flight, the check is reset until the client confirms (tick sync) that it has applied it.
+  - slow falling or levitation, elytra, riptide, vehicles, creative flight, unconfirmed teleports, pistons next to the player.
+- **Server velocity (knockback, explosions, wind charges) and abilities (flight, game mode):** while the server's change is in flight, the check is reset until the client confirms (tick sync) that it has applied it. A change sent between two server ticks only counts as applied once the next tick's ping is answered.
 - **Jumps and bounces:** the first airborne tick after a reset only establishes the starting velocity, so jumps and slime bounces never flag. A too-high take-off is `movement.jump`'s job.
 - **Leaving a vehicle:** the first 10 ticks after dismounting aren't predicted, because vanilla places the player next to the vehicle.
 - **Unloaded chunks:** a client whose chunk below isn't loaded falls at a constant 0.098 per tick by design; that exact pattern isn't counted.
@@ -179,7 +187,8 @@ This check flags attacks on entities the player wasn't looking at, such as kill 
 
 This check flags starting to break, or using or placing against, a block beyond the player's block interaction range: 4.5 in survival, 5 in creative, or whatever the attribute says. Vanilla allows one extra block.
 
-- **How:** blocks don't move, so no compensation is needed. The action is sent before that tick's movement, so the server's current position matches the client's. Standing and crouching eye heights are both tried.
+- **How:** blocks don't move, so no compensation is needed. The action is sent before that tick's movement, so the server's current position matches the client's. Standing and crouching eye heights are both tried. Only the distance is computed; the block itself is never looked up.
+- **Not judged** after a teleport or respawn until the client has confirmed it (see `combat.reach`).
 - **Flags:** more than `tolerance` (0.1) over the range is MEDIUM; more than 0.5 over is HIGH.
 
 ### `interaction.fast_break` (experimental)
@@ -192,7 +201,7 @@ This check flags blocks broken faster than the player's tool, enchantments and e
 - **Flags:**
   - Finishing earlier than that is MEDIUM.
   - Finishing in under 70 % of the time is HIGH; vanilla refuses those breaks anyway, so only a cheat sends them.
-- **Not checked:** creative mode and blocks that break instantly.
+- **Not checked:** creative mode, blocks that break instantly, and blocks beyond the interaction range plus vanilla's one-block margin (vanilla refuses those itself; `interaction.block_reach` judges the distance). Far blocks are never looked up, so a client can't make the server load or generate distant chunks.
 
 ### `combat.multi_target` (stable)
 
@@ -221,7 +230,7 @@ Changes apply immediately, including to checks that are already running. The exc
 | `alerts.cooldown_seconds` | integer | `5` | 0–3600 | Minimum time between alerts for the same player and check. |
 | `alerts.enforcement` | boolean | `true` | | Publish every kick and would-be kick on `mejtaac.enforcement` (staff chat, notification file log, Discord if installed), even when `alerts.enabled` is off. |
 | `enforcement.mode` | enum | `DRY_RUN` | `OFF`, `DRY_RUN`, `ENFORCE` | What happens when a threshold is reached. |
-| `enforcement.min_confidence` | enum | `HIGH` | `LOW`…`CERTAIN` | Flags below this confidence never lead to enforcement. |
+| `enforcement.min_confidence` | enum | `HIGH` | `LOW`…`CERTAIN` | Flags below this confidence never lead to enforcement and don't count towards any `kick_vl`. |
 | `enforcement.kick_message` | string | `Disconnected by anti-cheat.` | 1–256 chars | Shown to kicked players. |
 | `exemptions.bypass_permission` | boolean | `true` | | Players with `mejtaac.bypass` are skipped. |
 | `records.enabled` | boolean | `true` | | Write violation and enforcement records. |
@@ -236,25 +245,25 @@ Changes apply immediately, including to checks that are already running. The exc
 | `checks.movement.ground_spoof.enabled` | boolean | `true` | | Turns `movement.ground_spoof` on or off (experimental). |
 | `checks.movement.ground_spoof.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks. |
 | `checks.combat.reach.enabled` | boolean | `true` | | Turns `combat.reach` on or off (experimental). |
-| `checks.combat.reach.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags add 0.5). |
+| `checks.combat.reach.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 | `checks.combat.reach.tolerance` | decimal | `0.1` | 0–3 | Extra blocks allowed beyond the weapon's range before any flag. |
 | `checks.combat.multi_target.enabled` | boolean | `true` | | Turns `combat.multi_target` on or off. |
 | `checks.combat.multi_target.kick_vl` | decimal | `3.0` | 1–10000 | VL at which enforcement kicks. |
 | `checks.movement.fly.enabled` | boolean | `true` | | Turns `movement.fly` on or off (experimental). |
-| `checks.movement.fly.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.movement.fly.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 | `checks.combat.hitbox.enabled` | boolean | `true` | | Turns `combat.hitbox` on or off (experimental). |
-| `checks.combat.hitbox.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.combat.hitbox.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 | `checks.interaction.block_reach.enabled` | boolean | `true` | | Turns `interaction.block_reach` on or off (experimental). |
-| `checks.interaction.block_reach.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.interaction.block_reach.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 | `checks.interaction.block_reach.tolerance` | decimal | `0.1` | 0–3 | Extra blocks allowed beyond the block interaction range before any flag. |
 | `checks.movement.speed.enabled` | boolean | `true` | | Turns `movement.speed` on or off (experimental). |
-| `checks.movement.speed.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.movement.speed.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 | `checks.interaction.fast_break.enabled` | boolean | `true` | | Turns `interaction.fast_break` on or off (experimental). |
-| `checks.interaction.fast_break.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.interaction.fast_break.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 | `checks.movement.jump.enabled` | boolean | `true` | | Turns `movement.jump` on or off (experimental). |
-| `checks.movement.jump.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.movement.jump.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 | `checks.vehicle.boat_fly.enabled` | boolean | `true` | | Turns `vehicle.boat_fly` on or off (experimental). |
-| `checks.vehicle.boat_fly.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.vehicle.boat_fly.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 
 Experimental checks say so in their setting description. They are new and have only been tested with the automated suite, not on a busy real server. Run them in `DRY_RUN` and review their flags before enforcing.
 
@@ -277,7 +286,7 @@ All commands are under `/mejtaadmin mejtaac` and run on the server.
 | Command | Permission | What it does |
 |---|---|---|
 | `status` | `mejtaac.alerts` | Mode, alert settings, log level, checks, number of players with violations |
-| `alerts` | `mejtaac.alerts` | Hides or shows anti-cheat alerts in your own chat until restart |
+| `alerts` | `mejtaac.alerts` | Hides or shows anti-cheat alerts in your own chat. MejtaCore 1.3.0 keeps the choice across restarts. |
 | `vl <player>` | `mejtaac.alerts` | The player's current violation levels |
 | `history <name> [1-50]` | `mejtaac.alerts` | Recent violation records, newest first. Also works for offline players. Read on a background thread. |
 | `reset <player>` | `mejtaac.admin` | Clears the player's violation levels |
@@ -293,7 +302,7 @@ MejtaAC keeps these outputs separate:
 | Violation records | `mejta-data/mejtaac/violations.jsonl` | Investigating players over time (`history`) |
 | Enforcement audit | `mejta-data/mejtaac/enforcement.jsonl` and channel `mejtaac.enforcement` | Every kick and dry-run "would kick". The notification carries the player's name and UUID, check, reason, VL, measurements, mode and kick message: everything needed to decide on a ban. It is published even when `alerts.enabled` is off (`alerts.enforcement`, on by default). |
 | Notification archive | `mejta-data/mejtacore/notifications.jsonl`, written by MejtaCore 1.2.1+ for every notification of every addon | A local copy of everything Discord would get, also when no Discord addon is installed |
-| External notifications | Providers registered with MejtaCore, e.g. MejtaDiscord (planned), which routes each channel to its own Discord channel | Discord |
+| External notifications | Providers registered with MejtaCore, e.g. MejtaDiscord, which routes each channel to a Discord webhook | Discord |
 
 Example violation record (one JSON object per line):
 
@@ -303,22 +312,24 @@ Example violation record (one JSON object per line):
 
 Records and alerts contain the player's name and UUID, the check, the reason, the VL, measurements, ping and world. They **never contain IP addresses** or other personal data. Memory use is limited by the number of online players times the number of checks. Disk use is limited by the `records.*` settings.
 
-## Discord and other integrations (future)
+## Discord, performance and other integrations
 
-MejtaAC doesn't depend on MejtaDiscord and has no Discord code. It publishes to MejtaCore's notification service:
+MejtaAC has no Discord code and doesn't depend on any other addon. It publishes to MejtaCore's notification service and reports its own cost through MejtaCore's metrics:
 
 ```
 MejtaAC ──publish──▶ MejtaCore NotificationService ──▶ in-game provider (built in)
-                                                    └─▶ MejtaDiscord provider (optional, separate mod)
+   │                                                └─▶ MejtaDiscord (optional, ../mejta-discord)
+   └──timers──▶ MejtaCore metrics ──▶ MejtaPerf (optional, ../mejta-perf)
 ```
 
-A MejtaDiscord mod would register a `NotificationProvider`. It would route the channels `mejtaac.alert` and `mejtaac.enforcement` to Discord channels that the server owner configures, sending from MejtaCore's background thread. Nothing is sent anywhere outside the server until such a provider is installed **and** configured. Without it, MejtaAC works the same. The fields a provider receives are listed above.
+- **MejtaDiscord** forwards the channels `mejtaac.alert` and `mejtaac.enforcement` to Discord webhooks (by default both go to its `default` webhook; see its README for routing). Nothing leaves the server unless it is installed **and** configured. The fields it receives are listed above.
+- **MejtaPerf:** `/mperf metrics mejtaac` shows what each MejtaAC hook costs (timers `mejtaac:hook.*`: move, server tick, pong, client tick and its arrival, attack, block interaction, player action), as ms per tick, calls per second, average and peak.
 
 ## Building and testing
 
 ```bash
-cd ../mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.2.0 into ~/.m2
-cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-0.5.0.jar (also runs the unit tests)
+cd ../mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.3.0 into ~/.m2
+cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-1.0.0.jar (also runs the unit tests)
 ./gradlew test                                 # unit tests only (JUnit 6), a few seconds
 ./gradlew runClientGameTest                    # end-to-end tests with a real client, about 30 minutes
 ```
@@ -364,6 +375,8 @@ The suite `MejtaAcStage4GameTest` runs a real client on an in-process dedicated 
    - a dirt block (15 ticks by hand) "finished" after 3 ticks (HIGH), 11 ticks (MEDIUM) and 16 ticks (no flag).
 
 The moving-target scenario is the key compensation test. The suite also records how far away the target was on the server at the moment each legitimate hit arrived. That is what a check without compensation would measure, and for profiles of 300 ms and above it must exceed 3.6 blocks.
+
+The two results tables below were measured before the 1.0.0 fixes (see [CHANGELOG.md](CHANGELOG.md)). Those fixes only make the checks more cautious; ground spoof now also waits for the client to answer a ping after the ground goes, so its detection times grow by about one round trip.
 
 **Results** (2026-10-18, MejtaAC 0.4.0 on MejtaCore 1.2.0; 269 checks passed, 0 failed; Stage 3 suite 68/68). Times are from the first cheat packet to the flag:
 
@@ -429,4 +442,4 @@ What the results show:
   - Other vehicles: horse, llama and camel jump and speed, striders, and boat speed. `vehicle.boat_fly` covers vertical boat movement only.
   - Elytra flight without fireworks.
 - **Field testing:** run the experimental checks in `DRY_RUN` on a real server (see `../server`) and review their records.
-- **MejtaCore candidates** (useful to every addon): `/mejtaadmin config get/set` for dedicated servers, persistent notification mutes, and an "experimental" flag on settings.
+- **Use more of MejtaCore 1.3.0:** `/mejtaadmin config get/set` and notification mutes that survive restarts (the `alerts` command) now come from MejtaCore. MejtaAC could also mark its experimental checks with MejtaCore's "experimental" setting flag instead of the `[Experimental]` text in their descriptions.

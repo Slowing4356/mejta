@@ -16,6 +16,8 @@ import com.mejta.mejtacore.api.client.MenuEntry;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.config.SettingType;
+import com.mejta.mejtacore.config.ConfigEditing;
+import com.mejta.mejtacore.config.SettingText;
 
 /** Builds editable menu pages for a {@link ConfigHandle}. */
 public final class ConfigMenus {
@@ -43,8 +45,10 @@ public final class ConfigMenus {
 						Component.literal("Shift-click to confirm").withStyle(ChatFormatting.DARK_GRAY))
 				.onClick(ctx -> {
 					if (ctx.shiftDown()) {
-						handle.resetAll();
-						ctx.player().sendOverlayMessage(Component.literal("Settings reset to defaults").withStyle(ChatFormatting.GREEN));
+						// Secrets are kept, as with a server's Reset All: they can only be changed with /mejtaadmin config.
+						ConfigEditing.Result result = ConfigEditing.apply(handle, ConfigEditing.Op.RESET_ALL, null, null, false);
+						ctx.player().sendOverlayMessage(Component.literal(result.message().contains("kept")
+								? "Settings reset to defaults (secret settings kept)" : "Settings reset to defaults").withStyle(ChatFormatting.GREEN));
 						ctx.refresh();
 					} else {
 						ctx.player().sendOverlayMessage(Component.literal("Hold Shift and click to reset everything").withStyle(ChatFormatting.YELLOW));
@@ -63,7 +67,9 @@ public final class ConfigMenus {
 		return MenuEntry.builder("setting_" + setting.key())
 				.icon(() -> new ItemStack(iconFor(handle, setting)))
 				.title(() -> Component.literal(setting.displayName() + ": ").withStyle(ChatFormatting.WHITE)
-						.append(valueText(setting, handle.get(setting))))
+						.append(SettingText.isSensitive(setting)
+								? Component.literal(SettingText.display(setting, handle.get(setting))).withStyle(ChatFormatting.AQUA)
+								: valueText(setting, handle.get(setting))))
 				.dynamicDescription(() -> describe(handle, setting))
 				.onClick(ctx -> onClick(ctx, handle, setting))
 				.build();
@@ -102,11 +108,18 @@ public final class ConfigMenus {
 
 	private static List<Component> describe(ConfigHandle handle, Setting<?> setting) {
 		List<Component> lines = new ArrayList<>();
+		if (setting.isExperimental()) {
+			lines.add(Component.literal("Experimental").withStyle(ChatFormatting.LIGHT_PURPLE));
+		}
 		if (!setting.description().isEmpty()) {
 			lines.add(Component.literal(setting.description()).withStyle(ChatFormatting.GRAY));
 		}
-		lines.add(Component.literal("Default: ").withStyle(ChatFormatting.DARK_GRAY)
-				.append(valueText(setting, setting.defaultValue())));
+		if (SettingText.isSensitive(setting)) {
+			lines.add(Component.literal("Secret: the value is never shown").withStyle(ChatFormatting.DARK_GRAY));
+		} else {
+			lines.add(Component.literal("Default: ").withStyle(ChatFormatting.DARK_GRAY)
+					.append(valueText(setting, setting.defaultValue())));
+		}
 		if ((setting.type() == SettingType.INTEGER
 				|| setting.type() == SettingType.DECIMAL) && hasRealRange(setting)) {
 			lines.add(Component.literal("Range: " + format(setting.min()) + " to " + format(setting.max())).withStyle(ChatFormatting.DARK_GRAY));
@@ -219,10 +232,13 @@ public final class ConfigMenus {
 	}
 
 	private static <T> void editAsText(MenuContext ctx, ConfigHandle handle, Setting<T> setting, Parser<T> parser) {
-		Component hint = Component.literal("Default: " + format(setting.defaultValue())
-				+ (hasRealRange(setting) ? "  (" + format(setting.min()) + " to " + format(setting.max()) + ")" : ""));
+		boolean sensitive = SettingText.isSensitive(setting);
+		Component hint = sensitive
+				? Component.literal("Secret: type a new value; the current one is not shown")
+				: Component.literal("Default: " + format(setting.defaultValue())
+						+ (hasRealRange(setting) ? "  (" + format(setting.min()) + " to " + format(setting.max()) + ")" : ""));
 		ctx.openScreen(new TextInputScreen(ctx.screen(), Component.literal("Edit " + setting.displayName()),
-				format(handle.get(setting)), hint,
+				sensitive ? "" : format(handle.get(setting)), hint,
 				text -> setting.isValid(parser.parse(text)),
 				text -> handle.trySet(setting, parser.parse(text))));
 	}

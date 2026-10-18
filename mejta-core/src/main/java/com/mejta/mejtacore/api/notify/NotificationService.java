@@ -12,7 +12,8 @@ import java.util.UUID;
 public interface NotificationService {
 	/**
 	 * Queues a notification for delivery and returns immediately. Never blocks and never throws for
-	 * delivery problems; if the queue is full the notification is dropped and the drop is counted.
+	 * delivery problems. Each provider has its own queue (since API 4), so a slow provider never delays
+	 * the others; if a provider's queue is full the notification is dropped for it and counted.
 	 */
 	void publish(Notification notification);
 
@@ -26,7 +27,10 @@ public interface NotificationService {
 	/** IDs of registered providers, including the built-in {@code ingame} provider. */
 	List<String> providerIds();
 
-	/** Mutes or unmutes a channel for one player in the in-game provider. Not persisted across restarts. */
+	/**
+	 * Mutes or unmutes a channel for one player in the in-game provider. Saved across restarts since
+	 * MejtaCore 1.3.0 (API 4); before that, mutes reset on restart.
+	 */
 	void setMuted(UUID player, String channel, boolean muted);
 
 	boolean isMuted(UUID player, String channel);

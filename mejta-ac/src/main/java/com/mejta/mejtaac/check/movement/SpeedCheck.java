@@ -32,6 +32,8 @@ public final class SpeedCheck {
 	static final double FLAG_BUFFER = 0.5;
 	static final int HIGH_TICKS = 20;
 	static final int FLAG_INTERVAL_TICKS = 10;
+	/** How far above the head a ceiling may cut a jump short enough that the player stays on the ground. */
+	public static final double CEILING_REACH = 0.2;
 
 	public static final class State {
 		boolean hasPrev;
@@ -48,6 +50,15 @@ public final class SpeedCheck {
 	}
 
 	private SpeedCheck() {
+	}
+
+	/**
+	 * Whether this tick may contain a sprint-jump's boost: a take-off (ground before, air now), or a
+	 * sprinting player who jumped into a ceiling just above the head (vanilla still adds the boost,
+	 * but the jump is cut short so the player still touches the ground).
+	 */
+	public static boolean sprintJumpPossible(boolean groundBefore, boolean groundNow, boolean sprinting, boolean ceilingAbove) {
+		return groundBefore && (!groundNow || sprinting && ceilingAbove);
 	}
 
 	/** Highest horizontal movement vanilla allows this tick. */

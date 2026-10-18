@@ -18,6 +18,7 @@ import com.mejta.mejtacore.notify.FileLogProvider;
 import com.mejta.mejtacore.notify.InGameProvider;
 import com.mejta.mejtacore.notify.NotificationBus;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
+import com.mejta.mejtacore.presence.Presence;
 import com.mejta.mejtacore.storage.RecordLogs;
 
 /**
@@ -48,6 +49,8 @@ public final class MejtaCore implements ModInitializer {
 		MejtaLog.CORE.info("MejtaCore {} starting (config: {})", version, configs.directory());
 
 		ServerHolder.register();
+		TickScheduler.register();
+		Presence.register();
 		NotificationBus.get().registerProvider(new InGameProvider());
 		NotificationBus.get().registerProvider(new FileLogProvider());
 		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) ->

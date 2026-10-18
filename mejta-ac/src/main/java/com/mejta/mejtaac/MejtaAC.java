@@ -1,5 +1,6 @@
 package com.mejta.mejtaac;
 
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -43,6 +44,8 @@ public final class MejtaAC implements MejtaAddon {
 					ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> antiCheat.onJoin(handler.player, server));
 					ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> antiCheat.onDisconnect(handler.player.getUUID()));
 					ServerTickEvents.END_SERVER_TICK.register(antiCheat::onServerTickEnd);
+					// Single-player can start another integrated server in the same JVM, with ticks from 0 again.
+					ServerLifecycleEvents.SERVER_STOPPED.register(server -> antiCheat.onServerStopped());
 
 					ctx.logger().info("MejtaAC initialized (enforcement {}, records in {})",
 							config.get(AcSettings.ENFORCEMENT_MODE), MejtaCoreAPI.dataDirectory(ID));

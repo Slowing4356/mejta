@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
@@ -194,15 +195,16 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		GroundSpoofCheck.State ground = new GroundSpoofCheck.State();
 		boolean early = false;
 		for (int i = 0; i < 15; i++) {
-			early |= GroundSpoofCheck.onClientTick(ground, true, false, false, 500, 100).isPresent();
+			early |= GroundSpoofCheck.onClientTick(ground, true, false, false, 500, 100, 0, OptionalInt.of(1), i * 50 * ms).isPresent();
 		}
 		check("ground: no flag before the RTT allowance", !early);
-		check("ground: flag once the claim outlasts it", GroundSpoofCheck.onClientTick(ground, true, false, false, 500, 100).isPresent());
+		check("ground: flag once the claim outlasts it",
+				GroundSpoofCheck.onClientTick(ground, true, false, false, 500, 100, 0, OptionalInt.of(1), 15 * 50 * ms).isPresent());
 		GroundSpoofCheck.State reset = new GroundSpoofCheck.State();
 		boolean any = false;
 		for (int i = 0; i < 100; i++) {
-			any |= GroundSpoofCheck.onClientTick(reset, true, i % 10 == 0, false, 0, 100).isPresent()
-					| GroundSpoofCheck.onClientTick(reset, true, false, true, 0, 100).isPresent();
+			any |= GroundSpoofCheck.onClientTick(reset, true, i % 10 == 0, false, 0, 100, i, OptionalInt.of(i + 1), i * 50 * ms).isPresent()
+					| GroundSpoofCheck.onClientTick(reset, true, false, true, 0, 100, i, OptionalInt.of(i + 1), i * 50 * ms).isPresent();
 		}
 		check("ground: real ground or an exemption resets the streak", !any);
 

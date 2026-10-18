@@ -1,10 +1,39 @@
 package com.mejta.mejtacore.config;
 
+import java.util.regex.Pattern;
+
 import com.mejta.mejtacore.api.config.Setting;
+import com.mejta.mejtacore.api.config.SettingType;
 
 /** Converts setting values to and from text, for the network and for commands. */
 public final class SettingText {
+	/**
+	 * Backstop for text settings that hold a secret but were not declared with {@code Setting#secret()}:
+	 * their values are hidden the same way, everywhere a value would be shown. Only text can hold a secret, so
+	 * on/off, number and choice settings (such as the permission level of {@code mejtacore.config.secrets}) are
+	 * never hidden by their name.
+	 */
+	private static final Pattern SECRET_KEY = Pattern.compile("(?i).*(token|secret|password|webhook).*");
+
 	private SettingText() {
+	}
+
+	/** Whether the setting's value must never be shown, logged, published or sent to a client. */
+	public static boolean isSensitive(Setting<?> setting) {
+		return setting.isSecret() || setting.type() == SettingType.STRING && SECRET_KEY.matcher(setting.key()).matches();
+	}
+
+	/** Whether a key looks like it holds a secret (used where only the key is known). */
+	public static boolean isSensitiveKey(String key) {
+		return key != null && SECRET_KEY.matcher(key).matches();
+	}
+
+	/** Text safe to show anywhere: the value, or {@code (set)}/{@code (not set)} for sensitive settings. */
+	public static String display(Setting<?> setting, Object value) {
+		if (isSensitive(setting)) {
+			return value == null || String.valueOf(value).isEmpty() ? "(not set)" : "(set)";
+		}
+		return format(setting, value);
 	}
 
 	public static String format(Setting<?> setting, Object value) {

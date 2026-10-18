@@ -18,6 +18,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionSet;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
+import com.mejta.mejtacore.api.audit.AuditActor;
+import com.mejta.mejtacore.api.audit.AuditEntry;
+import com.mejta.mejtacore.api.audit.AuditOutcome;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.config.SettingType;
@@ -49,6 +52,10 @@ public final class ServerConfigSync {
 	private static final int MAX_EDITS_PER_SECOND = 20;
 
 	private static final Map<UUID, long[]> editWindows = new ConcurrentHashMap<>();
+	/** Refused edits from players without any edit permission are audited at most once a minute each. */
+	private static final long DENIED_AUDIT_INTERVAL_MS = 60_000;
+	private static final Map<UUID, Long> lastDeniedAudit = new ConcurrentHashMap<>();
+	private static final java.util.regex.Pattern CONFIG_ID = java.util.regex.Pattern.compile("[a-z0-9_.-]{1,64}");
 	private static volatile boolean dirty;
 
 	private ServerConfigSync() {
@@ -66,7 +73,10 @@ public final class ServerConfigSync {
 		ServerPlayNetworking.registerGlobalReceiver(EditConfig.TYPE,
 				(payload, ctx) -> ctx.server().execute(() -> handleEdit(ctx.player(), payload)));
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> server.execute(() -> sendTo(handler.player)));
-		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> editWindows.remove(handler.player.getUUID()));
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			editWindows.remove(handler.player.getUUID());
+			lastDeniedAudit.remove(handler.player.getUUID());
+		});
 		ServerTickEvents.END_SERVER_TICK.register(ServerConfigSync::onTick);
 	}
 
@@ -121,9 +131,19 @@ public final class ServerConfigSync {
 	private static RemoteConfig describe(ConfigHandle handle) {
 		List<RemoteSetting> settings = new ArrayList<>();
 		for (Setting<?> setting : handle.spec().settings()) {
+			if (SettingText.isSensitive(setting)) {
+				continue; // secrets never leave the server, not even masked
+			}
+			String defaultText = SettingText.format(setting, setting.defaultValue());
+			String valueText = SettingText.format(setting, handle.get(setting));
+			if (defaultText.length() > ConfigPayloads.MAX_TEXT || valueText.length() > ConfigPayloads.MAX_TEXT) {
+				continue; // too long for the menu's payload; still editable with /mejtaadmin config set
+			}
+			String description = setting.description().length() > ConfigPayloads.MAX_TEXT
+					? setting.description().substring(0, ConfigPayloads.MAX_TEXT - 3) + "..." : setting.description();
 			boolean ranged = hasRealRange(setting);
-			settings.add(new RemoteSetting(setting.key(), setting.type().name(), setting.displayName(), setting.description(),
-					SettingText.format(setting, setting.defaultValue()), SettingText.format(setting, handle.get(setting)),
+			settings.add(new RemoteSetting(setting.key(), setting.type().name(), setting.displayName(), description,
+					defaultText, valueText,
 					ranged ? String.valueOf(setting.min()) : "", ranged ? String.valueOf(setting.max()) : "", setting.options()));
 		}
 		return new RemoteConfig(handle.id(), ConfigNames.displayName(handle), settings);
@@ -141,47 +161,101 @@ public final class ServerConfigSync {
 
 	private static void handleEdit(ServerPlayer player, EditConfig edit) {
 		ConfigEditing.Result result;
-		if (!withinRate(player.getUUID())) {
+		if (!PermissionRegistry.check(player.permissions(), PermissionRegistry.CONFIG_EDIT)) {
+			// A vanilla menu never sends this: only a modified client does. Answer it, but do not let it flood the
+			// audit log, the server log or notification providers.
+			long now = System.currentTimeMillis();
+			Long last = lastDeniedAudit.get(player.getUUID());
+			if (last == null || now - last >= DENIED_AUDIT_INTERVAL_MS) {
+				lastDeniedAudit.put(player.getUUID(), now);
+				audit(MejtaCoreAPI.actor(player), edit.configId(), edit.op(), edit.key(), AuditOutcome.DENIED);
+			}
+			result = new ConfigEditing.Result(false, "You may not edit server settings");
+		} else if (!withinRate(player.getUUID())) {
 			result = new ConfigEditing.Result(false, "Too many changes at once; slow down");
 		} else {
-			result = apply(player.permissions(), player.getGameProfile().name(), edit.configId(), edit.op(), edit.key(), edit.value());
+			result = apply(player.permissions(), MejtaCoreAPI.actor(player), edit.configId(), edit.op(), edit.key(), edit.value(),
+					false);
 		}
 		if (ServerPlayNetworking.canSend(player, EditResult.TYPE)) {
-			ServerPlayNetworking.send(player, new EditResult(result.ok(), result.message()));
+			String message = result.message().length() > 1000 ? result.message().substring(0, 997) + "..." : result.message();
+			ServerPlayNetworking.send(player, new EditResult(result.ok(), message));
 		}
 		sendTo(player); // the authoritative state, also after a rejected edit
 	}
 
-	/** Permission check, edit, save and audit log. Used by the network handler and by commands. */
-	public static ConfigEditing.Result apply(PermissionSet permissions, String who, String configId, String opName, String key,
-			String value) {
+	/**
+	 * Permission check, edit, save and audit log. Used by the network handler and by commands.
+	 *
+	 * @param byCommand {@code true} for {@code /mejtaadmin config}: sensitive settings may then be changed
+	 *                  with {@code mejtacore.config.secrets}. Client menus never can.
+	 */
+	public static ConfigEditing.Result apply(PermissionSet permissions, AuditActor actor, String configId, String opName, String key,
+			String value, boolean byCommand) {
+		String who = actor.name();
 		Optional<ConfigHandle> handle = editable(permissions, configId);
 		if (handle.isEmpty()) {
-			return new ConfigEditing.Result(false, "You may not edit config '" + configId + "'");
+			audit(actor, configId, opName, key, AuditOutcome.DENIED);
+			return new ConfigEditing.Result(false, "You may not edit config '" + clean(configId, CONFIG_ID) + "'");
 		}
 		ConfigEditing.Op op;
 		try {
 			op = ConfigEditing.Op.valueOf(opName);
 		} catch (IllegalArgumentException e) {
-			return new ConfigEditing.Result(false, "Unknown operation " + opName);
+			return new ConfigEditing.Result(false, "Unknown operation " + clean(opName, OPERATION));
 		}
-		ConfigEditing.Result result = ConfigEditing.apply(handle.get(), op, key, value);
+		boolean mayChangeSecrets = byCommand && PermissionRegistry.check(permissions, PermissionRegistry.CONFIG_SECRETS);
+		Optional<Setting<?>> target = key == null ? Optional.empty() : handle.get().spec().setting(key);
+		if (op != ConfigEditing.Op.RESET_ALL && byCommand && !mayChangeSecrets
+				&& target.map(SettingText::isSensitive).orElse(false)) {
+			audit(actor, configId, opName, key, AuditOutcome.DENIED);
+			return new ConfigEditing.Result(false, key + " is a secret setting; changing it needs "
+					+ PermissionRegistry.CONFIG_SECRETS.node());
+		}
+		ConfigEditing.Result result = ConfigEditing.apply(handle.get(), op, key, value, mayChangeSecrets);
 		if (result.ok()) {
-			String change = key != null && SECRET_KEY.matcher(key).matches()
-					? configId + ": " + key + " changed (value hidden)" : result.message();
-			MejtaLog.CORE.info("[config] {} changed {}", who, change);
-			publishChange(who, configId, opName, key, change);
+			// The message never contains a sensitive value (see ConfigEditing).
+			MejtaLog.CORE.info("[config] {} changed {}", who, result.message());
+			publishChange(who, configId, opName, key, result.message());
+			audit(actor, configId, opName, key, AuditOutcome.SUCCESS);
 		}
 		return result;
 	}
 
-	/** Keys whose values must never leave the server log in a notification (tokens, webhook URLs...). */
-	private static final java.util.regex.Pattern SECRET_KEY =
-			java.util.regex.Pattern.compile("(?i).*(token|secret|password|webhook).*");
+	/**
+	 * Audit entries name the key, never a value. The ID, operation and key may come from a client, so anything that is
+	 * not a well-formed name is recorded as {@code (invalid)}: no newlines or long text reach the logs.
+	 */
+	private static void audit(AuditActor actor, String configId, String op, String key, AuditOutcome outcome) {
+		MejtaCoreAPI.audit().record(AuditEntry.builder(MejtaCore.MOD_ID, "config.edit")
+				.actor(actor)
+				.target("config " + clean(configId, CONFIG_ID))
+				.outcome(outcome)
+				.detail("operation", clean(op, OPERATION))
+				.detail("key", key == null ? "" : clean(key, Setting.KEY_PATTERN))
+				.build());
+	}
+
+	private static final java.util.regex.Pattern OPERATION = java.util.regex.Pattern.compile("[A-Z_]{1,16}");
+
+	static String clean(String text, java.util.regex.Pattern allowed) {
+		return text != null && text.length() <= 64 && allowed.matcher(text).matches() ? text : "(invalid)";
+	}
+
+	/** Whether {@code key} of {@code configId} holds a secret, so command feedback must not be broadcast. */
+	public static boolean isSensitive(String configId, String key) {
+		if (SettingText.isSensitiveKey(key)) {
+			return true;
+		}
+		return MejtaCore.configs().find(configId)
+				.flatMap(h -> h.spec().setting(key))
+				.map(SettingText::isSensitive)
+				.orElse(false);
+	}
 
 	/**
 	 * Publishes a config change on {@code mejtacore.config}, so it reaches staff chat, the notification
-	 * file log and external providers such as MejtaDiscord. Values of secret-looking keys are hidden.
+	 * file log and external providers such as MejtaDiscord. Values of secret settings are never included.
 	 */
 	private static void publishChange(String who, String configId, String op, String key, String change) {
 		MejtaCoreAPI.notifications().publish(Notification.builder(MejtaCore.MOD_ID, CHANNEL_CONFIG)
@@ -197,7 +271,7 @@ public final class ServerConfigSync {
 	}
 
 	public static ConfigEditing.Result apply(CommandSourceStack source, String configId, String op, String key, String value) {
-		return apply(source.permissions(), source.getTextName(), configId, op, key, value);
+		return apply(source.permissions(), MejtaCoreAPI.actor(source), configId, op, key, value, true);
 	}
 
 	private static boolean withinRate(UUID player) {

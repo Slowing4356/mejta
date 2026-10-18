@@ -1,0 +1,123 @@
+# Builds every Mejta project against Minecraft, runs the unit tests and the client game tests.
+# Projects build in dependency order: MejtaCore is published to the runner's Maven Local first,
+# and the addons compile against that copy. Nothing is published outside the runner.
+name: CI
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A newer push waits for the running check instead of cancelling it, so every run reaches its game tests.
+  cancel-in-progress: false
+
+env:
+  # Client game tests run without a real display; see the gametest job.
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  build:
+    name: Build and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: MejtaCore
+        working-directory: mejta-core
+        run: bash ./gradlew test build publishToMavenLocal --stacktrace
+      - name: MejtaCore test addon
+        working-directory: mejta-core/test-addon
+        run: bash ./gradlew build --stacktrace
+      - name: MejtaAC
+        working-directory: mejta-ac
+        run: bash ./gradlew test build --stacktrace
+      - name: MejtaUtils
+        working-directory: mejta-utils
+        run: bash ./gradlew test build --stacktrace
+      - name: MejtaDiscord
+        working-directory: mejta-discord
+        run: bash ./gradlew test build --stacktrace
+      - name: MejtaPerf
+        if: hashFiles('mejta-perf/build.gradle') != ''
+        working-directory: mejta-perf
+        run: bash ./gradlew test build --stacktrace
+      - name: Collect jars
+        if: always()
+        run: |
+          mkdir -p dist
+          for p in mejta-core mejta-ac mejta-utils mejta-discord mejta-perf; do
+            [ -d "$p/build/libs" ] || continue
+            find "$p/build/libs" -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -exec cp {} dist/ \;
+          done
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mejta-jars
+          path: dist/*.jar
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: unit-test-reports
+          path: '*/build/reports/tests/'
+          if-no-files-found: ignore
+
+  gametest:
+    name: Game tests (${{ matrix.project }})
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [ mejta-core/test-addon, mejta-ac, mejta-utils, mejta-discord, mejta-perf ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if the project does not exist
+        id: exists
+        run: |
+          if [ -f "${{ matrix.project }}/build.gradle" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-java@v4
+        if: steps.exists.outputs.ok == 'true'
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.exists.outputs.ok == 'true'
+      - name: Virtual display and software OpenGL
+        if: steps.exists.outputs.ok == 'true'
+        run: sudo apt-get update -q && sudo apt-get install -yq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils
+      - name: Publish MejtaCore to Maven Local
+        if: steps.exists.outputs.ok == 'true'
+        working-directory: mejta-core
+        run: bash ./gradlew publishToMavenLocal --stacktrace
+      - name: Client game test
+        if: steps.exists.outputs.ok == 'true'
+        working-directory: ${{ matrix.project }}
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" bash ./gradlew runClientGameTest --stacktrace
+      - name: Name the log artifact
+        if: always() && steps.exists.outputs.ok == 'true'
+        id: name
+        run: echo "name=gametest-logs-$(echo '${{ matrix.project }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.exists.outputs.ok == 'true'
+        with:
+          name: ${{ steps.name.outputs.name }}
+          path: |
+            ${{ matrix.project }}/build/run/clientGameTest/logs/
+            ${{ matrix.project }}/build/run/clientGameTest/crash-reports/
+            ${{ matrix.project }}/build/run/clientGameTest/screenshots/
+            ${{ matrix.project }}/run/logs/
+          if-no-files-found: ignore

@@ -26,8 +26,15 @@ public final class CoreSettings {
 	public static final Setting<Boolean> NOTIFICATIONS_FILE_LOG = Setting.bool("notifications.file_log", true)
 			.describedAs("Write every addon notification (alerts, kicks, config changes) to mejta-data/mejtacore/notifications.jsonl; works without any Discord addon");
 
+	/** @since 1.3.0 */
+	public static final Setting<String> DISABLED_COMMANDS = Setting.string("commands.disabled", "")
+			.validatedBy(text -> text.length() <= 512 && text.matches("[a-z0-9_,/ -]*"))
+			.describedAs("Top-level addon commands not to register, comma-separated (e.g. \"vanish, freeze\"). "
+					+ "They stay available as /mejtaadmin <addon> <command>. Takes effect after /reload or a restart.");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
-			.add(DEBUG_LOGGING, SHOW_ADDON_IDS, MENU_SOUND, MENU_ROWS, IN_GAME_NOTIFICATIONS, NOTIFICATIONS_FILE_LOG)
+			.add(DEBUG_LOGGING, SHOW_ADDON_IDS, MENU_SOUND, MENU_ROWS, IN_GAME_NOTIFICATIONS, NOTIFICATIONS_FILE_LOG,
+					DISABLED_COMMANDS)
 			.build();
 
 	private CoreSettings() {

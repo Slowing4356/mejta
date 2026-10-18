@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtadiscord_test",
+	"version": "1.0.0",
+	"name": "MejtaDiscord Tests",
+	"description": "Client game tests for MejtaDiscord. Development only.",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"com.mejta.mejtadiscord.test.MejtaDiscordClientGameTest"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtadiscord": "*"
+	}
+}

@@ -32,6 +32,9 @@ public final class PermissionRegistry {
 			.describedAs("View and change the server's settings from the MejtaCore menu or /mejtaadmin config");
 	public static final MejtaPermission CONFIG_PERMISSIONS = MejtaPermission.of("mejtacore.config.permissions", PermissionLevel.OWNERS)
 			.describedAs("Also change these permission levels remotely (needs mejtacore.config.edit too)");
+	/** @since API version 4 */
+	public static final MejtaPermission CONFIG_SECRETS = MejtaPermission.of("mejtacore.config.secrets", PermissionLevel.OWNERS)
+			.describedAs("Change secret settings (tokens, webhook URLs) with /mejtaadmin config set (needs mejtacore.config.edit too)");
 
 	private static final Map<String, Setting<PermissionLevel>> SETTINGS = new LinkedHashMap<>();
 	private static volatile ConfigHandle config;
@@ -47,6 +50,7 @@ public final class PermissionRegistry {
 		add(ADMIN);
 		add(CONFIG_EDIT);
 		add(CONFIG_PERMISSIONS);
+		add(CONFIG_SECRETS);
 		for (AddonInfo addon : addons) {
 			for (MejtaPermission permission : addon.definition().permissions()) {
 				add(permission);
@@ -86,6 +90,13 @@ public final class PermissionRegistry {
 	public static boolean check(PermissionSet permissions, MejtaPermission permission) {
 		PermissionLevel level = requiredLevel(permission);
 		return level == PermissionLevel.ALL || permissions.hasPermission(new Permission.HasCommandLevel(level));
+	}
+
+	/** Compares a bare operator level (e.g. of an offline player) with the level {@code permission} requires. */
+	public static boolean checkLevel(PermissionLevel actual, MejtaPermission permission) {
+		PermissionLevel required = requiredLevel(permission);
+		// PermissionLevel is declared from ALL (0) to OWNERS (4).
+		return required == PermissionLevel.ALL || actual.ordinal() >= required.ordinal();
 	}
 
 	public static synchronized List<String> nodes() {
