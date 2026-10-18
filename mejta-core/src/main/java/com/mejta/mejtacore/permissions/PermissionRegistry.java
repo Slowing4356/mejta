@@ -92,6 +92,13 @@ public final class PermissionRegistry {
 		return level == PermissionLevel.ALL || permissions.hasPermission(new Permission.HasCommandLevel(level));
 	}
 
+	/** Compares a bare operator level (e.g. of an offline player) with the level {@code permission} requires. */
+	public static boolean checkLevel(PermissionLevel actual, MejtaPermission permission) {
+		PermissionLevel required = requiredLevel(permission);
+		// PermissionLevel is declared from ALL (0) to OWNERS (4).
+		return required == PermissionLevel.ALL || actual.ordinal() >= required.ordinal();
+	}
+
 	public static synchronized List<String> nodes() {
 		return List.copyOf(SETTINGS.keySet());
 	}

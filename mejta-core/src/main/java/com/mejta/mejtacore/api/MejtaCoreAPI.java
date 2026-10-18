@@ -8,7 +8,9 @@ import java.util.function.Predicate;
 import org.slf4j.Logger;
 
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.NameAndId;
 
 import com.mejta.mejtacore.addons.AddonRegistry;
 import com.mejta.mejtacore.audit.AuditTrail;
@@ -144,6 +146,16 @@ public final class MejtaCoreAPI {
 
 	public static boolean hasPermission(ServerPlayer player, MejtaPermission permission) {
 		return PermissionRegistry.check(player.permissions(), permission);
+	}
+
+	/**
+	 * Whether a player who may be offline has {@code permission}, judged by the server's operator list
+	 * (the same level they would have when online). Unknown players have level 0.
+	 *
+	 * @since API version 4
+	 */
+	public static boolean hasPermission(MinecraftServer server, NameAndId profile, MejtaPermission permission) {
+		return PermissionRegistry.checkLevel(server.getProfilePermissions(profile).level(), permission);
 	}
 
 	/** For Brigadier: {@code Commands.literal("x").requires(MejtaCoreAPI.requires(MY_PERMISSION))}. */
