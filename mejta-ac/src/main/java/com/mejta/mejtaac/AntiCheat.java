@@ -72,7 +72,7 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
  * Each stage is configurable on its own and a failure in one never breaks packet handling.
  */
 public final class AntiCheat {
-	// Cost of each hook, shown by MejtaPerf (/perf metrics mejtaac). Two clock reads per call.
+	// Cost of each hook, shown by MejtaPerf (/mperf metrics mejtaac). Two clock reads per call.
 	private static final Metrics.Timer T_MOVE_PACKET = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.move");
 	private static final Metrics.Timer T_SERVER_TICK_END = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.server_tick");
 	private static final Metrics.Timer T_PONG = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.pong");
@@ -90,6 +90,10 @@ public final class AntiCheat {
 	private static final int MOUNT_GRACE_TICKS = 3;
 	/** How long a lost jump boost is still allowed, on top of twice the recent round trip. */
 	private static final long JUMP_POWER_GRACE_MS = 2_000;
+	/** How long a teleport or respawn counts as unconfirmed when tick sync is unavailable. */
+	private static final long UNSYNCED_TELEPORT_NANOS = 1_000_000_000L;
+	/** Vanilla's margin beyond the block interaction range before it refuses a block action. */
+	private static final double BLOCK_RANGE_MARGIN = 1.0;
 
 	private static volatile AntiCheat instance;
 
@@ -166,7 +170,7 @@ public final class AntiCheat {
 		volatile boolean claimedOnGround = true;
 		final FlyCheck.State fly = new FlyCheck.State();
 		double lastTickY = Double.NaN;
-		/** Server tick of the newest velocity change sent to this player (knockback, explosion...). */
+		/** Server tick after the newest velocity change sent to this player (knockback, explosion...). */
 		volatile int impulseTick = Integer.MIN_VALUE;
 		volatile long impulseNanos;
 		boolean impulsePending;
@@ -209,6 +213,10 @@ public final class AntiCheat {
 		volatile int vehicleImpulseTick = Integer.MIN_VALUE;
 		volatile long vehicleImpulseNanos;
 		volatile boolean vehicleImpulsePending;
+		/** Server tick of the newest teleport or respawn sent to this player, until the client confirms it. */
+		volatile int teleportTick = Integer.MIN_VALUE;
+		volatile long teleportNanos;
+		volatile boolean teleportPending;
 	}
 
 	/** An attack waiting for its client tick to end, so the rotation the client used is known. */
@@ -263,6 +271,19 @@ public final class AntiCheat {
 		alertThrottle.forget(player);
 		players.remove(player);
 		sync.forget(player);
+	}
+
+	/**
+	 * The server stopped. Clears all per-player and per-entity state: an integrated server started
+	 * later in the same game counts ticks and entity IDs from the start again.
+	 */
+	public void onServerStopped() {
+		players.clear();
+		sync.clear();
+		history.clear();
+		violations.clear();
+		recordThrottle.clear();
+		alertThrottle.clear();
 	}
 
 	/** Server thread, end of every server tick: entity history and sync pings, if a check needs them. */
@@ -363,7 +384,8 @@ public final class AntiCheat {
 			boolean exempt = groundExempt(player);
 			boolean below = exempt || hasGroundBelow(player);
 			Optional<Flag> flag = GroundSpoofCheck.onClientTick(d.ground, d.claimedOnGround, below, exempt,
-					sync.recentMaxRttMs(player.getUUID()), player.getY());
+					sync.recentMaxRttMs(player.getUUID()), player.getY(), player.level().getServer().getTickCount(),
+					sync.lastAckTick(player.getUUID()), System.nanoTime());
 			if (flag.isPresent() && handle(player, flag.get(), cfg, cfg.groundSpoofKickVl())) {
 				return true;
 			}
@@ -379,10 +401,13 @@ public final class AntiCheat {
 		if (cfg.jumpEnabled() && evaluateJump(player, d, cfg, impulse, dy)) {
 			return true;
 		}
-		if (cfg.flyEnabled() && evaluateFly(player, d, cfg, impulse, dy)) {
+		// Moving pistons push players in any direction; looked up once for fly and speed.
+		boolean piston = !impulse && (cfg.flyEnabled() || cfg.speedEnabled())
+				&& nearPiston(player, player.getBoundingBox().inflate(1.5));
+		if (cfg.flyEnabled() && evaluateFly(player, d, cfg, impulse || piston, dy)) {
 			return true;
 		}
-		if (cfg.speedEnabled() && evaluateSpeed(player, d, cfg, impulse)) {
+		if (cfg.speedEnabled() && evaluateSpeed(player, d, cfg, impulse || piston)) {
 			return true;
 		}
 		return cfg.boatFlyEnabled() && evaluateBoatFly(player, d, cfg);
@@ -413,8 +438,8 @@ public final class AntiCheat {
 			return true;
 		}
 		Entity target = player.level().getEntity(entityId);
-		if (target == null || (!cfg.reachEnabled() && !cfg.hitboxEnabled())) {
-			return false;
+		if (target == null || (!cfg.reachEnabled() && !cfg.hitboxEnabled()) || positionUnconfirmed(player, d)) {
+			return false; // after a teleport, the server's eye is not where the client attacked from
 		}
 		TargetView view = targetView(player, target);
 		if (view == null) {
@@ -508,29 +533,70 @@ public final class AntiCheat {
 
 	private boolean onBlockInteractionMeasured(ServerPlayer player, BlockPos pos, String action) {
 		AcConfig cfg = config;
-		if (!cfg.enabled() || !cfg.blockReachEnabled() || player.isSpectator()) {
+		if (!cfg.enabled() || !cfg.blockReachEnabled() || player.isSpectator() || positionUnconfirmed(player, data(player.getUUID()))) {
 			return false;
 		}
+		// Pure geometry on the client-chosen position: no block or chunk is looked up.
 		Optional<Flag> flag = BlockReachCheck.evaluate(eyes(player), new AABB(pos), player.blockInteractionRange(),
 				cfg.blockReachTolerance(), action);
 		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.blockReachKickVl());
 	}
 
-	/** Any thread: the server sent this player a velocity change (knockback, explosion, wind charge...). */
+	/**
+	 * Any thread: the server sent this player a velocity change (knockback, explosion, wind charge...).
+	 * Tagged with the next tick: a packet sent between ticks follows the current tick's ping, so only
+	 * the next ping's pong proves the client applied it.
+	 */
 	public void onImpulseSent(ServerPlayer player) {
 		PlayerData d = players.get(player.getUUID());
 		if (d != null) {
-			d.impulseTick = player.level().getServer().getTickCount();
+			d.impulseTick = player.level().getServer().getTickCount() + 1;
 			d.impulseNanos = System.nanoTime();
 			d.impulsePending = true;
 		}
 	}
 
-	/** Any thread: the server corrected the player's vehicle (rejected move, teleport, push, explosion). */
+	/** Any thread: the server teleported or respawned this player. */
+	public void onTeleportSent(ServerPlayer player) {
+		PlayerData d = players.get(player.getUUID());
+		if (d != null) {
+			d.teleportTick = player.level().getServer().getTickCount();
+			d.teleportNanos = System.nanoTime();
+			d.teleportPending = true;
+		}
+	}
+
+	/**
+	 * Whether the client may still act from where it was before a teleport or respawn, while the
+	 * server already has the new position: vanilla awaits the teleport confirmation, or tick sync has
+	 * not yet shown a ping sent after the teleport answered (one second when unsynced). Reach, hitbox
+	 * and block reach measure from the server's eye, so they are skipped until then.
+	 */
+	private boolean positionUnconfirmed(ServerPlayer player, PlayerData d) {
+		if (((ServerGamePacketListenerImplAccessor) player.connection).mejtaac$awaitingPositionFromClient() != null) {
+			return true;
+		}
+		if (!d.teleportPending) {
+			return false;
+		}
+		OptionalInt ack = sync.lastAckTick(player.getUUID());
+		// "> tick": a teleport sent between ticks follows that tick's ping, so only the next ping proves it.
+		boolean applied = ack.isPresent() ? ack.getAsInt() > d.teleportTick
+				: System.nanoTime() - d.teleportNanos > UNSYNCED_TELEPORT_NANOS;
+		if (applied) {
+			d.teleportPending = false;
+		}
+		return !applied;
+	}
+
+	/**
+	 * Any thread: the server corrected the player's vehicle (rejected move, teleport, push, explosion).
+	 * Tagged with the next tick, like {@link #onImpulseSent}.
+	 */
 	public void onVehicleImpulseSent(ServerPlayer player) {
 		PlayerData d = players.get(player.getUUID());
 		if (d != null) {
-			d.vehicleImpulseTick = player.level().getServer().getTickCount();
+			d.vehicleImpulseTick = player.level().getServer().getTickCount() + 1;
 			d.vehicleImpulseNanos = System.nanoTime();
 			d.vehicleImpulsePending = true;
 		}
@@ -610,7 +676,10 @@ public final class AntiCheat {
 		double moveSpeed = player.getAttributeValue(Attributes.MOVEMENT_SPEED) * (player.isSprinting() ? 1.0 : 1.3);
 		double groundAccel = groundBefore || groundNow ? moveSpeed * 0.216 / Math.pow(friction[0], 3) : 0;
 		double accel = Math.max(groundAccel, 0.026);
-		boolean tookOff = groundBefore && !groundNow;
+		// Under a low ceiling the jump barely leaves the ground, but its sprint boost still applies.
+		boolean ceiling = groundBefore && groundNow && player.isSprinting()
+				&& !player.level().noCollision(player, player.getBoundingBox().expandTowards(0, SpeedCheck.CEILING_REACH, 0));
+		boolean tookOff = SpeedCheck.sprintJumpPossible(groundBefore, groundNow, player.isSprinting(), ceiling);
 		d.groundTwoAgo = d.groundOneAgo;
 		d.groundOneAgo = groundNow;
 		d.frictionTwoAgo = d.frictionOneAgo;
@@ -801,14 +870,20 @@ public final class AntiCheat {
 				if (onBlockInteraction(player, pos, "start_destroy")) {
 					return true;
 				}
-				if (cfg.fastBreakEnabled() && !player.isCreative()) {
+				if (cfg.fastBreakEnabled() && !player.isCreative() && withinBlockRange(player, pos)) {
 					d.breakPos = pos.immutable();
 					d.breakStartTicks = d.clientTicks;
 					d.breakProgress = bestDestroyProgress(player, pos);
+				} else {
+					d.breakPos = null;
 				}
 			}
 			case STOP_DESTROY_BLOCK -> {
 				if (cfg.fastBreakEnabled() && pos.equals(d.breakPos)) {
+					if (!withinBlockRange(player, pos)) {
+						d.breakPos = null; // vanilla refuses it too; never look up a far block
+						return false;
+					}
 					double progress = Math.max(d.breakProgress, bestDestroyProgress(player, pos));
 					int ticks = (int) Math.min(Integer.MAX_VALUE, d.clientTicks - d.breakStartTicks);
 					d.breakPos = null;
@@ -818,6 +893,23 @@ public final class AntiCheat {
 			}
 			case ABORT_DESTROY_BLOCK -> d.breakPos = null;
 			default -> {
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a block position chosen by the client is within the player's block interaction range
+	 * plus vanilla's own one-block margin. This runs before vanilla's range check, so a block state is
+	 * only ever looked up next to the player, where chunks are loaded: reading one far away would load
+	 * or generate chunks on the server thread.
+	 */
+	private static boolean withinBlockRange(ServerPlayer player, BlockPos pos) {
+		double range = player.blockInteractionRange() + BLOCK_RANGE_MARGIN;
+		AABB block = new AABB(pos);
+		for (Vec3 eye : eyes(player)) {
+			if (block.distanceToSqr(eye) <= range * range) {
+				return true;
 			}
 		}
 		return false;
@@ -857,7 +949,8 @@ public final class AntiCheat {
 	}
 
 	private static boolean groundExempt(ServerPlayer player) {
-		return player.isPassenger() || player.isSpectator() || player.isSleeping() || player.isDeadOrDying()
+		// Removed: e.g. watching the End credits, while the client still ticks in the old level.
+		return player.isRemoved() || player.isPassenger() || player.isSpectator() || player.isSleeping() || player.isDeadOrDying()
 				|| player.getAbilities().flying || player.isFallFlying() || player.isAutoSpinAttack()
 				|| player.onClimbable() || player.isInWater() || player.isInLava()
 				|| player.hasEffect(MobEffects.LEVITATION) || player.isChangingDimension()
@@ -883,8 +976,13 @@ public final class AntiCheat {
 
 			long now = System.currentTimeMillis();
 			UUID id = player.getUUID();
-			double vl = violations.add(id, flag.checkId(), flag.vlIncrease(), cfg.decayPerMinute(), now);
-			Action action = EnforcementPolicy.decide(cfg.enforcementMode(), cfg.enforcementMinConfidence(), flag, vl, kickThreshold);
+			// The total VL is reported; only the VL of confident flags counts towards a kick.
+			boolean enforceable = flag.confidence().atLeast(cfg.enforcementMinConfidence());
+			ViolationTracker.Levels levels = violations.add(id, flag.checkId(), flag.vlIncrease(), enforceable,
+					cfg.decayPerMinute(), now);
+			double vl = levels.total();
+			Action action = EnforcementPolicy.decide(cfg.enforcementMode(), cfg.enforcementMinConfidence(), flag,
+					levels.enforceable(), kickThreshold);
 
 			int suppressed = recordThrottle.tryPass(id, flag.checkId(), RECORD_INTERVAL_MS, now);
 			boolean report = suppressed >= 0 || action != Action.NONE || cfg.logs(LogLevel.DEBUG);

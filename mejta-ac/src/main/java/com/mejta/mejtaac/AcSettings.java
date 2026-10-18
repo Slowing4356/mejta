@@ -56,7 +56,7 @@ public final class AcSettings {
 	public static final Setting<EnforcementMode> ENFORCEMENT_MODE = Setting.enumeration("enforcement.mode", EnforcementMode.DRY_RUN)
 			.describedAs("OFF, DRY_RUN (log and alert only) or ENFORCE (kick). Starts in DRY_RUN so you can review flags first");
 	public static final Setting<Confidence> ENFORCEMENT_MIN_CONFIDENCE = Setting.enumeration("enforcement.min_confidence", Confidence.HIGH)
-			.describedAs("Flags below this confidence never lead to enforcement, whatever the violation level");
+			.describedAs("Flags below this confidence never lead to enforcement and never count towards a kick_vl threshold");
 	public static final Setting<String> KICK_MESSAGE = Setting.string("enforcement.kick_message", "Disconnected by anti-cheat.")
 			.validatedBy(text -> !text.isBlank() && text.length() <= 256)
 			.describedAs("Message shown to kicked players (1-256 characters)");
@@ -99,7 +99,7 @@ public final class AcSettings {
 	public static final Setting<Boolean> REACH_ENABLED = Setting.bool("checks.combat.reach.enabled", true)
 			.describedAs("[Experimental] Flag attacks beyond the weapon's range, compensating for each player's latency");
 	public static final Setting<Double> REACH_KICK_VL = Setting.decimal("checks.combat.reach.kick_vl", 5.0, 1.0, 10_000.0)
-			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 but never enforce by default)");
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 	public static final Setting<Double> REACH_TOLERANCE = Setting.decimal("checks.combat.reach.tolerance", 0.1, 0.0, 3.0)
 			.describedAs("Extra blocks allowed beyond the weapon's range before any flag");
 
@@ -113,19 +113,19 @@ public final class AcSettings {
 	public static final Setting<Boolean> FLY_ENABLED = Setting.bool("checks.movement.fly.enabled", true)
 			.describedAs("[Experimental] Flag hovering, flying up or falling slower than gravity allows");
 	public static final Setting<Double> FLY_KICK_VL = Setting.decimal("checks.movement.fly.kick_vl", 5.0, 1.0, 10_000.0)
-			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 
 	// ---------------------------------------------------------------- check: combat.hitbox
 	public static final Setting<Boolean> HITBOX_ENABLED = Setting.bool("checks.combat.hitbox.enabled", true)
 			.describedAs("[Experimental] Flag attacks on entities the player was not looking at (latency-compensated)");
 	public static final Setting<Double> HITBOX_KICK_VL = Setting.decimal("checks.combat.hitbox.kick_vl", 5.0, 1.0, 10_000.0)
-			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 
 	// ---------------------------------------------------------------- check: interaction.block_reach
 	public static final Setting<Boolean> BLOCK_REACH_ENABLED = Setting.bool("checks.interaction.block_reach.enabled", true)
 			.describedAs("[Experimental] Flag breaking or using blocks beyond the block interaction range");
 	public static final Setting<Double> BLOCK_REACH_KICK_VL = Setting.decimal("checks.interaction.block_reach.kick_vl", 5.0, 1.0, 10_000.0)
-			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 	public static final Setting<Double> BLOCK_REACH_TOLERANCE = Setting.decimal("checks.interaction.block_reach.tolerance", 0.1, 0.0, 3.0)
 			.describedAs("Extra blocks allowed beyond the block interaction range before any flag");
 
@@ -133,25 +133,25 @@ public final class AcSettings {
 	public static final Setting<Boolean> SPEED_ENABLED = Setting.bool("checks.movement.speed.enabled", true)
 			.describedAs("[Experimental] Flag horizontal movement faster than vanilla physics allows");
 	public static final Setting<Double> SPEED_KICK_VL = Setting.decimal("checks.movement.speed.kick_vl", 5.0, 1.0, 10_000.0)
-			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 
 	// ---------------------------------------------------------------- check: interaction.fast_break
 	public static final Setting<Boolean> FAST_BREAK_ENABLED = Setting.bool("checks.interaction.fast_break.enabled", true)
 			.describedAs("[Experimental] Flag blocks broken faster than tool, enchantments and effects allow");
 	public static final Setting<Double> FAST_BREAK_KICK_VL = Setting.decimal("checks.interaction.fast_break.kick_vl", 5.0, 1.0, 10_000.0)
-			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 
 	// ---------------------------------------------------------------- check: movement.jump
 	public static final Setting<Boolean> JUMP_ENABLED = Setting.bool("checks.movement.jump.enabled", true)
 			.describedAs("[Experimental] Flag jumps higher than jump strength and Jump Boost allow (high jump)");
 	public static final Setting<Double> JUMP_KICK_VL = Setting.decimal("checks.movement.jump.kick_vl", 5.0, 1.0, 10_000.0)
-			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 
 	// ---------------------------------------------------------------- check: vehicle.boat_fly
 	public static final Setting<Boolean> BOAT_FLY_ENABLED = Setting.bool("checks.vehicle.boat_fly.enabled", true)
 			.describedAs("[Experimental] Flag boats that hover, rise or fall slower than gravity allows (boat fly)");
 	public static final Setting<Double> BOAT_FLY_KICK_VL = Setting.decimal("checks.vehicle.boat_fly.kick_vl", 5.0, 1.0, 10_000.0)
-			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, LOG_LEVEL,

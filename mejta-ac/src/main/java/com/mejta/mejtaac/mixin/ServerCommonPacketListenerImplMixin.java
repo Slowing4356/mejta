@@ -13,6 +13,7 @@ import net.minecraft.network.protocol.common.ServerboundPongPacket;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.network.protocol.game.ClientboundExplodePacket;
 import net.minecraft.network.protocol.game.ClientboundMoveVehiclePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerAbilitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
@@ -33,8 +34,8 @@ import com.mejta.mejtaac.sync.TickSync;
  * Pongs from other mods are untouched.
  *
  * <p>Also watches outgoing packets for velocity changes the server gives the player (knockback,
- * explosions, wind charges, fishing rods) or position (teleports, respawns), which the movement
- * checks must allow for, and for corrections of the player's vehicle.
+ * explosions, wind charges, fishing rods), position (teleports, respawns) or abilities (flight,
+ * game mode), which the movement checks must allow for, and for corrections of the player's vehicle.
  */
 @Mixin(ServerCommonPacketListenerImpl.class)
 public abstract class ServerCommonPacketListenerImplMixin {
@@ -64,6 +65,9 @@ public abstract class ServerCommonPacketListenerImplMixin {
 		if (changesVelocity(packet, game.player)) {
 			AntiCheat.get().ifPresent(antiCheat -> antiCheat.onImpulseSent(game.player));
 		}
+		if (movesPlayer(packet)) {
+			AntiCheat.get().ifPresent(antiCheat -> antiCheat.onTeleportSent(game.player));
+		}
 		Entity vehicle = game.player.getVehicle();
 		if (vehicle != null && correctsVehicle(packet, vehicle.getId())) {
 			AntiCheat.get().ifPresent(antiCheat -> antiCheat.onVehicleImpulseSent(game.player));
@@ -91,13 +95,32 @@ public abstract class ServerCommonPacketListenerImplMixin {
 		return false;
 	}
 
+	/** Teleports (ender pearls, /tp, vanilla's "moved wrongly" corrections) and respawns. */
+	private static boolean movesPlayer(Packet<?> packet) {
+		if (packet instanceof ClientboundPlayerPositionPacket || packet instanceof ClientboundRespawnPacket) {
+			return true;
+		}
+		if (packet instanceof ClientboundBundlePacket bundle) {
+			for (Packet<?> inner : bundle.subPackets()) {
+				if (movesPlayer(inner)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Server-side changes the client applies only when the packet arrives: velocity, position, and
+	 * abilities (flying, flight speed; also sent on every game-mode change).
+	 */
 	private static boolean changesVelocity(Packet<?> packet, ServerPlayer player) {
 		if (packet instanceof ClientboundSetEntityMotionPacket motion) {
 			return motion.id() == player.getId();
 		}
 		if (packet instanceof ClientboundExplodePacket || packet instanceof ClientboundPlayerPositionPacket
-				|| packet instanceof ClientboundRespawnPacket) {
-			return true; // explosions push; teleports (ender pearls, /tp) and respawns move the player
+				|| packet instanceof ClientboundRespawnPacket || packet instanceof ClientboundPlayerAbilitiesPacket) {
+			return true; // explosions push; teleports (ender pearls, /tp) and respawns move; abilities (flight) change physics
 		}
 		if (packet instanceof ClientboundBundlePacket bundle) {
 			for (Packet<?> inner : bundle.subPackets()) {

@@ -69,6 +69,11 @@ public final class EntityHistory {
 		return out;
 	}
 
+	/** Forgets everything, e.g. when the server stops (a new one reuses entity IDs and ticks). */
+	public void clear() {
+		tracks.clear();
+	}
+
 	public int trackedEntities() {
 		return tracks.size();
 	}

@@ -94,7 +94,7 @@ public final class AcCommands {
 		service.setMuted(player.getUUID(), AlertPublisher.CHANNEL_ALERT, nowMuted);
 		service.setMuted(player.getUUID(), AlertPublisher.CHANNEL_ENFORCEMENT, nowMuted);
 		ctx.getSource().sendSuccess(() -> Component.literal("Anti-cheat alerts " + (nowMuted ? "hidden" : "shown")
-				+ " until the server restarts."), false);
+				+ " (kept across restarts)."), false);
 		return 1;
 	}
 
