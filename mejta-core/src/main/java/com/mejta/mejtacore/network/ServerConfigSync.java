@@ -52,6 +52,10 @@ public final class ServerConfigSync {
 	private static final int MAX_EDITS_PER_SECOND = 20;
 
 	private static final Map<UUID, long[]> editWindows = new ConcurrentHashMap<>();
+	/** Refused edits from players without any edit permission are audited at most once a minute each. */
+	private static final long DENIED_AUDIT_INTERVAL_MS = 60_000;
+	private static final Map<UUID, Long> lastDeniedAudit = new ConcurrentHashMap<>();
+	private static final java.util.regex.Pattern CONFIG_ID = java.util.regex.Pattern.compile("[a-z0-9_.-]{1,64}");
 	private static volatile boolean dirty;
 
 	private ServerConfigSync() {
@@ -69,7 +73,10 @@ public final class ServerConfigSync {
 		ServerPlayNetworking.registerGlobalReceiver(EditConfig.TYPE,
 				(payload, ctx) -> ctx.server().execute(() -> handleEdit(ctx.player(), payload)));
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> server.execute(() -> sendTo(handler.player)));
-		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> editWindows.remove(handler.player.getUUID()));
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			editWindows.remove(handler.player.getUUID());
+			lastDeniedAudit.remove(handler.player.getUUID());
+		});
 		ServerTickEvents.END_SERVER_TICK.register(ServerConfigSync::onTick);
 	}
 
@@ -127,9 +134,16 @@ public final class ServerConfigSync {
 			if (SettingText.isSensitive(setting)) {
 				continue; // secrets never leave the server, not even masked
 			}
+			String defaultText = SettingText.format(setting, setting.defaultValue());
+			String valueText = SettingText.format(setting, handle.get(setting));
+			if (defaultText.length() > ConfigPayloads.MAX_TEXT || valueText.length() > ConfigPayloads.MAX_TEXT) {
+				continue; // too long for the menu's payload; still editable with /mejtaadmin config set
+			}
+			String description = setting.description().length() > ConfigPayloads.MAX_TEXT
+					? setting.description().substring(0, ConfigPayloads.MAX_TEXT - 3) + "..." : setting.description();
 			boolean ranged = hasRealRange(setting);
-			settings.add(new RemoteSetting(setting.key(), setting.type().name(), setting.displayName(), setting.description(),
-					SettingText.format(setting, setting.defaultValue()), SettingText.format(setting, handle.get(setting)),
+			settings.add(new RemoteSetting(setting.key(), setting.type().name(), setting.displayName(), description,
+					defaultText, valueText,
 					ranged ? String.valueOf(setting.min()) : "", ranged ? String.valueOf(setting.max()) : "", setting.options()));
 		}
 		return new RemoteConfig(handle.id(), ConfigNames.displayName(handle), settings);
@@ -147,14 +161,25 @@ public final class ServerConfigSync {
 
 	private static void handleEdit(ServerPlayer player, EditConfig edit) {
 		ConfigEditing.Result result;
-		if (!withinRate(player.getUUID())) {
+		if (!PermissionRegistry.check(player.permissions(), PermissionRegistry.CONFIG_EDIT)) {
+			// A vanilla menu never sends this: only a modified client does. Answer it, but do not let it flood the
+			// audit log, the server log or notification providers.
+			long now = System.currentTimeMillis();
+			Long last = lastDeniedAudit.get(player.getUUID());
+			if (last == null || now - last >= DENIED_AUDIT_INTERVAL_MS) {
+				lastDeniedAudit.put(player.getUUID(), now);
+				audit(MejtaCoreAPI.actor(player), edit.configId(), edit.op(), edit.key(), AuditOutcome.DENIED);
+			}
+			result = new ConfigEditing.Result(false, "You may not edit server settings");
+		} else if (!withinRate(player.getUUID())) {
 			result = new ConfigEditing.Result(false, "Too many changes at once; slow down");
 		} else {
 			result = apply(player.permissions(), MejtaCoreAPI.actor(player), edit.configId(), edit.op(), edit.key(), edit.value(),
 					false);
 		}
 		if (ServerPlayNetworking.canSend(player, EditResult.TYPE)) {
-			ServerPlayNetworking.send(player, new EditResult(result.ok(), result.message()));
+			String message = result.message().length() > 1000 ? result.message().substring(0, 997) + "..." : result.message();
+			ServerPlayNetworking.send(player, new EditResult(result.ok(), message));
 		}
 		sendTo(player); // the authoritative state, also after a rejected edit
 	}
@@ -171,13 +196,13 @@ public final class ServerConfigSync {
 		Optional<ConfigHandle> handle = editable(permissions, configId);
 		if (handle.isEmpty()) {
 			audit(actor, configId, opName, key, AuditOutcome.DENIED);
-			return new ConfigEditing.Result(false, "You may not edit config '" + configId + "'");
+			return new ConfigEditing.Result(false, "You may not edit config '" + clean(configId, CONFIG_ID) + "'");
 		}
 		ConfigEditing.Op op;
 		try {
 			op = ConfigEditing.Op.valueOf(opName);
 		} catch (IllegalArgumentException e) {
-			return new ConfigEditing.Result(false, "Unknown operation " + opName);
+			return new ConfigEditing.Result(false, "Unknown operation " + clean(opName, OPERATION));
 		}
 		boolean mayChangeSecrets = byCommand && PermissionRegistry.check(permissions, PermissionRegistry.CONFIG_SECRETS);
 		Optional<Setting<?>> target = key == null ? Optional.empty() : handle.get().spec().setting(key);
@@ -197,15 +222,24 @@ public final class ServerConfigSync {
 		return result;
 	}
 
-	/** Audit entries name the key, never a value. */
+	/**
+	 * Audit entries name the key, never a value. The ID, operation and key may come from a client, so anything that is
+	 * not a well-formed name is recorded as {@code (invalid)}: no newlines or long text reach the logs.
+	 */
 	private static void audit(AuditActor actor, String configId, String op, String key, AuditOutcome outcome) {
 		MejtaCoreAPI.audit().record(AuditEntry.builder(MejtaCore.MOD_ID, "config.edit")
 				.actor(actor)
-				.target("config " + configId)
+				.target("config " + clean(configId, CONFIG_ID))
 				.outcome(outcome)
-				.detail("operation", op)
-				.detail("key", key == null ? "" : key)
+				.detail("operation", clean(op, OPERATION))
+				.detail("key", key == null ? "" : clean(key, Setting.KEY_PATTERN))
 				.build());
+	}
+
+	private static final java.util.regex.Pattern OPERATION = java.util.regex.Pattern.compile("[A-Z_]{1,16}");
+
+	static String clean(String text, java.util.regex.Pattern allowed) {
+		return text != null && text.length() <= 64 && allowed.matcher(text).matches() ? text : "(invalid)";
 	}
 
 	/** Whether {@code key} of {@code configId} holds a secret, so command feedback must not be broadcast. */

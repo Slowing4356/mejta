@@ -16,6 +16,7 @@ import com.mejta.mejtacore.api.client.MenuEntry;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.config.SettingType;
+import com.mejta.mejtacore.config.ConfigEditing;
 import com.mejta.mejtacore.config.SettingText;
 
 /** Builds editable menu pages for a {@link ConfigHandle}. */
@@ -44,8 +45,10 @@ public final class ConfigMenus {
 						Component.literal("Shift-click to confirm").withStyle(ChatFormatting.DARK_GRAY))
 				.onClick(ctx -> {
 					if (ctx.shiftDown()) {
-						handle.resetAll();
-						ctx.player().sendOverlayMessage(Component.literal("Settings reset to defaults").withStyle(ChatFormatting.GREEN));
+						// Secrets are kept, as with a server's Reset All: they can only be changed with /mejtaadmin config.
+						ConfigEditing.Result result = ConfigEditing.apply(handle, ConfigEditing.Op.RESET_ALL, null, null, false);
+						ctx.player().sendOverlayMessage(Component.literal(result.message().contains("kept")
+								? "Settings reset to defaults (secret settings kept)" : "Settings reset to defaults").withStyle(ChatFormatting.GREEN));
 						ctx.refresh();
 					} else {
 						ctx.player().sendOverlayMessage(Component.literal("Hold Shift and click to reset everything").withStyle(ChatFormatting.YELLOW));

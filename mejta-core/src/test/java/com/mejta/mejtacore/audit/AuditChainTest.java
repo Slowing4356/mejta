@@ -38,6 +38,22 @@ class AuditChainTest {
 	}
 
 	@Test
+	void aLineThatWasNotStoredNeverBecomesALink() {
+		List<JsonObject> lines = new ArrayList<>();
+		AuditChain chain = new AuditChain(() -> null, lines::add);
+		chain.loadHead(() -> null);
+		JsonObject first = chain.prepare(entry("a", "1"));
+		lines.add(first);
+		chain.commit(first);
+		chain.prepare(entry("lost", "queue full")); // never stored, never committed
+		JsonObject third = chain.prepare(entry("c", "3"));
+		lines.add(third);
+		chain.commit(third);
+		assertTrue(AuditChain.verify(lines, true).intact());
+		assertEquals(first.get("hash").getAsString(), third.get("prev").getAsString());
+	}
+
+	@Test
 	void chainVerifiesAfterRoundTrip() {
 		List<JsonObject> lines = new ArrayList<>();
 		AuditChain chain = new AuditChain(() -> null, lines::add);

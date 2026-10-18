@@ -43,17 +43,41 @@ public final class AuditChain {
 
 	/** Builds the line for {@code entry}, links it to the previous one and hands it to the sink. */
 	public synchronized JsonObject append(AuditEntry entry) {
+		JsonObject line = prepare(entry);
+		sink.accept(line);
+		commit(line);
+		return line;
+	}
+
+	/** The line for {@code entry}, linked to the newest committed line. The chain does not move until {@link #commit}. */
+	public synchronized JsonObject prepare(AuditEntry entry) {
 		if (head == null) {
 			String loaded = headLoader.get();
 			head = loaded == null || loaded.isEmpty() ? GENESIS : loaded;
 		}
 		JsonObject line = toJson(entry);
 		line.addProperty("prev", head);
-		String hash = hashOf(line);
-		line.addProperty("hash", hash);
-		sink.accept(line);
-		head = hash;
+		line.addProperty("hash", hashOf(line));
 		return line;
+	}
+
+	/** Continues from the newest line on disk, once, before the first line is prepared. I/O thread. */
+	public synchronized void loadHead(java.util.concurrent.Callable<String> newestHash) {
+		if (head != null) {
+			return;
+		}
+		try {
+			String hash = newestHash.call();
+			head = hash == null || hash.isEmpty() ? GENESIS : hash;
+		} catch (Exception e) {
+			// Unreadable: start a new chain; verification then shows where it restarted.
+			head = GENESIS;
+		}
+	}
+
+	/** Moves the chain to a prepared line once it is stored. A line that was not stored is never committed. */
+	public synchronized void commit(JsonObject line) {
+		head = line.get("hash").getAsString();
 	}
 
 	static JsonObject toJson(AuditEntry e) {

@@ -12,7 +12,8 @@ import com.mejta.mejtacore.api.permission.MejtaPermission;
  * visible.
  *
  * <p>Every entry is also published as a notification on {@code <source>.audit}, so it reaches the
- * notification file log and providers such as MejtaDiscord. Never blocks; safe on any thread.
+ * notification file log and providers such as MejtaDiscord. Safe on any thread, and never waits for the disk; only
+ * when MejtaCore's I/O queue is full does it wait (up to two seconds) for room, so that an audit entry is not lost.
  *
  * @since API version 4
  */

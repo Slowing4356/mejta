@@ -95,6 +95,8 @@ class JsonDataStoreTest {
 		try (var files = Files.list(dir)) {
 			assertTrue(files.anyMatch(f -> f.getFileName().toString().startsWith("k.json.broken-")), "corrupt file kept aside");
 		}
+		assertEquals(4, n(store.read("k").orElseThrow()), "the backup was put back: later reads find it too");
+		assertTrue(store.keys("").contains("k"));
 	}
 
 	@Test

@@ -15,7 +15,8 @@ import net.minecraft.resources.Identifier;
 public final class ConfigPayloads {
 	/** Bumped when the message format changes incompatibly. */
 	public static final int PROTOCOL = 1;
-	private static final int MAX_TEXT = 4096;
+	/** Longest text a payload field carries; longer settings are not offered for remote editing. */
+	static final int MAX_TEXT = 4096;
 
 	private ConfigPayloads() {
 	}

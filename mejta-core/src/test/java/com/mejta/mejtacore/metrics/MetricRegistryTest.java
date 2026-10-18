@@ -78,6 +78,17 @@ class MetricRegistryTest {
 	}
 
 	@Test
+	void removingAnOldGaugeKeepsItsReplacement() {
+		java.util.function.LongSupplier same = () -> 7;
+		Metrics.Registration old = metrics.gauge("mejtacore", "g", same);
+		metrics.gauge("mejtacore", "g", same);
+		old.remove();
+		assertEquals(7, find("mejtacore:g").count());
+		metrics.timer("my-addon", "x");
+		metrics.timer("a", "x");
+	}
+
+	@Test
 	void namesAreValidatedAndKindsCannotClash() {
 		metrics.timer("mejtaac", "x");
 		assertThrows(IllegalArgumentException.class, () -> metrics.counter("mejtaac", "x"));

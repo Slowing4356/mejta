@@ -142,9 +142,9 @@ public final class MejtaCommands {
 	}
 
 	private static int reloadConfig(CommandContext<FabricClientCommandSource> ctx) {
-		int before = Diagnostics.entries().size();
+		long before = Diagnostics.total();
 		int count = MejtaCore.configs().reloadAll();
-		int newProblems = Diagnostics.entries().size() - before;
+		long newProblems = Diagnostics.total() - before;
 		ctx.getSource().sendFeedback(Component.literal("[MejtaCore] ").withStyle(ChatFormatting.GOLD)
 				.append(Component.literal("Reloaded " + count + " configuration file(s).").withStyle(ChatFormatting.GREEN)));
 		if (newProblems > 0) {

@@ -241,6 +241,11 @@ public final class JsonDataStore implements DataStore {
 		Throwable failure = null;
 		try {
 			synchronized (lock(key)) {
+				synchronized (this) {
+					if (pending.get(key) != p) {
+						return; // a writeNow replaced it while we waited for the file: never write the older value over it
+					}
+				}
 				if (p.value == null) {
 					deleteFiles(fileFor(key));
 				} else {
@@ -288,6 +293,12 @@ public final class JsonDataStore implements DataStore {
 			Optional<JsonObject> backup = parse(backup(file, i));
 			if (backup.isPresent()) {
 				Diagnostics.warn(owner, "Using backup " + i + " of data '" + key + "'");
+				try {
+					// Put it back in place, so later reads (and keys()) find the data again.
+					SafeFiles.writeAtomically(file, GSON.toJson(backup.get()) + System.lineSeparator());
+				} catch (IOException e) {
+					Diagnostics.error(owner, "Could not restore data '" + key + "' from its backup", e);
+				}
 				return backup;
 			}
 		}

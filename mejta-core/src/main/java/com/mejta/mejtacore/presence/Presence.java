@@ -61,7 +61,8 @@ public final class Presence implements PresenceService {
 					return true;
 				}
 			} catch (RuntimeException e) {
-				Diagnostics.error(entry.getKey(), "Visibility provider failed", e);
+				failed(entry.getKey(), e);
+				return true; // fail closed: a broken vanish addon must not reveal hidden staff
 			}
 		}
 		return false;
@@ -79,10 +80,23 @@ public final class Presence implements PresenceService {
 					return false;
 				}
 			} catch (RuntimeException e) {
-				Diagnostics.error(entry.getKey(), "Visibility provider failed", e);
+				failed(entry.getKey(), e);
+				return false; // fail closed
 			}
 		}
 		return true;
+	}
+
+	private final Map<String, Long> lastFailureLog = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** Logs a provider failure at most once a minute per provider: these calls happen for every player and packet. */
+	private void failed(String provider, RuntimeException e) {
+		long now = System.currentTimeMillis();
+		Long last = lastFailureLog.get(provider);
+		if (last == null || now - last >= 60_000) {
+			lastFailureLog.put(provider, now);
+			Diagnostics.error(provider, "Visibility provider failed; players it is asked about are treated as hidden", e);
+		}
 	}
 
 	@Override

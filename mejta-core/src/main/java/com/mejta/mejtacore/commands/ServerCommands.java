@@ -318,9 +318,9 @@ public final class ServerCommands {
 	}
 
 	private static int reload(CommandContext<CommandSourceStack> ctx) {
-		int problemsBefore = Diagnostics.entries().size();
+		long problemsBefore = Diagnostics.total();
 		int count = MejtaCore.configs().reloadAll();
-		int newProblems = Diagnostics.entries().size() - problemsBefore;
+		long newProblems = Diagnostics.total() - problemsBefore;
 		ctx.getSource().sendSuccess(() -> Component.literal("Reloaded " + count + " configuration file(s)."), true);
 		if (newProblems > 0) {
 			ctx.getSource().sendFailure(Component.literal(newProblems

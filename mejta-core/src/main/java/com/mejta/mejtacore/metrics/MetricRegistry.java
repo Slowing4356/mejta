@@ -18,7 +18,8 @@ import com.mejta.mejtacore.api.metrics.Metrics;
 /** The {@link Metrics} implementation: lock-free instruments in one concurrent map. */
 public final class MetricRegistry implements Metrics {
 	private static final MetricRegistry INSTANCE = new MetricRegistry(System::nanoTime);
-	private static final Pattern ADDON_ID = Pattern.compile("[a-z][a-z0-9_]{1,63}");
+	/** Same rule as addon IDs ({@code AddonDefinition.ID_PATTERN}). */
+	private static final Pattern ADDON_ID = Pattern.compile("[a-z][a-z0-9_-]{0,63}");
 	private static final Pattern NAME = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
 	/** Length of one peak window; {@code maxNanos} covers the current and the previous window. */
 	static final long WINDOW_NANOS = 30_000_000_000L;
@@ -63,7 +64,8 @@ public final class MetricRegistry implements Metrics {
 			}
 			return gauge;
 		});
-		return () -> instruments.remove(key, gauge);
+		// Identity, not equals: a re-registered gauge with the same supplier is a different registration.
+		return () -> instruments.computeIfPresent(key, (k, current) -> current == gauge ? null : current);
 	}
 
 	private Instrument instrument(String addonId, String name, Kind kind) {
@@ -161,7 +163,8 @@ public final class MetricRegistry implements Metrics {
 		private void roll(long now) {
 			long w = Math.floorDiv(now, WINDOW_NANOS);
 			long seen = window.get();
-			if (w != seen && window.compareAndSet(seen, w)) {
+			// Forward only: a thread holding an older clock reading must not move the window back and wipe the peak.
+			if (w > seen && window.compareAndSet(seen, w)) {
 				// Approximate under contention: a value recorded during the swap may land in either window.
 				previousPeak = w == seen + 1 ? peak.getAndSet(0) : 0;
 				if (w != seen + 1) {

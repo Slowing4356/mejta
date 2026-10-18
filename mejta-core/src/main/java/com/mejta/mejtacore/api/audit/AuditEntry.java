@@ -28,6 +28,8 @@ import java.util.regex.Pattern;
  */
 public final class AuditEntry {
 	/** Actions: lowercase, e.g. {@code invsee.edit}, {@code staffmode.enter}. */
+	/** The recording addon's ID (the rule of {@code AddonDefinition.ID_PATTERN}). */
+	private static final Pattern SOURCE_PATTERN = Pattern.compile("[a-z][a-z0-9_-]{0,63}");
 	public static final Pattern ACTION_PATTERN = Pattern.compile("[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)*");
 	private static final int MAX_DETAILS = 32;
 	private static final int MAX_TEXT = 500;
@@ -110,6 +112,9 @@ public final class AuditEntry {
 
 		private Builder(String source, String action) {
 			this.source = Objects.requireNonNull(source, "source");
+			if (!SOURCE_PATTERN.matcher(source).matches()) {
+				throw new IllegalArgumentException("Invalid audit source '" + source + "': must be an addon ID");
+			}
 			Objects.requireNonNull(action, "action");
 			if (action.length() > 64 || !ACTION_PATTERN.matcher(action).matches()) {
 				throw new IllegalArgumentException("Invalid audit action '" + action + "'");

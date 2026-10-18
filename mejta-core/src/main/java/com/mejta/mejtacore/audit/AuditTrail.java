@@ -49,15 +49,34 @@ public final class AuditTrail implements AuditService {
 	}
 
 	private void write(AuditEntry entry, MejtaPermission audience) {
-		chain().append(entry);
+		// The line is linked and written on the I/O thread, so the chain always matches the file, a line that
+		// could not be stored never becomes a link, and the caller never waits for disk.
+		AuditChain c = chain();
+		RecordLogs.appendBuilt(log(), reader -> {
+			c.loadHead(() -> {
+				List<JsonObject> newest = reader.recent(1, r -> r.has("hash"));
+				return newest.isEmpty() ? null : newest.getFirst().get("hash").getAsString();
+			});
+			return c.prepare(entry);
+		}, (line, stored) -> {
+			if (stored) {
+				c.commit(line);
+			}
+		});
 		MejtaLog.CORE.info("[audit] {} {} {}{}: {}", entry.source(), entry.actor().name(), entry.action(),
 				entry.targetName().isEmpty() ? "" : " " + entry.targetName(), entry.outcome());
 
-		Notification.Builder n = Notification.builder(entry.source(), entry.source() + ".audit")
+		// Each addon's entries go out on <addon>.audit; IDs too long for a channel name share mejtacore.audit.
+		String channel = entry.source() + ".audit";
+		if (channel.length() > 64 || !Notification.CHANNEL_PATTERN.matcher(channel).matches()) {
+			channel = MejtaCore.MOD_ID + ".audit";
+		}
+		Notification.Builder n = Notification.builder(entry.source(), channel)
 				.severity(entry.outcome() == AuditOutcome.SUCCESS ? Severity.INFO : Severity.WARNING)
 				.title(entry.actor().name() + " " + entry.action() + (entry.targetName().isEmpty() ? "" : " " + entry.targetName()))
 				.message(entry.outcome().name())
 				.timestamp(entry.timestamp())
+				.field("source", entry.source())
 				.field("actor", entry.actor().name())
 				.field("action", entry.action())
 				.field("target", entry.targetName())
@@ -77,12 +96,9 @@ public final class AuditTrail implements AuditService {
 		if (current == null) {
 			synchronized (this) {
 				if (chain == null) {
-					RecordLog log = log();
-					chain = new AuditChain(() -> {
-						// Once, on the first audit entry: continue the chain from the newest line on disk.
-						List<JsonObject> newest = log.readRecent(1, r -> r.has("hash")).join();
-						return newest == null || newest.isEmpty() ? null : newest.getFirst().get("hash").getAsString();
-					}, log::append);
+					chain = new AuditChain(() -> null, line -> {
+						throw new IllegalStateException("audit lines are written through RecordLogs.appendBuilt");
+					});
 				}
 				current = chain;
 			}
