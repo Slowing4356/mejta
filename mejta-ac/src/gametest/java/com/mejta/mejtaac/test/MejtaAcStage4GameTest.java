@@ -49,8 +49,10 @@ import com.mejta.mejtaac.check.interaction.BlockReachCheck;
 import com.mejta.mejtaac.check.interaction.FastBreakCheck;
 import com.mejta.mejtaac.check.movement.FlyCheck;
 import com.mejta.mejtaac.check.movement.GroundSpoofCheck;
+import com.mejta.mejtaac.check.movement.JumpCheck;
 import com.mejta.mejtaac.check.movement.SpeedCheck;
 import com.mejta.mejtaac.check.movement.TimerCheck;
+import com.mejta.mejtaac.check.vehicle.BoatFlyCheck;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 
@@ -408,7 +410,7 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		boolean mined = mineDirt(ctx, server, arena);
 		List<FlagEvent> legit = flagsSince(legitStart);
 		for (String checkId : List.of(TimerCheck.ID, GroundSpoofCheck.ID, FlyCheck.ID, SpeedCheck.ID, ReachCheck.ID, HitboxCheck.ID,
-				MultiTargetCheck.ID, BlockReachCheck.ID, FastBreakCheck.ID)) {
+				MultiTargetCheck.ID, BlockReachCheck.ID, FastBreakCheck.ID, JumpCheck.ID, BoatFlyCheck.ID)) {
 			long count = legit.stream().filter(f -> f.check().equals(checkId)).count();
 			check(p.name() + ": legitimate play, no " + checkId + " flags (" + count + ")", count == 0);
 		}

@@ -177,10 +177,11 @@ None exists yet. Each will be a subfolder of the monorepo with its own Gradle pr
 ## 7. Order
 
 1. ~~**M1:** inspect, back up, set up git, rename, plan.~~ Done. Then: ~~merge into the monorepo~~; push to private GitHub.
-2. **M2: close the field-test gaps in MejtaAC.**
-   - **JUnit 6** unit tests for the pure check logic.
-   - `movement.jump` and `vehicle.boat_fly`, with the false-positive tests from section 2, under every latency profile including jitter plus freeze.
-   - Release MejtaAC 0.5.0.
+2. **M2: close the field-test gaps in MejtaAC.** Done locally in MejtaAC 0.5.0:
+   - **JUnit 6.1.3** unit tests for every check's pure logic: 48 tests.
+   - `movement.jump` and `vehicle.boat_fly`, with the false-positive scenarios from section 2. Stage 5 suite under all five latency profiles: **zero legitimate-play flags**, and every cheat detected.
+   - Teleports and respawns (ender pearls, `/tp`) now reset movement prediction like knockback does. Movement is also not predicted for 10 ticks after leaving a vehicle.
+   - **Open:** a single MEDIUM boat flag on a slime bounce in one early run, not reproduced since. A legitimate field session with boats is needed.
 3. **M3: MejtaCore 1.3.0 (API 4).**
    - Events, a bounded async executor, JSON persistence, a scheduler, metrics, and `secret` and `experimental` settings.
    - Permission bridge and notification upgrades.

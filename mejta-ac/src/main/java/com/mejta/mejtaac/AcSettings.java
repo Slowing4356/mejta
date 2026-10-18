@@ -139,6 +139,18 @@ public final class AcSettings {
 	public static final Setting<Double> FAST_BREAK_KICK_VL = Setting.decimal("checks.interaction.fast_break.kick_vl", 5.0, 1.0, 10_000.0)
 			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
 
+	// ---------------------------------------------------------------- check: movement.jump
+	public static final Setting<Boolean> JUMP_ENABLED = Setting.bool("checks.movement.jump.enabled", true)
+			.describedAs("[Experimental] Flag jumps higher than jump strength and Jump Boost allow (high jump)");
+	public static final Setting<Double> JUMP_KICK_VL = Setting.decimal("checks.movement.jump.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+
+	// ---------------------------------------------------------------- check: vehicle.boat_fly
+	public static final Setting<Boolean> BOAT_FLY_ENABLED = Setting.bool("checks.vehicle.boat_fly.enabled", true)
+			.describedAs("[Experimental] Flag boats that hover, rise or fall slower than gravity allows (boat fly)");
+	public static final Setting<Double> BOAT_FLY_KICK_VL = Setting.decimal("checks.vehicle.boat_fly.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, LOG_LEVEL,
 					DECAY_PER_MINUTE,
@@ -155,7 +167,9 @@ public final class AcSettings {
 					HITBOX_ENABLED, HITBOX_KICK_VL,
 					BLOCK_REACH_ENABLED, BLOCK_REACH_KICK_VL, BLOCK_REACH_TOLERANCE,
 					SPEED_ENABLED, SPEED_KICK_VL,
-					FAST_BREAK_ENABLED, FAST_BREAK_KICK_VL)
+					FAST_BREAK_ENABLED, FAST_BREAK_KICK_VL,
+					JUMP_ENABLED, JUMP_KICK_VL,
+					BOAT_FLY_ENABLED, BOAT_FLY_KICK_VL)
 			.build();
 
 	private AcSettings() {

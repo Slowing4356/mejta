@@ -43,7 +43,11 @@ public record AcConfig(
 		boolean speedEnabled,
 		double speedKickVl,
 		boolean fastBreakEnabled,
-		double fastBreakKickVl) {
+		double fastBreakKickVl,
+		boolean jumpEnabled,
+		double jumpKickVl,
+		boolean boatFlyEnabled,
+		double boatFlyKickVl) {
 
 	public static AcConfig from(ConfigHandle c) {
 		return new AcConfig(
@@ -80,12 +84,17 @@ public record AcConfig(
 				c.get(AcSettings.SPEED_ENABLED),
 				c.get(AcSettings.SPEED_KICK_VL),
 				c.get(AcSettings.FAST_BREAK_ENABLED),
-				c.get(AcSettings.FAST_BREAK_KICK_VL));
+				c.get(AcSettings.FAST_BREAK_KICK_VL),
+				c.get(AcSettings.JUMP_ENABLED),
+				c.get(AcSettings.JUMP_KICK_VL),
+				c.get(AcSettings.BOAT_FLY_ENABLED),
+				c.get(AcSettings.BOAT_FLY_KICK_VL));
 	}
 
 	/** Whether any check needs per-tick client sync (pings and entity history). */
 	public boolean needsSync() {
-		return enabled && (reachEnabled || groundSpoofEnabled || hitboxEnabled || flyEnabled || speedEnabled);
+		return enabled && (reachEnabled || groundSpoofEnabled || hitboxEnabled || flyEnabled || speedEnabled || jumpEnabled
+				|| boatFlyEnabled);
 	}
 
 	public boolean logs(LogLevel level) {

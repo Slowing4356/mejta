@@ -41,3 +41,6 @@ mejta-data/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# runtime logs written next to projects by dev runs
+logs/

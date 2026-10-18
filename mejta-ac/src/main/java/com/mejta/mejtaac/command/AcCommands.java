@@ -80,6 +80,8 @@ public final class AcCommands {
 				+ ", tolerance " + cfg.blockReachTolerance() + ")");
 		line(source, "Check movement.speed", cfg.speedEnabled() + " (kick VL " + cfg.speedKickVl() + ")");
 		line(source, "Check interaction.fast_break", cfg.fastBreakEnabled() + " (kick VL " + cfg.fastBreakKickVl() + ")");
+		line(source, "Check movement.jump", cfg.jumpEnabled() + " (kick VL " + cfg.jumpKickVl() + ")");
+		line(source, "Check vehicle.boat_fly", cfg.boatFlyEnabled() + " (kick VL " + cfg.boatFlyKickVl() + ")");
 		line(source, "Players with violations", String.valueOf(ac.violations().trackedPlayers()));
 		return 1;
 	}

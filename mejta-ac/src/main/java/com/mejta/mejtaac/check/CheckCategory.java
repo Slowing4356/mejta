@@ -4,5 +4,6 @@ public enum CheckCategory {
 	PROTOCOL,
 	MOVEMENT,
 	COMBAT,
-	INTERACTION
+	INTERACTION,
+	VEHICLE
 }

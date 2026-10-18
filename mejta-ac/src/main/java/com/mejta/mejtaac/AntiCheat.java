@@ -30,7 +30,10 @@ import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.AttackRange;
+import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SlimeBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -45,10 +48,12 @@ import com.mejta.mejtaac.check.interaction.BlockReachCheck;
 import com.mejta.mejtaac.check.interaction.FastBreakCheck;
 import com.mejta.mejtaac.check.movement.FlyCheck;
 import com.mejta.mejtaac.check.movement.GroundSpoofCheck;
+import com.mejta.mejtaac.check.movement.JumpCheck;
 import com.mejta.mejtaac.check.movement.SpeedCheck;
 import com.mejta.mejtaac.check.movement.TimerCheck;
 import com.mejta.mejtaac.check.protocol.InvalidMoveCheck;
 import com.mejta.mejtaac.check.protocol.MoveData;
+import com.mejta.mejtaac.check.vehicle.BoatFlyCheck;
 import com.mejta.mejtaac.enforce.EnforcementPolicy;
 import com.mejta.mejtaac.enforce.EnforcementPolicy.Action;
 import com.mejta.mejtaac.mixin.ServerGamePacketListenerImplAccessor;
@@ -68,8 +73,20 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
 public final class AntiCheat {
 	/** At most one violation record and one log line per player and check per second. */
 	private static final long RECORD_INTERVAL_MS = 1_000;
+	/** Client ticks after leaving a vehicle in which movement is not predicted (dismount placement). */
+	private static final int PASSENGER_GRACE_TICKS = 10;
+	/** Client ticks after mounting a boat before its movement is predicted. */
+	private static final int MOUNT_GRACE_TICKS = 3;
+	/** How long a lost jump boost is still allowed, on top of twice the recent round trip. */
+	private static final long JUMP_POWER_GRACE_MS = 2_000;
 
 	private static volatile AntiCheat instance;
+
+	/**
+	 * Development diagnostics, off in production: logs every judged boat tick and every take-off with
+	 * the reason it was or was not trusted. Set by tests investigating false positives.
+	 */
+	public static volatile boolean traceMovement;
 
 	private final Logger log;
 	private final ViolationTracker violations = new ViolationTracker();
@@ -161,6 +178,26 @@ public final class AntiCheat {
 		double breakProgress;
 		volatile boolean singleplayerOwner;
 		volatile float msPerTick;
+		/** Client ticks since the player last rode a vehicle (large when never). */
+		int ticksSincePassenger = Integer.MAX_VALUE / 2;
+		final JumpCheck.State jump = new JumpCheck.State();
+		/** Ground (server-side or claimed) at the end of the last client tick. */
+		boolean jumpGroundBefore = true;
+		/** Whether the player stood on a slime block or bed at the end of the last grounded tick. */
+		boolean bouncyBelow;
+		/** Vertical movement of the last four client ticks, for slime and bed bounces. */
+		final double[] recentDy = new double[4];
+		/** Highest jump power of the recent past (see JumpCheck) and until when it is kept. */
+		double jumpPowerMax;
+		long jumpPowerMaxUntilNanos;
+		final BoatFlyCheck.State boatFly = new BoatFlyCheck.State();
+		int vehicleId = -1;
+		int vehicleTicks;
+		double lastVehicleY = Double.NaN;
+		/** Server tick of the newest correction of the player's vehicle (rejected move, teleport, push). */
+		volatile int vehicleImpulseTick = Integer.MIN_VALUE;
+		volatile long vehicleImpulseNanos;
+		volatile boolean vehicleImpulsePending;
 	}
 
 	/** An attack waiting for its client tick to end, so the rotation the client used is known. */
@@ -279,10 +316,20 @@ public final class AntiCheat {
 			return true;
 		}
 		boolean impulse = impulseUntrusted(player, d);
-		if (cfg.flyEnabled() && evaluateFly(player, d, cfg, impulse)) {
+		d.ticksSincePassenger = player.isPassenger() ? 0 : Math.min(d.ticksSincePassenger + 1, Integer.MAX_VALUE / 2);
+		double y = player.getY();
+		double dy = Double.isNaN(d.lastTickY) ? 0 : y - d.lastTickY;
+		d.lastTickY = y;
+		if (cfg.jumpEnabled() && evaluateJump(player, d, cfg, impulse, dy)) {
 			return true;
 		}
-		return cfg.speedEnabled() && evaluateSpeed(player, d, cfg, impulse);
+		if (cfg.flyEnabled() && evaluateFly(player, d, cfg, impulse, dy)) {
+			return true;
+		}
+		if (cfg.speedEnabled() && evaluateSpeed(player, d, cfg, impulse)) {
+			return true;
+		}
+		return cfg.boatFlyEnabled() && evaluateBoatFly(player, d, cfg);
 	}
 
 	/**
@@ -405,6 +452,30 @@ public final class AntiCheat {
 		}
 	}
 
+	/** Any thread: the server corrected the player's vehicle (rejected move, teleport, push, explosion). */
+	public void onVehicleImpulseSent(ServerPlayer player) {
+		PlayerData d = players.get(player.getUUID());
+		if (d != null) {
+			d.vehicleImpulseTick = player.level().getServer().getTickCount();
+			d.vehicleImpulseNanos = System.nanoTime();
+			d.vehicleImpulsePending = true;
+		}
+	}
+
+	/** Like {@link #impulseUntrusted}, for corrections of the player's vehicle. */
+	private boolean vehicleImpulseUntrusted(ServerPlayer player, PlayerData d) {
+		if (!d.vehicleImpulsePending) {
+			return false;
+		}
+		OptionalInt ack = sync.lastAckTick(player.getUUID());
+		boolean applied = ack.isPresent() ? ack.getAsInt() >= d.vehicleImpulseTick
+				: System.nanoTime() - d.vehicleImpulseNanos > 2_000_000_000L;
+		if (applied) {
+			d.vehicleImpulsePending = false;
+		}
+		return true;
+	}
+
 	/**
 	 * Whether a velocity change from the server (knockback, explosion...) is still in flight or was
 	 * just applied by the client; movement predictions must restart after it.
@@ -421,11 +492,8 @@ public final class AntiCheat {
 		return true; // this tick is the first one with the new velocity (or still before it)
 	}
 
-	private boolean evaluateFly(ServerPlayer player, PlayerData d, AcConfig cfg, boolean impulse) {
-		double y = player.getY();
-		double dy = Double.isNaN(d.lastTickY) ? 0 : y - d.lastTickY;
-		d.lastTickY = y;
-		boolean untrusted = impulse || flyUntrusted(player, d, dy);
+	private boolean evaluateFly(ServerPlayer player, PlayerData d, AcConfig cfg, boolean impulse, double dy) {
+		boolean untrusted = impulse || d.ticksSincePassenger < PASSENGER_GRACE_TICKS || flyUntrusted(player, d, dy);
 		Optional<Flag> flag = FlyCheck.onClientTick(d.fly, dy, player.getGravity(), untrusted);
 		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.flyKickVl());
 	}
@@ -473,9 +541,151 @@ public final class AntiCheat {
 		d.groundOneAgo = groundNow;
 		d.frictionTwoAgo = d.frictionOneAgo;
 		d.frictionOneAgo = friction[1];
-		boolean untrusted = impulse || groundExempt(player);
+		boolean untrusted = impulse || d.ticksSincePassenger < PASSENGER_GRACE_TICKS || groundExempt(player);
 		Optional<Flag> flag = SpeedCheck.onClientTick(d.speed, moved, decay, accel, tookOff, untrusted);
 		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.speedKickVl());
+	}
+
+	/**
+	 * Judges take-offs: the first airborne tick after ground. See {@link JumpCheck} for what is
+	 * allowed and what is not judged.
+	 */
+	private boolean evaluateJump(ServerPlayer player, PlayerData d, AcConfig cfg, boolean impulse, double dy) {
+		boolean groundNow = touchesGround(player);
+		boolean groundBefore = d.jumpGroundBefore;
+		double fall = 0;
+		for (double previous : d.recentDy) {
+			fall = Math.max(fall, -previous);
+		}
+		double bounce = d.bouncyBelow ? fall : 0;
+		double power = jumpPowerAllowance(player, d);
+
+		d.recentDy[(int) (d.clientTicks & 3)] = dy;
+		d.jumpGroundBefore = groundNow || d.claimedOnGround;
+		if (groundNow) {
+			d.bouncyBelow = bouncyUnder(player);
+		}
+		if (!groundBefore || groundNow || d.claimedOnGround || dy <= 0 || impulse || jumpUntrusted(player, d)) {
+			return false;
+		}
+		Optional<Flag> flag = JumpCheck.onTakeOff(d.jump, dy, power, bounce, d.clientTicks);
+		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.jumpKickVl());
+	}
+
+	/**
+	 * Jump strength plus Jump Boost, kept at its highest value for a while after it drops: the client
+	 * still has an effect for a round trip after the server removed it.
+	 */
+	private double jumpPowerAllowance(ServerPlayer player, PlayerData d) {
+		double current = player.getAttributeValue(Attributes.JUMP_STRENGTH) + player.getJumpBoostPower();
+		long now = System.nanoTime();
+		if (current >= d.jumpPowerMax || now > d.jumpPowerMaxUntilNanos) {
+			int rtt = sync.recentMaxRttMs(player.getUUID());
+			long keepMs = JUMP_POWER_GRACE_MS + 2L * (rtt < 0 ? 1_000 : rtt);
+			d.jumpPowerMax = current;
+			d.jumpPowerMaxUntilNanos = now + keepMs * 1_000_000L;
+		}
+		return d.jumpPowerMax;
+	}
+
+	/** Situations in which a take-off may legitimately be higher than a jump; never judged. */
+	private boolean jumpUntrusted(ServerPlayer player, PlayerData d) {
+		if (d.ticksSincePassenger < PASSENGER_GRACE_TICKS || groundExempt(player)
+				|| player.getAbilities().mayfly && player.getAbilities().flying || player.isInPowderSnow
+				|| touchesSlowingBlock(player)) {
+			return true;
+		}
+		AABB around = player.getBoundingBox().inflate(1.5);
+		return nearPiston(player, around)
+				|| !player.level().getEntities(player, player.getBoundingBox().inflate(1.0), e -> e.canBeCollidedWith(player)).isEmpty();
+	}
+
+	private static boolean touchesGround(Entity entity) {
+		return !entity.level().noCollision(entity, entity.getBoundingBox().expandTowards(0, -0.05, 0));
+	}
+
+	/** Slime blocks and beds bounce players that land on them. */
+	private static boolean bouncyUnder(ServerPlayer player) {
+		AABB box = player.getBoundingBox();
+		double y = box.minY - 0.2;
+		for (double[] corner : new double[][] {{box.minX, box.minZ}, {box.minX, box.maxZ}, {box.maxX, box.minZ}, {box.maxX, box.maxZ}}) {
+			BlockState state = player.level().getBlockState(BlockPos.containing(corner[0], y, corner[1]));
+			if (state.getBlock() instanceof SlimeBlock || state.getBlock() instanceof BedBlock) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Moving pistons push entities, including upwards. */
+	private static boolean nearPiston(Entity entity, AABB box) {
+		for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(box.minX, box.minY, box.minZ),
+				BlockPos.containing(box.maxX, box.maxY, box.maxZ))) {
+			BlockState state = entity.level().getBlockState(pos);
+			if (state.is(Blocks.MOVING_PISTON) || state.is(Blocks.PISTON_HEAD)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Judges the vertical movement of a boat or raft the player steers. See {@link BoatFlyCheck}. */
+	private boolean evaluateBoatFly(ServerPlayer player, PlayerData d, AcConfig cfg) {
+		if (!(player.getVehicle() instanceof AbstractBoat boat) || boat.getControllingPassenger() != player) {
+			if (d.vehicleId != -1) {
+				d.vehicleId = -1;
+				d.lastVehicleY = Double.NaN;
+				d.boatFly.reset();
+			}
+			return false;
+		}
+		if (boat.getId() != d.vehicleId) {
+			d.vehicleId = boat.getId();
+			d.vehicleTicks = 0;
+			d.lastVehicleY = Double.NaN;
+		}
+		d.vehicleTicks++;
+		double y = boat.getY();
+		double dy = Double.isNaN(d.lastVehicleY) ? 0 : y - d.lastVehicleY;
+		d.lastVehicleY = y;
+		String reset = vehicleImpulseUntrusted(player, d) ? "correction"
+				: d.vehicleTicks <= MOUNT_GRACE_TICKS ? "mounting" : boatUntrusted(player, boat, d, dy);
+		if (traceMovement) {
+			log.info("[trace] boat t={} y={} dy={} expected={} reset={}", d.clientTicks, y, dy,
+					BoatFlyCheck.expectedDy(d.boatFly, boat.getGravity()), reset);
+		}
+		Optional<Flag> flag = BoatFlyCheck.onClientTick(d.boatFly, dy, boat.getGravity(), reset != null);
+		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.boatFlyKickVl());
+	}
+
+	/** Why this tick's vertical boat movement cannot be predicted from the previous one, or null if it can. */
+	private String boatUntrusted(ServerPlayer player, AbstractBoat boat, PlayerData d, double dy) {
+		if (player.isChangingDimension() || boat.isLeashed()
+				|| ((ServerGamePacketListenerImplAccessor) player.connection).mejtaac$awaitingPositionFromClient() != null) {
+			return "teleport_or_leash";
+		}
+		AABB box = boat.getBoundingBox();
+		// Water, lava and bubble columns in or just below the boat: buoyancy, surface snapping, launches.
+		if (boat.level().containsAnyLiquid(box.inflate(0.1).expandTowards(0, -1.0, 0))) {
+			return "liquid";
+		}
+		// Ground, or a collision on the predicted path (landing, slime bounces): not predictable.
+		if (touchesGround(boat)) {
+			return "ground";
+		}
+		OptionalDouble expected = BoatFlyCheck.expectedDy(d.boatFly, boat.getGravity());
+		if (expected.isPresent() && expected.getAsDouble() < 0) {
+			AABB before = box.move(0, -dy, 0);
+			if (!boat.level().noCollision(boat, before.expandTowards(0, expected.getAsDouble() - 0.05, 0))) {
+				return "landing";
+			}
+		}
+		if (touchesSlowingBlock(boat) || nearPiston(boat, box.inflate(1.5))) {
+			return "block";
+		}
+		boolean entities = !boat.level().getEntities(boat, box.inflate(0.5),
+				e -> !boat.hasPassenger(e) && e.canBeCollidedWith(boat)).isEmpty();
+		return entities ? "entity" : null;
 	}
 
 	/** {min, max} friction of the blocks under the player's feet (0.6 for most, ice up to 0.989). */
@@ -550,11 +760,11 @@ public final class AntiCheat {
 	}
 
 	/** Cobwebs, berry bushes, honey, scaffolding and bubble columns change vertical movement. */
-	private static boolean touchesSlowingBlock(ServerPlayer player) {
-		AABB box = player.getBoundingBox().inflate(0.1);
+	private static boolean touchesSlowingBlock(Entity entity) {
+		AABB box = entity.getBoundingBox().inflate(0.1);
 		for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(box.minX, box.minY, box.minZ),
 				BlockPos.containing(box.maxX, box.maxY, box.maxZ))) {
-			BlockState state = player.level().getBlockState(pos);
+			BlockState state = entity.level().getBlockState(pos);
 			if (state.is(Blocks.COBWEB) || state.is(Blocks.SWEET_BERRY_BUSH) || state.is(Blocks.HONEY_BLOCK)
 					|| state.is(Blocks.SCAFFOLDING) || state.is(Blocks.BUBBLE_COLUMN) || state.is(Blocks.POWDER_SNOW)) {
 				return true;
@@ -666,6 +876,14 @@ public final class AntiCheat {
 		clearIfDisabled(previous.blockReachEnabled(), updated.blockReachEnabled(), BlockReachCheck.ID);
 		clearIfDisabled(previous.speedEnabled(), updated.speedEnabled(), SpeedCheck.ID);
 		clearIfDisabled(previous.fastBreakEnabled(), updated.fastBreakEnabled(), FastBreakCheck.ID);
+		clearIfDisabled(previous.jumpEnabled(), updated.jumpEnabled(), JumpCheck.ID);
+		clearIfDisabled(previous.boatFlyEnabled(), updated.boatFlyEnabled(), BoatFlyCheck.ID);
+		if (!updated.boatFlyEnabled() || !updated.enabled()) {
+			players.values().forEach(d -> {
+				d.boatFly.reset();
+				d.lastVehicleY = Double.NaN;
+			});
+		}
 		if (!updated.timerEnabled() || !updated.enabled()) {
 			players.values().forEach(d -> d.timer.reset());
 		}

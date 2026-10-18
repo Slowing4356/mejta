@@ -4,14 +4,14 @@ MejtaAC (mod ID `mejtaac`) is a server-side anti-cheat addon for **MejtaCore**. 
 
 | | |
 |---|---|
-| Version | 0.4.0 (10 checks: protocol, timer, ground spoof, fly, speed, reach, hitbox, multi-target, block reach, fast break) |
+| Version | 0.5.0 (12 checks: protocol, timer, ground spoof, fly, jump, speed, reach, hitbox, multi-target, block reach, fast break, boat fly) |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | **MejtaCore 1.1.0 or newer, below 2.0.0** (API version 2). MejtaCore 1.2.0+ adds in-game editing of MejtaAC's settings |
 | Third-party libraries | None |
 
 ## Installing
 
-Put `mejtacore-1.2.0.jar`, `mejtaac-0.4.0.jar` and Fabric API in the **server's** `mods/` folder. In single-player, MejtaAC runs on the integrated server, so install everything on the client.
+Put `mejtacore-1.2.0.jar`, `mejtaac-0.5.0.jar` and Fabric API in the **server's** `mods/` folder. In single-player, MejtaAC runs on the integrated server, so install everything on the client.
 
 | | Dedicated server | Player's client |
 |---|---|---|
@@ -124,10 +124,45 @@ This check flags vertical movement in the air that ignores gravity: hovering, fl
   - water, lava, climbing, cobwebs, berry bushes, honey, scaffolding, bubble columns, powder snow;
   - slow falling or levitation, elytra, riptide, vehicles, creative flight, unconfirmed teleports.
 - **Server velocity (knockback, explosions, wind charges):** while the server's change is in flight, the check is reset until the client confirms (tick sync) that it has applied it.
-- **Jumps and bounces:** the first airborne tick after a reset only establishes the starting velocity, so jumps and slime bounces never flag.
+- **Jumps and bounces:** the first airborne tick after a reset only establishes the starting velocity, so jumps and slime bounces never flag. A too-high take-off is `movement.jump`'s job.
+- **Leaving a vehicle:** the first 10 ticks after dismounting aren't predicted, because vanilla places the player next to the vehicle.
 - **Unloaded chunks:** a client whose chunk below isn't loaded falls at a constant 0.098 per tick by design; that exact pattern isn't counted.
 - **Latency:** only the sequence of client positions is used, and latency doesn't change it.
 - **Flags:** MEDIUM after the excess builds up (about 7 ticks of hovering); HIGH after 20 consecutive violating ticks. At most one flag every 10 ticks.
+
+### `movement.jump` (experimental, since 0.5.0)
+
+This check flags jumps higher than vanilla allows ("high jump"). `movement.fly` can't see these: after a too-high take-off, the rest of the jump follows normal gravity, so only the take-off itself is wrong.
+
+- **How:** vanilla's `jumpFromGround` sets the vertical velocity to `max(jumpPower, current)`, where `jumpPower = JUMP_STRENGTH × block jump factor + Jump Boost`, and the client moves by exactly that in the same tick. So the first airborne tick after standing on the ground can rise at most `jumpPower` (0.42 normally, 0.62 with Jump Boost II). Honey's jump factor and ceilings only lower it.
+- **Allowances:**
+  - **Effects:** the jump power used is the highest of the last 2 s plus twice the round trip. An effect the server just removed, but the client hasn't heard about yet, is still allowed. This also covers lag and fake lag.
+  - **Bounces:** slime blocks and beds may launch a player up to the speed at which they landed.
+  - **Step-ups** (stairs, slabs, blocks) never reach the check, because the player stands on the block afterwards.
+- **Not judged:**
+  - knockback, explosions, teleports (ender pearls, `/tp`) and respawns until the client has applied them;
+  - vehicles and the first 10 ticks after leaving one;
+  - liquids, climbing, levitation, flight, elytra, riptide;
+  - cobwebs, honey, scaffolding, bubble columns, powder snow;
+  - pistons and collidable entities (boats, shulkers, minecarts) next to the player.
+- **Flags:** a single too-high jump is MEDIUM (one take-off is one sample). It becomes HIGH when the excess is over 0.1 blocks/tick on the third jump within 30 s.
+
+### `vehicle.boat_fly` (experimental, since 0.5.0)
+
+This check flags boats and rafts that hover, rise, or fall slower than gravity allows ("boat fly"). The player steering a boat simulates it on their own client, and the server accepts the positions it reports. Without this check a boat can fly freely.
+
+- **How:** in the air (`AbstractBoat.floatBoat`, status `IN_AIR`), vanilla subtracts the boat's gravity (0.04) from its vertical speed every tick, **without drag**, and then moves the boat. So each airborne tick follows from the one before: `dy = previous dy − 0.04`. Only moving *up* relative to that counts.
+- **When the prediction is reset** (no flag possible):
+  - water, lava or bubble columns in or up to one block below the boat (buoyancy, snapping to the water surface, bubble launches);
+  - ground or a collision on the predicted path (landing, slime bounces, sliding off a ledge);
+  - cobwebs and similar blocks, pistons, other collidable entities touching the boat, a leash (a happy ghast can lift boats);
+  - the first 3 ticks after mounting;
+  - **server corrections of the boat** (vanilla's "moved wrongly" rejections, teleports, pushes, explosions) until the client has applied them (tick sync);
+  - dimension changes.
+- The first airborne tick after a reset only establishes the velocity, so falling off a ledge or being thrown up by a bubble column never flags.
+- **Latency:** only the sequence of boat positions is used. Lag spikes and fake lag don't change it.
+- **Flags:** MEDIUM after the excess builds up; HIGH after 20 consecutive violating ticks.
+- **Only boats and rafts so far.** Horses, striders, camels and happy ghasts (which may legitimately fly) are not judged yet.
 
 ### `combat.hitbox` (experimental)
 
@@ -215,6 +250,10 @@ Changes apply immediately, including to checks that are already running. The exc
 | `checks.movement.speed.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
 | `checks.interaction.fast_break.enabled` | boolean | `true` | | Turns `interaction.fast_break` on or off (experimental). |
 | `checks.interaction.fast_break.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.movement.jump.enabled` | boolean | `true` | | Turns `movement.jump` on or off (experimental). |
+| `checks.movement.jump.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.vehicle.boat_fly.enabled` | boolean | `true` | | Turns `vehicle.boat_fly` on or off (experimental). |
+| `checks.vehicle.boat_fly.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
 
 Experimental checks say so in their setting description. They are new and have only been tested with the automated suite, not on a busy real server. Run them in `DRY_RUN` and review their flags before enforcing.
 
@@ -277,9 +316,18 @@ A MejtaDiscord mod would register a `NotificationProvider`. It would route the c
 
 ```bash
 cd ../mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.2.0 into ~/.m2
-cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-0.4.0.jar
-./gradlew runClientGameTest                    # end-to-end tests
+cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-0.5.0.jar (also runs the unit tests)
+./gradlew test                                 # unit tests only (JUnit 6), a few seconds
+./gradlew runClientGameTest                    # end-to-end tests with a real client, about 30 minutes
 ```
+
+**Unit tests** (`src/test`, JUnit 6.1.3, test-only) cover the pure logic of every check. For each one they feed legitimate inputs that must not flag and cheat inputs that must, using exact vanilla physics:
+- a vanilla jump arc;
+- the boat's fall off a ledge and a bubble-column launch;
+- walking speed;
+- real-time, jittery and frozen-then-bursting tick timing.
+
+They also cover violation levels, throttling and every enforcement decision.
 
 The game test (`src/gametest`) logs `[MejtaAcTest] PASS/FAIL` for each check:
 - **Pure logic, legitimate inputs:** normal positions, the world border, pitch exactly ±90, huge unwrapped yaw, and fields the client didn't send. None may flag.
@@ -333,7 +381,42 @@ What the results show:
 - **The `multi_target` premise holds.** With four clicks queued in one tick, the real vanilla client sent all four attacks at the same entity, in every profile.
 - **The tests can't prove the absence of false positives** on real servers, with real players, terrain, mobs and other mods. That is why these checks are marked experimental and MejtaAC starts in `DRY_RUN`.
 
-The suite writes this table to `build/run/clientGameTest/mejtaac-stage4-latency.md` on every run.
+The suite writes this table to `build/run/clientGameTest/mejtaac-stage4-latency.md` on every run. Since 0.5.0 its legitimate-play scenarios also require zero `movement.jump` and `vehicle.boat_fly` flags.
+
+### Stage 5 latency tests: jump height and boats
+
+`MejtaAcStage5GameTest` was added after a field test with a hack client: Fly, KillAura, Reach, Hitbox, Not Looking and FakeLag were flagged, but **BoatFly and Jump Height were not**. It uses the same five network profiles. For each one, a real non-op client first plays legitimately in the situations most likely to cause false positives, and **all six movement checks must stay silent**:
+
+- **Jumping:** ten jumps in place, with a 1.5 s network freeze in the middle in the jitter profile. The test asserts the vanilla height of 1.252 blocks.
+- **Steps:** walking with jump held over a full block, a slab and stairs, then up a slab without jumping.
+- **Jump Boost II:** held jumping, while the server removes the effect mid-jump. The client keeps it for a round trip, and in the jitter profile the network is also frozen.
+- **Honey, and a bed bounce** from 9 blocks (asserted to bounce).
+- **Teleports** 3 blocks up and 6 blocks sideways, like ender pearls.
+- **A boat appearing under the player**, who then jumps around it ("dropping a boat").
+- **Boats driven off a 6-block ledge** onto stone, slime (several bounces) and water. In the jitter profile the network freezes mid-fall. Each time the player leaves the boat and jumps right away.
+- **A boat launched by a bubble column** (asserted to form and to lift the boat).
+
+Then the client cheats, and both checks must catch it:
+- **High jump:** take-off at 0.75 instead of 0.42 blocks/tick, five times.
+- **Boat fly:** hovering, and climbing at 0.2 blocks/tick.
+
+**Results** (2026-10-18, MejtaAC 0.5.0 on MejtaCore 1.2.0, one full run: Stage 5 110/110, Stage 4 279/279, Stage 3 68/68, unit tests 48/48; the table is written to `build/run/clientGameTest/mejtaac-stage5-latency.md`):
+
+| Profile | Measured RTT | Legitimate-play flags (6 movement checks) | High jump 0.75: flagged / first / HIGH | Boat hover: first / HIGH | Boat climb 0.2: first / HIGH |
+|---|---|---|---|---|---|
+| 0 ms | 32 ms | **0** | 5/5, 0.05 s, 3.0 s | 0.65 s / 1.30 s | 0.65 s / 1.30 s |
+| 150 ms | 153 ms | **0** | 5/5, 0.10 s, 3.1 s | 0.70 s / 1.35 s | 0.70 s / 1.35 s |
+| 300 ms | 303 ms | **0** | 5/5, 0.15 s, 3.2 s | 0.75 s / 1.40 s | 0.75 s / 1.40 s |
+| 500 ms | 502 ms | **0** | 5/5, 0.25 s, 3.3 s | 0.85 s / 1.50 s | 0.85 s / 1.50 s |
+| 300 ms ±80 ms + 1.5 s freezes | 320 ms | **0** | 5/5, 0.20 s, 3.2 s | 0.80 s / 1.45 s | 0.80 s / 1.45 s |
+
+What the results show:
+- **Every high jump is flagged, but enforcement waits.** The first two jumps are MEDIUM and HIGH comes from the third, about 3 s in. A single odd take-off never leads to a kick.
+- **The boat model is exact.** The movement trace of a boat bouncing seven times on slime matched the predicted `dy − 0.04` to every printed digit, and every landing was recognised. That is why the 0.03 tolerance is enough.
+- **Fake lag doesn't create flags.** Freezes in the middle of a boat fall and of Jump Boost jumping produced none. Detection times grow only by the network delay.
+- **Not yet proven:**
+  - In one early development run, a boat's first slime bounce was flagged **once at MEDIUM**: the landing tick wasn't recognised. It didn't happen again in five profiles with per-tick tracing on (`AntiCheat.traceMovement`).
+  - MEDIUM never enforces by default, but this is a known open question. A legitimate field session with boats is the next step.
 
 ## Roadmap
 
@@ -341,7 +424,7 @@ The suite writes this table to `build/run/clientGameTest/mejtaac-stage4-latency.
   - Aim analysis for kill auras that do send rotations. This needs statistics over many attacks, so it is more prone to false positives and will start at MEDIUM.
   - Fast place, and scaffold-style building patterns.
   - Inventory actions while moving.
-  - Vehicle movement (boats and horses), which `movement.speed` and `movement.fly` currently skip.
+  - Other vehicles: horse, llama and camel jump and speed, striders, and boat speed. `vehicle.boat_fly` covers vertical boat movement only.
+  - Elytra flight without fireworks.
 - **Field testing:** run the experimental checks in `DRY_RUN` on a real server (see `../server`) and review their records.
-- **Stage 5:** checks for false positives under artificial latency, and per-world configuration if needed.
 - **MejtaCore candidates** (useful to every addon): `/mejtaadmin config get/set` for dedicated servers, persistent notification mutes, and an "experimental" flag on settings.

@@ -12,10 +12,15 @@ import net.minecraft.network.protocol.PacketUtils;
 import net.minecraft.network.protocol.common.ServerboundPongPacket;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.network.protocol.game.ClientboundExplodePacket;
+import net.minecraft.network.protocol.game.ClientboundMoveVehiclePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
+import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
+import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.world.entity.Entity;
 
 import com.mejta.mejtaac.AntiCheat;
 import com.mejta.mejtaac.sync.TickSync;
@@ -28,7 +33,8 @@ import com.mejta.mejtaac.sync.TickSync;
  * Pongs from other mods are untouched.
  *
  * <p>Also watches outgoing packets for velocity changes the server gives the player (knockback,
- * explosions, wind charges, fishing rods), which the movement checks must allow for.
+ * explosions, wind charges, fishing rods) or position (teleports, respawns), which the movement
+ * checks must allow for, and for corrections of the player's vehicle.
  */
 @Mixin(ServerCommonPacketListenerImpl.class)
 public abstract class ServerCommonPacketListenerImplMixin {
@@ -52,17 +58,46 @@ public abstract class ServerCommonPacketListenerImplMixin {
 
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;)V", at = @At("HEAD"))
 	private void mejtaac$onSend(Packet<?> packet, ChannelFutureListener listener, CallbackInfo ci) {
-		if ((Object) this instanceof ServerGamePacketListenerImpl game && changesVelocity(packet, game.player)) {
+		if (!((Object) this instanceof ServerGamePacketListenerImpl game)) {
+			return;
+		}
+		if (changesVelocity(packet, game.player)) {
 			AntiCheat.get().ifPresent(antiCheat -> antiCheat.onImpulseSent(game.player));
 		}
+		Entity vehicle = game.player.getVehicle();
+		if (vehicle != null && correctsVehicle(packet, vehicle.getId())) {
+			AntiCheat.get().ifPresent(antiCheat -> antiCheat.onVehicleImpulseSent(game.player));
+		}
+	}
+
+	/** Packets that move or push the player's vehicle against what the client simulated. */
+	private static boolean correctsVehicle(Packet<?> packet, int vehicleId) {
+		if (packet instanceof ClientboundMoveVehiclePacket || packet instanceof ClientboundExplodePacket) {
+			return true;
+		}
+		if (packet instanceof ClientboundSetEntityMotionPacket motion) {
+			return motion.id() == vehicleId;
+		}
+		if (packet instanceof ClientboundTeleportEntityPacket teleport) {
+			return teleport.id() == vehicleId;
+		}
+		if (packet instanceof ClientboundBundlePacket bundle) {
+			for (Packet<?> inner : bundle.subPackets()) {
+				if (correctsVehicle(inner, vehicleId)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	private static boolean changesVelocity(Packet<?> packet, ServerPlayer player) {
 		if (packet instanceof ClientboundSetEntityMotionPacket motion) {
 			return motion.id() == player.getId();
 		}
-		if (packet instanceof ClientboundExplodePacket) {
-			return true;
+		if (packet instanceof ClientboundExplodePacket || packet instanceof ClientboundPlayerPositionPacket
+				|| packet instanceof ClientboundRespawnPacket) {
+			return true; // explosions push; teleports (ender pearls, /tp) and respawns move the player
 		}
 		if (packet instanceof ClientboundBundlePacket bundle) {
 			for (Packet<?> inner : bundle.subPackets()) {
