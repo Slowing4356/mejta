@@ -1,6 +1,6 @@
 # Mejta ecosystem: migration plan
 
-Status: **Milestone 1 complete. Your decisions are recorded in section 8 (2026-10-18). Milestone 2 in progress.**
+Status: **First release (2026-10-18): MejtaCore 1.3.0, MejtaAC 1.0.0, MejtaUtils 1.0.0, MejtaDiscord 1.0.0 and MejtaPerf 1.0.0.** M1 to M4 are done. MejtaAC 1.0.0 is the 0.5.0 check set plus the release-review fixes; M5's new checks are still open. Your decisions are recorded in section 8.
 
 The integration design for MejtaUtils and MejtaDiscord, including the MejtaCore 1.3.0 API, is in [`INTEGRATION-DESIGN.md`](INTEGRATION-DESIGN.md). Your decisions and what was built are in its section 8.
 
@@ -19,7 +19,7 @@ This plan covers the upgrade of the existing MejtaCore and MejtaAC projects and 
 | Repository layout | The folders were renamed to match the future repository layout (`repo/mejta-core`, `repo/mejta-ac`, `repo/mejta-discord` …):<br>• `core/` → **`mejta-core/`**<br>• `ac/` → **`mejta-ac/`**<br>Path references in `mejta-ac/README.md`, `mejta-ac/gradle.properties`, `server/README.txt` and `server/update-mods.sh` were updated. Both projects rebuild from the new folders. |
 | `.gitignore` | Added `.env`, `*.env`, `secrets/`, `*.pem`, `*.key`, `*.p12` and `mejta-data/` (violation records contain player names and UUIDs). |
 | Commits | `mejta-core` ed3dac3 and `mejta-ac` 4075483 ("Rename project folder to match repository name; ignore local secrets"). The staged diffs were reviewed first. Nothing was pushed; there are no remotes. |
-| New projects | `mejta-utils` and `mejta-discord` exist (0.1.0, see `INTEGRATION-DESIGN.md` section 8). `mejta-corpse`, `mejta-logger` and `mejta-perf` **do not exist yet**. Section 6 plans them. |
+| New projects | `mejta-utils`, `mejta-discord` and `mejta-perf` exist and were released as 1.0.0 (see `INTEGRATION-DESIGN.md` section 8 and each README). `mejta-corpse` and `mejta-qol` **do not exist yet**; `mejta-logger` is not planned. Section 6 plans them. |
 
 **Breaking changes so far:** only the folder names. Gradle, git and the jars don't depend on them. If VS Code still has `core/` or `ac/` open, reopen `mejta/mejta-core` and `mejta/mejta-ac`.
 
