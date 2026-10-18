@@ -13,9 +13,9 @@ First release.
   - With sustain time, hysteresis and cooldown.
   - They list possible contributors (entities, chunks, slowest dimension, most expensive Mejta metrics) and never claim a cause.
   - A watchdog warns while one tick is stuck.
-- **Profiler** (`/perf profiler start|stop|status`):
+- **Profiler** (`/mperf profiler start|stop|status`):
   - Samples the server thread with Java stack traces and separates real work from waiting for the next tick.
   - Charges time to mods, counting mixin handlers for the mod that added them.
   - Saves a report with mods, hottest methods and the call tree.
-- **`/perf`, `/perf entities`, `/perf metrics [addon]`** and **`/perf report`**: status in chat, and full text reports in `mejta-data/mejtaperf/reports/`.
+- **`/mperf`, `/mperf entities`, `/mperf metrics [addon]`** and **`/mperf report`**: status in chat, and full text reports in `mejta-data/mejtaperf/reports/`.
 - **Privacy:** no player names, addresses or secrets in notifications or reports. The one exception is that a profile report names who started it.

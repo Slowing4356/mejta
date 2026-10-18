@@ -23,13 +23,13 @@ import com.mejta.mejtaperf.metrics.MetricRates;
 import com.mejta.mejtaperf.tick.TickStats;
 
 /**
- * {@code /perf} (also {@code /mejtaadmin mejtaperf perf}):
+ * {@code /mperf} (also {@code /mejtaadmin mejtaperf mperf}):
  * <ul>
- * <li>{@code /perf} or {@code /perf status}: TPS, MSPT, world, memory, CPU</li>
- * <li>{@code /perf entities}: entity types and crowded chunks</li>
- * <li>{@code /perf metrics [addon]}: Mejta metrics</li>
- * <li>{@code /perf profiler start [seconds] | stop | status}</li>
- * <li>{@code /perf report}: saves a full report</li>
+ * <li>{@code /mperf} or {@code /mperf status}: TPS, MSPT, world, memory, CPU</li>
+ * <li>{@code /mperf entities}: entity types and crowded chunks</li>
+ * <li>{@code /mperf metrics [addon]}: Mejta metrics</li>
+ * <li>{@code /mperf profiler start [seconds] | stop | status}</li>
+ * <li>{@code /mperf report}: saves a full report</li>
  * </ul>
  */
 final class PerfCommands {
@@ -37,7 +37,7 @@ final class PerfCommands {
 	}
 
 	static void register() {
-		MejtaCoreAPI.registerRootCommand(MejtaPerf.ID, "perf", (root, buildContext) -> root
+		MejtaCoreAPI.registerRootCommand(MejtaPerf.ID, "mperf", (root, buildContext) -> root
 				.requires(MejtaCoreAPI.requires(PerfPermissions.VIEW))
 				.executes(PerfCommands::status)
 				.then(Commands.literal("status").executes(PerfCommands::status))
@@ -136,7 +136,7 @@ final class PerfCommands {
 		int shown = 0;
 		for (MetricRates.Rate r : list) {
 			if (shown++ >= 20) {
-				line(source, Fmt.f(" ... %d more: /perf report lists all of them.", list.size() - 20));
+				line(source, Fmt.f(" ... %d more: /mperf report lists all of them.", list.size() - 20));
 				break;
 			}
 			String text = switch (r.kind()) {
@@ -164,7 +164,7 @@ final class PerfCommands {
 			return 0;
 		}
 		source.sendSuccess(() -> Component.literal(Fmt.f("Profiling the server thread for up to %s, one sample every %d ms. ",
-				Fmt.duration(seconds), s.profilerInterval())).append(Component.literal("/perf profiler stop").withStyle(ChatFormatting.YELLOW))
+				Fmt.duration(seconds), s.profilerInterval())).append(Component.literal("/mperf profiler stop").withStyle(ChatFormatting.YELLOW))
 				.append(" ends it early; the report is saved either way."), true);
 		return 1;
 	}

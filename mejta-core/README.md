@@ -516,7 +516,7 @@ ServerMenus.confirm(player, title, List.of(question), () -> doIt());   // re-che
 
 **Scheduler.** `MejtaCoreAPI.scheduler().runLater(20, task)` and `runEvery(20, task)` run on the server thread at the end of a tick. Both return a task you can `cancel()`.
 
-**Metrics.** These are timers, counters and gauges that performance tools such as MejtaPerf read (`/perf metrics`).
+**Metrics.** These are timers, counters and gauges that performance tools such as MejtaPerf read (`/mperf metrics`).
 
 ```java
 private static final Metrics.Timer MOVE = MejtaCoreAPI.metrics().timer("myaddon", "hook.move");

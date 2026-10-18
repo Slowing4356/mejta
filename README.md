@@ -6,7 +6,7 @@ Mejta is a family of Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.
 |---|---|---|---|
 | [`mejta-core/`](mejta-core/README.md) | **MejtaCore**: addon registry, configuration (with in-game server editing), permissions, notifications, record logs, `/mejta` menu, `/mejtaadmin`, secrets, data store, audit log, presence, server menus, scheduler, metrics | 1.3.0 (API 4) | Server and client |
 | [`mejta-ac/`](mejta-ac/README.md) | **MejtaAC**: server-authoritative anti-cheat with lag-compensated checks | 1.0.0 | Server only |
-| [`mejta-perf/`](mejta-perf/README.md) | **MejtaPerf**: TPS/MSPT monitor, lag alerts, a profiler that charges server time to mods, reports (`/perf`) | 1.0.0 | Server |
+| [`mejta-perf/`](mejta-perf/README.md) | **MejtaPerf**: TPS/MSPT monitor, lag alerts, a profiler that charges server time to mods, reports (`/mperf`) | 1.0.0 | Server |
 | [`mejta-utils/`](mejta-utils/README.md) | **MejtaUtils**: admin tools (`/invsee`, `/ecsee`, `/status`, `/vanish`, `/freeze`, `/staffmode`) | 1.0.0 | Server |
 | `mejta-qol/` | **MejtaQoL**: player commands (`/tpa`, `/homes`, …) | planned | Server |
 | `mejta-corpse/` | **MejtaCorpse**: corpses that hold a dead player's items | planned | Server |

@@ -161,7 +161,7 @@ public final class MejtaPerf implements MejtaAddon {
 				.severity(Severity.WARNING)
 				.title("Server lag: " + Fmt.ms(mean) + " ms per tick")
 				.message(Fmt.f("MSPT has stayed at or above %d ms for %s (TPS %s). The figures below are possible contributors, not a diagnosis; "
-						+ "run /perf profiler start to see where the time goes.", settings.msptThreshold(), Fmt.duration(lagSeconds),
+						+ "run /mperf profiler start to see where the time goes.", settings.msptThreshold(), Fmt.duration(lagSeconds),
 						Fmt.tps(w.tps())))
 				.field("mspt", Fmt.ms(mean) + " mean, " + Fmt.ms(Double.isNaN(w.maxMs()) ? mean : w.maxMs()) + " max")
 				.field("tps", Fmt.tps(w.tps()))

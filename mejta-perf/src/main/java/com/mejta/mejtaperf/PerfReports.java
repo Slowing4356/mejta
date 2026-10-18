@@ -15,7 +15,7 @@ import com.mejta.mejtaperf.report.ReportFiles;
 import com.mejta.mejtaperf.tick.TickStats;
 
 /**
- * The full performance report ({@code /perf report}) and where reports are saved. The text holds counts,
+ * The full performance report ({@code /mperf report}) and where reports are saved. The text holds counts,
  * timings, mod names and versions; no player names, addresses or settings values.
  */
 final class PerfReports {

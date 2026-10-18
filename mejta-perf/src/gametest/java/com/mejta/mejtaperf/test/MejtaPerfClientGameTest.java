@@ -54,8 +54,8 @@ public final class MejtaPerfClientGameTest implements FabricClientGameTest {
 			TestServerConnection connection = server.connect();
 			connection.getClientLevel().waitForChunksRender();
 			try {
-				chat(ctx, "/perf");
-				check("unauthorized: /perf is not available to a non-operator", refused(ctx));
+				chat(ctx, "/mperf");
+				check("unauthorized: /mperf is not available to a non-operator", refused(ctx));
 				grant(server, true);
 				ctx.waitTicks(60); // a few seconds of ticks and metric snapshots
 				statusChecks(ctx);
@@ -77,7 +77,7 @@ public final class MejtaPerfClientGameTest implements FabricClientGameTest {
 
 	private void statusChecks(ClientGameTestContext ctx) {
 		clearChat(ctx);
-		chat(ctx, "/perf");
+		chat(ctx, "/mperf");
 		check("status: header", chatContains(ctx, "MejtaPerf: Server performance"));
 		check("status: TPS was measured", chatContains(ctx, " TPS ") && !chatHas(ctx, "TPS 5s -"));
 		check("status: MSPT line", chatContains(ctx, "MSPT (1 min) mean"));
@@ -85,19 +85,19 @@ public final class MejtaPerfClientGameTest implements FabricClientGameTest {
 		check("status: memory and CPU", chatContains(ctx, "Memory ") && chatContains(ctx, "CPU process"));
 
 		clearChat(ctx);
-		chat(ctx, "/perf entities");
+		chat(ctx, "/mperf entities");
 		check("entities: summary", chatContains(ctx, "MejtaPerf: Entities:"));
 		check("entities: the player is counted", chatContains(ctx, "minecraft:player"));
 
 		clearChat(ctx);
-		chat(ctx, "/perf metrics mejtacore");
+		chat(ctx, "/mperf metrics mejtacore");
 		check("metrics: MejtaCore's notification queue gauge", chatContains(ctx, "mejtacore:notify.queue.ingame"));
 		check("metrics: MejtaCore's scheduler timer", chatContains(ctx, "mejtacore:scheduler.tasks"));
 	}
 
 	private void reportChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
 		clearChat(ctx);
-		chat(ctx, "/perf report");
+		chat(ctx, "/mperf report");
 		check("report: saved", chatContains(ctx, "Report saved to "));
 		Optional<Path> report = waitForFile(ctx, "report-");
 		check("report: file exists", report.isPresent());
@@ -110,11 +110,11 @@ public final class MejtaPerfClientGameTest implements FabricClientGameTest {
 
 	private void profilerChecks(ClientGameTestContext ctx) {
 		clearChat(ctx);
-		chat(ctx, "/perf profiler stop");
+		chat(ctx, "/mperf profiler stop");
 		check("profiler: stop with nothing running is refused", chatContains(ctx, "No profile is running."));
-		chat(ctx, "/perf profiler start 5");
+		chat(ctx, "/mperf profiler start 5");
 		check("profiler: started", chatContains(ctx, "Profiling the server thread for up to 5 s"));
-		chat(ctx, "/perf profiler start 5");
+		chat(ctx, "/mperf profiler start 5");
 		check("profiler: only one run at a time", chatContains(ctx, "A profile is already running"));
 		check("profiler: report announced in game", waitUntil(ctx, 600, () -> chatHas(ctx, "Profile saved")));
 		String me = ctx.computeOnClient(mc -> mc.getUser().getName());

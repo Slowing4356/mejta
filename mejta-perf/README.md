@@ -24,17 +24,17 @@ Put `mejtaperf-1.0.0.jar` in the server's `mods/` folder next to MejtaCore and F
 
 ## Commands
 
-`/perf` is also available as `/mejtaadmin mejtaperf perf`. The top-level name is not registered if another mod already uses it. Server owners can also turn the name off with MejtaCore's `commands.disabled` setting.
+`/mperf` is also available as `/mejtaadmin mejtaperf mperf`. (It is not `/perf`: that is vanilla's own debug profiler command.) The top-level name is not registered if another mod already uses it. Server owners can also turn the name off with MejtaCore's `commands.disabled` setting.
 
 | Command | Permission | What it does |
 |---|---|---|
-| `/perf` or `/perf status` | `mejtaperf.view` | TPS over four windows; MSPT mean, median, p95 and max for the last minute; players, chunks and entities, overall and per dimension, with each dimension's tick time; memory, garbage collection, CPU and threads; profiler state. |
-| `/perf entities` | `mejtaperf.view` | The 10 most common entity types, and the 5 chunks with the most entities (with coordinates). |
-| `/perf metrics [addon]` | `mejtaperf.view` | Mejta metrics over the last minute. For timers: ms per tick, calls per second, average and peak. For counters: rate. For gauges: current value. |
-| `/perf profiler start [seconds]` | `mejtaperf.profiler` | Samples the server thread until stopped, until the time given (5–3600 s), or until `profiler.max_seconds`. |
-| `/perf profiler stop` | `mejtaperf.profiler` | Ends the profile early. The report is still saved. |
-| `/perf profiler status` | `mejtaperf.profiler` | Whether a profile is running, and where the last report is. |
-| `/perf report` | `mejtaperf.profiler` | Saves a full report (see [Reports](#reports)). |
+| `/mperf` or `/mperf status` | `mejtaperf.view` | TPS over four windows; MSPT mean, median, p95 and max for the last minute; players, chunks and entities, overall and per dimension, with each dimension's tick time; memory, garbage collection, CPU and threads; profiler state. |
+| `/mperf entities` | `mejtaperf.view` | The 10 most common entity types, and the 5 chunks with the most entities (with coordinates). |
+| `/mperf metrics [addon]` | `mejtaperf.view` | Mejta metrics over the last minute. For timers: ms per tick, calls per second, average and peak. For counters: rate. For gauges: current value. |
+| `/mperf profiler start [seconds]` | `mejtaperf.profiler` | Samples the server thread until stopped, until the time given (5–3600 s), or until `profiler.max_seconds`. |
+| `/mperf profiler stop` | `mejtaperf.profiler` | Ends the profile early. The report is still saved. |
+| `/mperf profiler status` | `mejtaperf.profiler` | Whether a profile is running, and where the last report is. |
+| `/mperf report` | `mejtaperf.profiler` | Saves a full report (see [Reports](#reports)). |
 
 Starting and stopping the profiler and saving a report are recorded in MejtaCore's audit log, along with who did it.
 
@@ -42,7 +42,7 @@ Starting and stopping the profiler and saving a report are recorded in MejtaCore
 
 | Node | Default | |
 |---|---|---|
-| `mejtaperf.view` | moderators (level 1) | See `/perf`, `/perf entities` and `/perf metrics` |
+| `mejtaperf.view` | moderators (level 1) | See `/mperf`, `/mperf entities` and `/mperf metrics` |
 | `mejtaperf.alerts` | moderators | Receive lag alerts in chat |
 | `mejtaperf.profiler` | admins (level 3) | Run the profiler and save reports; receive "profile saved" messages |
 
