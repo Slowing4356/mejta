@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "com.mejta.mejtaac.test.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"ServerAttackObserverMixin"
+	],
+	"client": [
+		"LocalPlayerGroundSpoofMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
