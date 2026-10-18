@@ -1,0 +1,43 @@
+# Local test server: world, player data, logs and records. Never commit.
+/server/
+
+# gradle
+.gradle/
+build/
+out/
+classes/
+
+# fabric dev runs
+run/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+bin/
+*.launch
+
+# java
+hs_err_*.log
+replay_*.log
+*.hprof
+*.jfr
+
+# local secrets and private data (never commit)
+.env
+*.env
+secrets/
+*.pem
+*.key
+*.p12
+mejta-data/
+
+# os
+.DS_Store
+Thumbs.db
+desktop.ini
