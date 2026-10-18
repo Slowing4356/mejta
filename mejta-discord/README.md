@@ -28,7 +28,7 @@ This release was written without access to the Minecraft jars or to Discord, so 
 
 ## Installing
 
-1. Put `mejtacore-1.3.0.jar`, `mejtadiscord-0.1.0.jar` and Fabric API in the **server's** `mods/` folder.
+1. Put `mejtacore-1.3.0.jar`, `mejtadiscord-1.0.0.jar` and Fabric API in the **server's** `mods/` folder.
 2. Players need nothing.
 
 With nothing configured, MejtaDiscord sends and receives nothing.

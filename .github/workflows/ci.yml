@@ -14,7 +14,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push waits for the running check instead of cancelling it, so every run reaches its game tests.
+  cancel-in-progress: false
 
 env:
   # Client game tests run without a real display; see the gametest job.

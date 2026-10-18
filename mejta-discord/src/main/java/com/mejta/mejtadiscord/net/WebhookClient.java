@@ -62,7 +62,7 @@ public final class WebhookClient implements AutoCloseable {
 		}
 	}
 
-	private static final String USER_AGENT = "DiscordBot (https://github.com/Slowing4356/mejta, 0.1.0) MejtaDiscord";
+	private static final String USER_AGENT = "DiscordBot (https://github.com/Slowing4356/mejta, 1.0.0) MejtaDiscord";
 
 	private final String name;
 	private final URI url;

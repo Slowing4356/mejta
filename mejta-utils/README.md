@@ -31,7 +31,7 @@ Names not found there are listed under [Things to verify](#things-to-verify). Th
 
 ## Installing
 
-1. Put `mejtacore-1.3.0.jar`, `mejtautils-0.1.0.jar` and Fabric API in the **server's** `mods/` folder.
+1. Put `mejtacore-1.3.0.jar`, `mejtautils-1.0.0.jar` and Fabric API in the **server's** `mods/` folder.
 2. Players need nothing: every menu is a plain chest, and all checks run on the server.
 
 ## Commands
