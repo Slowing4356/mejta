@@ -33,3 +33,12 @@ replay_*.log
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# local secrets and private data (never commit)
+.env
+*.env
+secrets/
+*.pem
+*.key
+*.p12
+mejta-data/
