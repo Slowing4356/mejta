@@ -33,6 +33,29 @@ class ProfilerTest {
 		return frames;
 	}
 
+	// Real server thread frames (Minecraft 26.1 is not obfuscated), outermost first.
+	private static final String[] LOOP = {"java.lang.Thread.run", "java.lang.Thread.runWith",
+			"net.minecraft.server.MinecraftServer.lambda$spin$2", "net.minecraft.server.MinecraftServer.runServer"};
+	private static final String[] MAIN_WAIT = {"net.minecraft.server.MinecraftServer.waitUntilNextTick",
+			"net.minecraft.util.thread.BlockableEventLoop.managedBlock", "net.minecraft.server.MinecraftServer.waitForTasks",
+			"java.util.concurrent.locks.LockSupport.parkNanos", "jdk.internal.misc.Unsafe.park"};
+	/** BlockableEventLoop.waitForTasks: Thread.yield, then a 100 µs park. */
+	private static final String[] TASK_WAIT_PARK = {"net.minecraft.util.thread.BlockableEventLoop.managedBlock",
+			"net.minecraft.util.thread.BlockableEventLoop.waitForTasks", "java.util.concurrent.locks.LockSupport.parkNanos",
+			"jdk.internal.misc.Unsafe.park"};
+	private static final String[] TASK_WAIT_YIELD = {"net.minecraft.util.thread.BlockableEventLoop.managedBlock",
+			"net.minecraft.util.thread.BlockableEventLoop.waitForTasks", "java.lang.Thread.yield", "java.lang.Thread.yield0"};
+	private static final String[] TICK = {"net.minecraft.server.MinecraftServer.tickServer", "net.minecraft.server.MinecraftServer.tickChildren",
+			"net.minecraft.server.level.ServerLevel.tick"};
+
+	private static List<String> sample(String phase, String[]... parts) {
+		List<String> all = new java.util.ArrayList<>(List.of(phase));
+		for (String[] part : parts) {
+			all.addAll(List.of(part));
+		}
+		return all;
+	}
+
 	private static CallTree sampleTree() {
 		CallTree tree = new CallTree();
 		String[] tickBase = {StackSampler.IN_TICK, "java.lang.Thread.run", "net.minecraft.server.MinecraftServer.runServer",
@@ -49,8 +72,7 @@ class ProfilerTest {
 			tree.add(concat(tickBase, "net.caffeinemc.mods.lithium.Something.tick"));
 		}
 		for (int i = 0; i < 100; i++) {
-			tree.add(path(StackSampler.BETWEEN_TICKS, "java.lang.Thread.run", "net.minecraft.server.MinecraftServer.runServer",
-					"net.minecraft.server.MinecraftServer.waitUntilNextTick", "jdk.internal.misc.Unsafe.park"));
+			tree.add(sample(StackSampler.BETWEEN_TICKS, LOOP, MAIN_WAIT).toArray(String[]::new));
 		}
 		return tree;
 	}
@@ -113,12 +135,39 @@ class ProfilerTest {
 
 	@Test
 	void idleIsWaitingForTheNextTickNotWaitingInsideOne() {
-		assertTrue(StackSampler.isIdle(List.of(StackSampler.BETWEEN_TICKS, "x.Y.run", "jdk.internal.misc.Unsafe.park")));
-		assertFalse(StackSampler.isIdle(List.of(StackSampler.BETWEEN_TICKS, "x.Y.run", "x.Y.handlePacket")));
-		assertFalse(StackSampler.isIdle(List.of(StackSampler.IN_TICK, "net.minecraft.server.level.ServerChunkCache.getChunk",
-				"jdk.internal.misc.Unsafe.park")), "a tick waiting for a chunk load is lag");
-		assertTrue(StackSampler.isIdle(List.of(StackSampler.IN_TICK, "net.minecraft.server.MinecraftServer.waitUntilNextTick",
-				"jdk.internal.misc.Unsafe.park")));
+		// The main loop's wait for the next tick, in either phase (the phase is read just before the stack).
+		assertTrue(StackSampler.isIdle(sample(StackSampler.BETWEEN_TICKS, LOOP, MAIN_WAIT)));
+		assertTrue(StackSampler.isIdle(sample(StackSampler.IN_TICK, LOOP, MAIN_WAIT)));
+		assertTrue(StackSampler.isIdle(sample(StackSampler.BETWEEN_TICKS, LOOP, new String[] {"net.minecraft.server.MinecraftServer.waitUntilNextTick",
+				"net.minecraft.util.thread.BlockableEventLoop.managedBlock", "net.minecraft.util.thread.BlockableEventLoop.waitForTasks",
+				"java.lang.Thread.yield", "java.lang.Thread.yield0"})), "an inherited waitForTasks, yielding");
+		assertTrue(StackSampler.isIdle(sample(StackSampler.BETWEEN_TICKS, LOOP, new String[] {"java.lang.Thread.sleep", "java.lang.Thread.sleepNanos",
+				"java.lang.Thread.sleep0"})), "between ticks, a wait right in the server's own loop");
+
+		// A tick waiting for a chunk load: same managedBlock and waitForTasks, but below ServerChunkCache.getChunk.
+		String[] getChunk = {"net.minecraft.world.entity.Entity.tick", "net.minecraft.server.level.ServerChunkCache.getChunk"};
+		assertFalse(StackSampler.isIdle(sample(StackSampler.IN_TICK, LOOP, TICK, getChunk, TASK_WAIT_PARK)), "a chunk wait in a tick is lag");
+		assertFalse(StackSampler.isIdle(sample(StackSampler.IN_TICK, LOOP, TICK, getChunk, TASK_WAIT_YIELD)));
+		assertFalse(StackSampler.isIdle(sample(StackSampler.BETWEEN_TICKS, LOOP, TICK, getChunk, TASK_WAIT_PARK)), "even with a stale phase");
+		// An autosave waiting for chunks to be written.
+		assertFalse(StackSampler.isIdle(sample(StackSampler.IN_TICK, LOOP, new String[] {"net.minecraft.server.MinecraftServer.tickServer",
+				"net.minecraft.server.MinecraftServer.autoSave", "net.minecraft.server.MinecraftServer.saveEverything",
+				"net.minecraft.server.level.ChunkMap.saveAllChunks"}, TASK_WAIT_PARK)), "an autosave wait is lag");
+
+		// Between ticks, packet tasks run from inside the main loop's managedBlock. Their waits are not idle.
+		String[] task = {"net.minecraft.server.MinecraftServer.waitUntilNextTick", "net.minecraft.util.thread.BlockableEventLoop.managedBlock",
+				"net.minecraft.server.MinecraftServer.pollTask", "net.minecraft.util.thread.BlockableEventLoop.doRunTask",
+				"net.minecraft.network.protocol.PacketUtils.lambda$ensureRunningOnSameThread$0",
+				"net.minecraft.server.network.ServerGamePacketListenerImpl.handleChatCommand"};
+		assertFalse(StackSampler.isIdle(sample(StackSampler.BETWEEN_TICKS, LOOP, task, new String[] {
+				"java.util.concurrent.locks.ReentrantLock.lock", "java.util.concurrent.locks.AbstractQueuedSynchronizer.acquire",
+				"java.util.concurrent.locks.LockSupport.park", "jdk.internal.misc.Unsafe.park"})), "a packet task blocked on a lock");
+		assertFalse(StackSampler.isIdle(sample(StackSampler.BETWEEN_TICKS, LOOP, task, getChunk, TASK_WAIT_PARK)),
+				"a packet task waiting for a chunk: two managedBlocks");
+		assertFalse(StackSampler.isIdle(sample(StackSampler.BETWEEN_TICKS, LOOP, task)), "a packet task working");
+		assertFalse(StackSampler.isIdle(sample(StackSampler.BETWEEN_TICKS, LOOP, new String[] {"com.example.Mod.onTick", "java.lang.Thread.sleep",
+				"java.lang.Thread.sleepNanos", "java.lang.Thread.sleep0"})), "a mod sleeping on the server thread");
+		assertFalse(StackSampler.isIdle(List.of()));
 	}
 
 	@Test

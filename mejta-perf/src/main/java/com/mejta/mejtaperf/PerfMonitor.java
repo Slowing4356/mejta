@@ -17,8 +17,8 @@ import com.mejta.mejtaperf.tick.TickStats;
 /**
  * Measures every server tick and every dimension's tick through Fabric's tick events, and once a second feeds
  * the lag alarm and the metric, dimension and garbage collection histories. Per tick it costs two clock reads
- * per event and no allocation. All state is touched on the server thread only, except {@link #inTick()} and
- * {@link #serverThread()}, which the profiler reads.
+ * per event and no allocation. All state is touched on the server thread only, except {@link #inTick()},
+ * {@link #tickStartNanos()} and {@link #serverThread()}, which the profiler and the watchdog read.
  */
 final class PerfMonitor {
 	interface SecondListener {
@@ -32,6 +32,7 @@ final class PerfMonitor {
 	private final LagAlarm alarm = new LagAlarm(50, 10_000_000_000L, 600_000_000_000L);
 	private final Map<ServerLevel, String> levelIds = new IdentityHashMap<>();
 	private volatile boolean inTick;
+	private volatile long tickStartNanos;
 	private volatile Thread serverThread;
 	private long nextSecond;
 	private long startedAt;
@@ -45,7 +46,11 @@ final class PerfMonitor {
 		ServerTickEvents.START_LEVEL_TICK.register(level -> levels.started(levelId(level), System.nanoTime()));
 		ServerTickEvents.END_LEVEL_TICK.register(level -> levels.ended(levelId(level), System.nanoTime()));
 		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-			// A singleplayer world can be closed and another opened in the same game: start from nothing.
+			// Runs on the server thread. A singleplayer world can be closed and another opened in the same game,
+			// each with its own server thread: start from nothing.
+			serverThread = Thread.currentThread();
+			levelIds.clear();
+			inTick = false;
 			ticks.reset();
 			levels.reset();
 			metrics.reset();
@@ -65,11 +70,14 @@ final class PerfMonitor {
 	}
 
 	private void tickStarted(MinecraftServer server) {
-		if (serverThread == null) {
-			serverThread = Thread.currentThread();
-		}
-		inTick = true;
-		ticks.tickStarted(System.nanoTime());
+		long now = System.nanoTime();
+		// The previous tick never ended: a dedicated server paused because it is empty returns from tickServer
+		// before the end event. TickStats drops that start. Paused ticks only handle connections and are not
+		// marked as ticks, so inTick does not stay true for good (the first real tick after a pause is not marked).
+		boolean unended = ticks.inTick();
+		ticks.tickStarted(now);
+		tickStartNanos = now; // before inTick: whoever sees inTick true sees this start or a newer one
+		inTick = !unended;
 	}
 
 	private void tickEnded(MinecraftServer server) {
@@ -124,7 +132,12 @@ final class PerfMonitor {
 		return inTick;
 	}
 
-	/** The server thread, known from the first tick on; {@code null} before and after the server runs. */
+	/** When the current (or last) tick started, {@link System#nanoTime()} scale. */
+	long tickStartNanos() {
+		return tickStartNanos;
+	}
+
+	/** The server thread, known from server start on; {@code null} before and after the server runs. */
 	Thread serverThread() {
 		return serverThread;
 	}

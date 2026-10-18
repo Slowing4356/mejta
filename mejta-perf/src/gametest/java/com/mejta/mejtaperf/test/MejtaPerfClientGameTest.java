@@ -117,6 +117,9 @@ public final class MejtaPerfClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/perf profiler start 5");
 		check("profiler: only one run at a time", chatContains(ctx, "A profile is already running"));
 		check("profiler: report announced in game", waitUntil(ctx, 600, () -> chatHas(ctx, "Profile saved")));
+		String me = ctx.computeOnClient(mc -> mc.getUser().getName());
+		check("profiler: the announcement names nobody", chatHas(ctx, "Profile (started from a command) saved")
+				&& ctx.computeOnClient(mc -> chatLines(mc).stream().filter(l -> l.contains("Profile saved")).noneMatch(l -> l.contains(me))));
 		Optional<Path> profile = waitForFile(ctx, "profile-");
 		check("profiler: report file exists", profile.isPresent());
 		String text = profile.map(MejtaPerfClientGameTest::read).orElse("");

@@ -15,19 +15,28 @@ import com.mejta.mejtaperf.profiler.StackSampler;
 import com.mejta.mejtaperf.tick.TickStats;
 
 /**
- * At most one profiling run at a time. A run samples the server thread until it is stopped, reaches its time
- * limit, or the server stops; then the report is built and saved on MejtaPerf's I/O thread and the result is
- * handed back on the server thread.
+ * At most one profiling run at a time. A run samples the server thread until it is stopped or reaches its time
+ * limit; then the report is built and saved on MejtaPerf's I/O thread and the result is handed back on the
+ * server thread. When the server stops, a run still sampling is cancelled without a report; one that had
+ * already ended has its report written all the same (the shutdown waits for the I/O thread).
+ *
+ * <p>Runs are started, stopped and finished on the server thread; {@link #current} and {@link #last} are
+ * volatile so that status lines may be read from anywhere.
  */
 final class Profiler {
-	/** The outcome of a run, delivered on the server thread. */
+	/**
+	 * The outcome of a run, delivered on the server thread, or on the I/O thread once the server has stopped.
+	 * {@code reason} may name who started it.
+	 */
 	record Result(String reason, Path file, List<String> summary, String error) {
 	}
 
+	private static final String BY_COMMAND = "started by ";
+
 	private final PerfMonitor monitor;
 	private final Logger log;
-	private Run current;
-	private Result last;
+	private volatile Run current;
+	private volatile Result last;
 
 	private final class Run {
 		final StackSampler sampler;
@@ -66,8 +75,9 @@ final class Profiler {
 			return "The server thread is not known yet; try again in a moment.";
 		}
 		Run[] holder = new Run[1];
+		// Once the server is stopping, the sampler no longer hands the run back: cancel() has dealt with it.
 		StackSampler sampler = new StackSampler(thread, intervalMs * 1_000_000L, seconds * 1_000_000_000L, monitor::inTick, System::nanoTime,
-				() -> server.execute(() -> finished(holder[0])));
+				() -> MejtaPerf.runOnServer(server, () -> finished(holder[0])));
 		holder[0] = new Run(sampler, reason, done);
 		current = holder[0];
 		sampler.start();
@@ -85,13 +95,26 @@ final class Profiler {
 		return true;
 	}
 
-	/** Ends the current run without a report (server shutdown). */
+	/**
+	 * Server shutdown, on the server thread: ends a run that is still sampling without a report. A run that had
+	 * already ended (stopped or time limit) but not yet been handed back gets its report now.
+	 */
 	void cancel() {
 		Run run = current;
-		current = null;
-		if (run != null) {
-			run.sampler.stop(StackSampler.End.CANCELLED);
+		if (run == null) {
+			return;
 		}
+		run.sampler.stop(StackSampler.End.CANCELLED);
+		if (run.sampler.end() == StackSampler.End.CANCELLED) {
+			current = null;
+			return;
+		}
+		try {
+			run.sampler.await(1_000); // its last sample may still be going into the tree
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
+		finished(run);
 	}
 
 	boolean running() {
@@ -107,7 +130,7 @@ final class Profiler {
 	String status(boolean names) {
 		Run run = current;
 		if (run != null) {
-			String why = names || !run.reason.startsWith("started by ") ? run.reason : "started from a command";
+			String why = names ? run.reason : publicReason(run.reason);
 			return Fmt.f("Profiler: running for %s (%s), %s samples", Fmt.duration(run.sampler.elapsedNanos() / 1_000_000_000L), why,
 					Fmt.count(run.sampler.samples()));
 		}
@@ -118,10 +141,15 @@ final class Profiler {
 		return r.file() != null ? "Profiler: not running; last report " + PerfReports.relative(r.file()) : "Profiler: not running; last run failed";
 	}
 
+	/** Why a run was started, without naming anyone: for notifications, which may be forwarded anywhere. */
+	static String publicReason(String reason) {
+		return reason.startsWith(BY_COMMAND) ? "started from a command" : reason;
+	}
+
 	/** Runs on the server thread once the sampler thread has finished. */
 	private void finished(Run run) {
-		if (run == null || current != run) {
-			return; // cancelled
+		if (run == null || current != run || Thread.currentThread() != monitor.serverThread()) {
+			return; // cancelled, or run late by a server that has stopped
 		}
 		current = null;
 		StackSampler sampler = run.sampler;
@@ -132,10 +160,16 @@ final class Profiler {
 			default -> sampler.end().name().toLowerCase(java.util.Locale.ROOT);
 		};
 		long now = System.nanoTime();
-		int seconds = (int) Math.max(1, Math.min(Integer.MAX_VALUE, (now - run.startNanos) / 1_000_000_000L));
+		long elapsed = Math.max(1, now - run.startNanos);
+		long tickCount = monitor.ticks().totalTicks() - run.startTicks;
+		// TPS counts every tick of the run. MSPT comes from the tick history, which holds the last 15 minutes (at
+		// 20 TPS), so a longer run is covered only in part, and the label says so.
+		int seconds = (int) Math.min(Integer.MAX_VALUE, (elapsed + 999_999_999L) / 1_000_000_000L);
 		TickStats.Window window = monitor.ticks().window(now, seconds);
-		String ticks = Fmt.f("%s ticks, TPS %s, MSPT mean %s ms, max %s ms", Fmt.count(monitor.ticks().totalTicks() - run.startTicks),
-				Fmt.tps(window.tps()), Fmt.ms(window.meanMs()), Fmt.ms(window.maxMs()));
+		String span = tickCount <= TickStats.CAPACITY ? "the whole run"
+				: "its last " + Fmt.count(window.ticks()) + " ticks (the history holds 15 minutes)";
+		String ticks = Fmt.f("%s ticks, TPS %s; MSPT over %s: mean %s ms, max %s ms", Fmt.count(tickCount),
+				Fmt.tps(tickCount / (elapsed / 1e9)), span, Fmt.ms(window.meanMs()), Fmt.ms(window.maxMs()));
 		ProfileReport.Info info = new ProfileReport.Info(run.started.toString() + " (" + run.reason + ")", endReason,
 				sampler.elapsedNanos() / 1e9, sampler.intervalNanos() / 1e6, ticks);
 		boolean queued = MejtaPerf.io().submit(() -> {
@@ -150,12 +184,12 @@ final class Profiler {
 				result = new Result(run.reason, null, List.of(), e.getClass().getSimpleName());
 			}
 			Result r = result;
-			MinecraftServer server = MejtaPerf.server();
-			if (server != null) {
-				server.execute(() -> {
-					last = r;
-					run.done.accept(r);
-				});
+			Runnable deliver = () -> {
+				last = r;
+				run.done.accept(r);
+			};
+			if (!MejtaPerf.runOnServer(MejtaPerf.server(), deliver)) {
+				deliver.run(); // the server has stopped (the report was finished during shutdown): no server thread to wait for
 			}
 		});
 		if (!queued) {

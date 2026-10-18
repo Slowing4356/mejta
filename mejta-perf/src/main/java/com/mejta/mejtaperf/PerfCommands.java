@@ -102,7 +102,8 @@ final class PerfCommands {
 				Fmt.bytes(jvm.heapMax()), gc[0], gc[1], Fmt.duration(Math.round(gc[2]))));
 		line(source, Fmt.f(" CPU process %s, machine %s, %d cores, %d threads; uptime %s", Fmt.percent(jvm.processCpu()),
 				Fmt.percent(jvm.systemCpu()), jvm.processors(), jvm.threads(), Fmt.duration(monitor.uptimeSeconds())));
-		line(source, " " + MejtaPerf.profiler().status());
+		// Who started a running profile is shown only to those who may run the profiler themselves.
+		line(source, " " + MejtaPerf.profiler().status(MejtaCoreAPI.hasPermission(source, PerfPermissions.PROFILER)));
 		return 1;
 	}
 
@@ -188,18 +189,19 @@ final class PerfCommands {
 		CommandSourceStack source = ctx.getSource();
 		String text = PerfReports.build(source.getServer(), MejtaPerf.monitor(), MejtaPerf.profiler().status(false));
 		Instant now = Instant.now();
+		// The answer goes back through the server thread, and only while that server is still running.
 		boolean queued = MejtaPerf.io().submit(() -> {
 			Path file;
 			try {
 				file = MejtaPerf.reports().write("report", now, text);
 			} catch (Exception e) {
 				MejtaPerf.log().error("Could not save the performance report", e);
-				source.getServer().execute(() -> source.sendFailure(Component.literal("Could not save the report: " + e.getClass().getSimpleName()
-						+ ". See the server log.")));
+				MejtaPerf.runOnServer(source.getServer(), () -> source.sendFailure(Component.literal("Could not save the report: "
+						+ e.getClass().getSimpleName() + ". See the server log.")));
 				return;
 			}
-			source.getServer().execute(() -> source.sendSuccess(() -> Component.literal("Report saved to " + PerfReports.relative(file) + "."),
-					false));
+			MejtaPerf.runOnServer(source.getServer(), () -> source.sendSuccess(() -> Component.literal("Report saved to "
+					+ PerfReports.relative(file) + "."), false));
 		});
 		audit(ctx, "report.write", queued ? AuditOutcome.SUCCESS : AuditOutcome.FAILED, Map.of());
 		if (!queued) {

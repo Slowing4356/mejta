@@ -10,7 +10,10 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -20,6 +23,10 @@ import java.util.stream.Stream;
  */
 public final class ReportFiles {
 	private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneOffset.UTC);
+	/** {@code <kind>-<stamp>} and an optional {@code -<n>} for a second file in the same second. */
+	private static final Pattern NAME = Pattern.compile("(.*-\\d{8}-\\d{6})(?:-(\\d{1,9}))?");
+	/** By time stamp, then by number: {@code -10} is later than {@code -9}, and both are later than no number. */
+	private static final Comparator<Path> OLDEST_FIRST = Comparator.comparing((Path p) -> stamp(p)).thenComparingInt(ReportFiles::number);
 
 	private final Path dir;
 
@@ -61,14 +68,27 @@ public final class ReportFiles {
 				return name.startsWith(kind + "-") && name.endsWith(".txt");
 			}).forEach(files::add);
 		}
-		// Names sort by time once ".txt" is removed; a "-2" suffix then sorts after its base name, and is also later.
-		files.sort((a, b) -> stem(b).compareTo(stem(a)));
+		files.sort(OLDEST_FIRST.reversed());
 		return files;
 	}
 
-	private static String stem(Path p) {
+	private static Matcher name(Path p) {
 		String name = p.getFileName().toString();
-		return name.substring(0, name.length() - ".txt".length());
+		Matcher m = NAME.matcher(name.substring(0, name.length() - ".txt".length()));
+		return m.matches() ? m : null;
+	}
+
+	/** The name up to its time stamp (UTC stamps sort by time as text); a name without one sorts as it is. */
+	private static String stamp(Path p) {
+		Matcher m = name(p);
+		String name = p.getFileName().toString();
+		return m != null ? m.group(1) : name.substring(0, name.length() - ".txt".length());
+	}
+
+	/** The {@code -<n>} suffix; the first file of a second has none and counts as 1. */
+	private static int number(Path p) {
+		Matcher m = name(p);
+		return m == null || m.group(2) == null ? 1 : Integer.parseInt(m.group(2));
 	}
 
 	private void prune(String kind, int keep) throws IOException {

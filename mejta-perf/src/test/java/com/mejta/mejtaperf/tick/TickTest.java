@@ -81,6 +81,56 @@ class TickTest {
 		assertTrue(stats.inTick());
 	}
 
+	@Test
+	void aStartWithoutAnEndIsReplacedByTheNextStart() {
+		// A dedicated server paused while empty returns from tickServer before the end event.
+		TickStats stats = new TickStats();
+		long t = ticks(stats, 0, 20, 10, 50);
+		stats.tickStarted(t);
+		stats.tickStarted(t + 50 * MS); // the previous tick never ended
+		assertTrue(stats.inTick());
+		stats.tickEnded(t + 62 * MS);
+		assertEquals(21, stats.totalTicks(), "the unended tick is not recorded");
+		assertEquals(12 * MS, stats.lastTickNanos(), "measured from the latest start, not the dropped one");
+		assertEquals(t + 50 * MS, stats.lastTickStart());
+		assertFalse(stats.inTick());
+	}
+
+	@Test
+	void aFreezeLongerThanTheWindowIsStillInTheLagFigures() {
+		TickStats stats = new TickStats();
+		long t = ticks(stats, 0, 100, 10, 50);
+		stats.tickStarted(t);
+		long end = t + 15 * S; // one 15-second tick
+		stats.tickEnded(end);
+		assertEquals(0, stats.window(end, 10).ticks(), "no tick started in the last 10 s");
+		TickStats.Window w = stats.windowOrLastTick(end, 10);
+		assertTrue(w.ticks() >= 1, "widened to the frozen tick");
+		assertEquals(15_000.0, w.maxMs(), 1e-6);
+		assertFalse(Double.isNaN(w.meanMs()));
+		assertTrue(w.meanMs() > 500, "the freeze dominates: " + w.meanMs());
+		assertEquals(stats.window(end, 60), stats.windowOrLastTick(end, 60), "unchanged when the window has ticks");
+		assertEquals(0, new TickStats().windowOrLastTick(end, 10).ticks());
+	}
+
+	// ---------------------------------------------------------------- StallDetector
+
+	@Test
+	void aTickStuckLongerThanTheSustainTimeIsReportedOnce() {
+		StallDetector detector = new StallDetector();
+		long start = 50 * S;
+		assertEquals(-1, detector.check(false, start, start + 60 * S, 10 * S), "not in a tick");
+		assertEquals(-1, detector.check(true, start, start + 5 * S, 10 * S), "not long enough");
+		assertEquals(-1, detector.check(true, start, start + 10 * S, 10 * S), "exactly the sustain time is not longer");
+		assertEquals(11 * S, detector.check(true, start, start + 11 * S, 10 * S));
+		assertEquals(-1, detector.check(true, start, start + 70 * S, 10 * S), "once per stall");
+		assertEquals(-1, detector.check(false, start, start + 71 * S, 10 * S), "the tick ended");
+		long next = start + 72 * S;
+		assertEquals(-1, detector.check(true, next, next + S, 10 * S), "a normal tick");
+		assertEquals(12 * S, detector.check(true, next, next + 12 * S, 10 * S), "a new stall is reported again");
+		assertEquals(-1, detector.check(true, next, next + 13 * S, 10 * S));
+	}
+
 	// ---------------------------------------------------------------- LagAlarm
 
 	private static LagAlarm.Event feedSeconds(LagAlarm alarm, long[] clock, int seconds, double mspt) {

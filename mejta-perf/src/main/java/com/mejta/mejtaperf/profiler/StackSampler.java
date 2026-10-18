@@ -2,6 +2,7 @@ package com.mejta.mejtaperf.profiler;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
@@ -9,7 +10,9 @@ import java.util.function.LongSupplier;
 /**
  * Samples one thread's stack at a fixed interval on its own daemon thread, like a Java-only Spark. Each
  * sample is filed under a first frame naming the phase it was taken in, {@link #IN_TICK} or
- * {@link #BETWEEN_TICKS} (when the server handles network packets and waits for the next tick).
+ * {@link #BETWEEN_TICKS} (when the server handles network packets and waits for the next tick). The phase is
+ * read just before the stack, so a sample taken as a tick starts or ends may carry the other one; {@link #isIdle}
+ * therefore decides from the stack itself.
  *
  * <p>Taking a stack briefly pauses the sampled thread at a safepoint; at the default 10 ms interval the cost is
  * small, but the profiler is still meant to run for minutes, not permanently.
@@ -18,10 +21,21 @@ public final class StackSampler {
 	public static final String IN_TICK = "[tick]";
 	public static final String BETWEEN_TICKS = "[between ticks]";
 
+	/** JDK frames of a thread that is parked, sleeping or yielding, innermost first in a real stack. */
 	private static final Set<String> WAITS = Set.of("jdk.internal.misc.Unsafe.park", "java.lang.Thread.sleep0",
-			"java.lang.Thread.sleepNanos0", "java.lang.Thread.sleep", "java.lang.Object.wait0", "java.lang.Object.wait",
-			"java.lang.Thread.yield0", "java.lang.Thread.yield", "java.util.concurrent.locks.LockSupport.parkNanos",
+			"java.lang.Thread.sleepNanos0", "java.lang.Thread.sleepNanos", "java.lang.Thread.sleep", "java.lang.Object.wait0",
+			"java.lang.Object.wait", "java.lang.Thread.yield0", "java.lang.Thread.yield", "java.util.concurrent.locks.LockSupport.parkNanos",
 			"java.util.concurrent.locks.LockSupport.park");
+	/** The main loop's wait for the next tick. */
+	private static final String WAIT_UNTIL_NEXT_TICK = "net.minecraft.server.MinecraftServer.waitUntilNextTick";
+	/** The task loop's wait. Chunk loads and saves wait through the same method, so on its own it does not mean idle. */
+	private static final String MANAGED_BLOCK = "net.minecraft.util.thread.BlockableEventLoop.managedBlock";
+	private static final Set<String> WAIT_FOR_TASKS = Set.of("net.minecraft.server.MinecraftServer.waitForTasks",
+			"net.minecraft.util.thread.BlockableEventLoop.waitForTasks");
+	/** Frames of the server thread's own loop, outside any tick or task. */
+	private static final Set<String> MAIN_LOOP = Set.of("java.lang.Thread.run", "java.lang.Thread.runWith",
+			"net.minecraft.server.MinecraftServer.runServer", WAIT_UNTIL_NEXT_TICK, MANAGED_BLOCK,
+			"net.minecraft.server.MinecraftServer.waitForTasks", "net.minecraft.util.thread.BlockableEventLoop.waitForTasks");
 
 	/** Why sampling ended. */
 	public enum End {
@@ -36,7 +50,7 @@ public final class StackSampler {
 	private final CallTree tree = new CallTree();
 	private final Thread worker;
 	private final long startedAt;
-	private volatile End end = End.RUNNING;
+	private final AtomicReference<End> end = new AtomicReference<>(End.RUNNING);
 	private volatile long samples;
 	private volatile long finishedAt;
 	private final Runnable onFinish;
@@ -64,14 +78,14 @@ public final class StackSampler {
 	private void run() {
 		long next = clock.getAsLong();
 		try {
-			while (end == End.RUNNING) {
+			while (end.get() == End.RUNNING) {
 				long now = clock.getAsLong();
 				if (now - startedAt >= limitNanos) {
-					end = End.TIME_LIMIT;
+					end.compareAndSet(End.RUNNING, End.TIME_LIMIT);
 					break;
 				}
 				if (!target.isAlive()) {
-					end = End.THREAD_DIED;
+					end.compareAndSet(End.RUNNING, End.THREAD_DIED);
 					break;
 				}
 				boolean tick = inTick.getAsBoolean();
@@ -100,11 +114,9 @@ public final class StackSampler {
 		}
 	}
 
-	/** Asks sampling to end; the reason is recorded unless it already ended. */
+	/** Asks sampling to end; the reason is recorded unless it already ended (the first reason wins). */
 	public void stop(End reason) {
-		if (end == End.RUNNING) {
-			end = reason;
-		}
+		end.compareAndSet(End.RUNNING, reason);
 		LockSupport.unpark(worker);
 	}
 
@@ -115,7 +127,7 @@ public final class StackSampler {
 	}
 
 	public End end() {
-		return end;
+		return end.get();
 	}
 
 	public long samples() {
@@ -136,19 +148,47 @@ public final class StackSampler {
 		return tree;
 	}
 
-	/** Whether a sample (outermost frame first, starting with the phase) was the server waiting, not working. */
+	/**
+	 * Whether a sample (outermost frame first, starting with the phase) was the server waiting for the next tick,
+	 * not working. The innermost frames must be a wait (park, sleep, yield), and above them:
+	 * <ul>
+	 * <li>the main loop's wait: {@code MinecraftServer.waitUntilNextTick}, reached only through its
+	 * {@code managedBlock} and {@code waitForTasks}. A chunk load or save waits in the same {@code managedBlock}
+	 * and {@code waitForTasks}, but called from {@code ServerChunkCache.getChunk} or {@code ChunkMap.saveAllChunks}:
+	 * that is lag, not idle. So is a packet task, run from the main loop's wait, that itself waits.</li>
+	 * <li>or, between ticks, nothing but the server thread's own loop ({@code runServer}).</li>
+	 * </ul>
+	 * Any other wait (a lock, a future, a sleep in a mod) is time the server was held up, and counts as busy.
+	 */
 	public static boolean isIdle(List<String> path) {
-		if (path.isEmpty() || !WAITS.contains(path.get(path.size() - 1))) {
+		int i = path.size() - 1;
+		if (i < 1 || !WAITS.contains(path.get(i))) {
 			return false;
 		}
-		if (path.get(0).equals(BETWEEN_TICKS)) {
-			return true;
+		while (i > 0 && WAITS.contains(path.get(i))) {
+			i--;
 		}
-		for (String frame : path) {
-			if (frame.endsWith(".waitUntilNextTick") || frame.endsWith(".waitForTasks")) {
+		// Up from the wait: waitForTasks, at most one managedBlock, then the main loop's waitUntilNextTick.
+		int blocks = 0;
+		for (int j = i; j > 0; j--) {
+			String frame = path.get(j);
+			if (frame.equals(WAIT_UNTIL_NEXT_TICK)) {
 				return true;
 			}
+			boolean block = frame.equals(MANAGED_BLOCK);
+			if (block && ++blocks > 1 || !block && !WAIT_FOR_TASKS.contains(frame)) {
+				break; // a second managedBlock, or any other caller: the wait belongs to someone else
+			}
 		}
-		return false;
+		if (!path.get(0).equals(BETWEEN_TICKS)) {
+			return false;
+		}
+		for (int j = i; j > 0; j--) {
+			String frame = path.get(j);
+			if (!MAIN_LOOP.contains(frame) && !frame.startsWith("net.minecraft.server.MinecraftServer.lambda$spin$")) {
+				return false;
+			}
+		}
+		return true;
 	}
 }

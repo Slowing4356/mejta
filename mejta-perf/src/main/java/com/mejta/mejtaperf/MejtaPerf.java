@@ -47,6 +47,7 @@ public final class MejtaPerf implements MejtaAddon {
 	private static volatile PerfReports reports;
 	private static final PerfMonitor MONITOR = new PerfMonitor();
 	private static volatile Profiler profiler;
+	private static volatile Watchdog watchdog;
 
 	@Override
 	public void registerAddons(AddonRegistrar registrar) {
@@ -68,8 +69,16 @@ public final class MejtaPerf implements MejtaAddon {
 					MONITOR.register(MejtaPerf::secondPassed);
 					PerfCommands.register();
 					io = new IoQueue();
+					watchdog = new Watchdog(MONITOR::inTick, MONITOR::tickStartNanos, () -> snapshot.sustainSeconds() * 1_000_000_000L,
+							MejtaPerf::stalled, log);
 					ServerLifecycleEvents.SERVER_STARTING.register(s -> server = s);
-					ServerLifecycleEvents.SERVER_STOPPING.register(s -> profiler.cancel());
+					ServerLifecycleEvents.SERVER_STARTED.register(s -> watchdog.start());
+					ServerLifecycleEvents.SERVER_STOPPING.register(s -> {
+						// From here on nothing is handed to the server thread: once stopped, execute() would run it inline.
+						server = null;
+						watchdog.stop();
+						profiler.cancel();
+					});
 					ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
 						server = null;
 						io.drain(5_000); // reports being written finish before the game exits
@@ -87,14 +96,24 @@ public final class MejtaPerf implements MejtaAddon {
 		snapshot = s;
 		reports.keep(c.get(PerfSettings.REPORTS_KEEP));
 		int cooldown = c.get(PerfSettings.ALERT_COOLDOWN);
-		MinecraftServer running = server;
-		// The alarm belongs to the server thread.
+		// The alarm belongs to the server thread; when no server is running, nothing else touches it.
 		Runnable apply = () -> MONITOR.configureAlarm(s.msptThreshold(), s.sustainSeconds(), cooldown);
-		if (running != null) {
-			running.execute(apply);
-		} else {
+		if (!runOnServer(server, apply)) {
 			apply.run();
 		}
+	}
+
+	/**
+	 * Hands a task to {@code target}'s server thread if it is the server that is running and not stopping.
+	 * Returns {@code false} (and drops the task) otherwise.
+	 */
+	static boolean runOnServer(MinecraftServer target, Runnable task) {
+		MinecraftServer running = server;
+		if (target == null || target != running) {
+			return false;
+		}
+		running.execute(task);
+		return true;
 	}
 
 	// ---------------------------------------------------------------- alerts
@@ -126,7 +145,10 @@ public final class MejtaPerf implements MejtaAddon {
 	}
 
 	private static void publishLag(MinecraftServer s, long now, Snapshot settings) {
-		TickStats.Window w = MONITOR.ticks().window(now, Math.max(1, settings.sustainSeconds()));
+		// One freeze longer than the sustain time leaves the window empty: then it covers that tick.
+		TickStats.Window w = MONITOR.ticks().windowOrLastTick(now, Math.max(1, settings.sustainSeconds()));
+		double mean = Double.isNaN(w.meanMs()) ? MONITOR.alarm().peakMs() : w.meanMs();
+		long lagSeconds = Math.max(settings.sustainSeconds(), MONITOR.alarm().lagNanos(now) / 1_000_000_000L);
 		ServerStats.Snapshot stats = ServerStats.collect(s, MONITOR.levels().msPerTick());
 		String slowest = stats.levels().stream().filter(l -> !Double.isNaN(l.msPerTick()))
 				.max(Comparator.comparingDouble(ServerStats.Level::msPerTick))
@@ -137,11 +159,11 @@ public final class MejtaPerf implements MejtaAddon {
 		String metrics = timers.isEmpty() ? "-" : String.join(", ", timers.stream().map(r -> r.id() + " " + Fmt.ms(r.msPerTick()) + " ms/tick").toList());
 		publish(Notification.builder(ID, CHANNEL_LAG)
 				.severity(Severity.WARNING)
-				.title("Server lag: " + Fmt.ms(w.meanMs()) + " ms per tick")
+				.title("Server lag: " + Fmt.ms(mean) + " ms per tick")
 				.message(Fmt.f("MSPT has stayed at or above %d ms for %s (TPS %s). The figures below are possible contributors, not a diagnosis; "
-						+ "run /perf profiler start to see where the time goes.", settings.msptThreshold(), Fmt.duration(settings.sustainSeconds()),
+						+ "run /perf profiler start to see where the time goes.", settings.msptThreshold(), Fmt.duration(lagSeconds),
 						Fmt.tps(w.tps())))
-				.field("mspt", Fmt.ms(w.meanMs()) + " mean, " + Fmt.ms(w.maxMs()) + " max")
+				.field("mspt", Fmt.ms(mean) + " mean, " + Fmt.ms(Double.isNaN(w.maxMs()) ? mean : w.maxMs()) + " max")
 				.field("tps", Fmt.tps(w.tps()))
 				.field("players", stats.players())
 				.field("chunks", Fmt.count(stats.chunks()))
@@ -151,15 +173,37 @@ public final class MejtaPerf implements MejtaAddon {
 				.field("top_metrics", metrics));
 	}
 
-	/** Tells profiler holders that a profile finished. Server thread. */
+	/**
+	 * Watchdog thread, once per stall: a tick has run for longer than the sustain time without ending, and the lag
+	 * alarm only hears of it when (if) it ends. Reads only volatile settings and publishes, which is thread-safe.
+	 */
+	private static void stalled(long nanos) {
+		Snapshot settings = snapshot;
+		if (!settings.alerts()) {
+			return;
+		}
+		String stuck = Fmt.duration(nanos / 1_000_000_000L);
+		publish(Notification.builder(ID, CHANNEL_LAG)
+				.severity(Severity.WARNING)
+				.title("Server stuck in one tick")
+				.message("The server has been stuck in one tick for " + stuck + ". If it does not recover, a thread dump of the server "
+						+ "(jstack) shows where it hangs.")
+				.field("stuck_for", stuck));
+	}
+
+	/**
+	 * Tells profiler holders that a profile finished. Any thread (it only publishes). The reason never names who
+	 * started the profile: notifications can be forwarded anywhere, unlike the report file.
+	 */
 	static void announce(Profiler.Result result) {
+		String reason = Profiler.publicReason(result.reason());
 		Notification.Builder n = Notification.builder(ID, CHANNEL_PROFILER).inGameAudience(PerfPermissions.PROFILER);
 		if (result.file() == null) {
 			n.severity(Severity.WARNING).title("Profile not saved")
-					.message("The profile (" + result.reason() + ") could not be saved: " + result.error() + ". See the server log.");
+					.message("The profile (" + reason + ") could not be saved: " + result.error() + ". See the server log.");
 		} else {
 			n.severity(Severity.INFO).title("Profile saved")
-					.message("Profile (" + result.reason() + ") saved to " + PerfReports.relative(result.file()) + ". " + String.join(" ", result.summary()));
+					.message("Profile (" + reason + ") saved to " + PerfReports.relative(result.file()) + ". " + String.join(" ", result.summary()));
 			n.field("report", PerfReports.relative(result.file()));
 		}
 		MejtaCoreAPI.notifications().publish(n.build());

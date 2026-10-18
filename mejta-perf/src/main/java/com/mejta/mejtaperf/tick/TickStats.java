@@ -25,6 +25,11 @@ public final class TickStats {
 		public static final Window EMPTY = new Window(0, 0, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN);
 	}
 
+	/**
+	 * A tick started. If the previous one never ended (vanilla's {@code tickServer} returns early while a dedicated
+	 * server is paused because it is empty, so the end event does not fire), its start is replaced: nothing is
+	 * recorded for it rather than a duration that would include the wait between ticks.
+	 */
 	public void tickStarted(long nanos) {
 		tickStart = nanos;
 	}
@@ -91,6 +96,19 @@ public final class TickStats {
 		double tps = n < 2 || span <= 0 ? Double.NaN : n / (span / 1e9);
 		return new Window(seconds, n, tps, sum / n / 1e6, values[n / 2] / 1e6, values[Math.min(n - 1, (int) Math.ceil(n * 0.95) - 1)] / 1e6,
 				values[n - 1] / 1e6);
+	}
+
+	/**
+	 * Like {@link #window}, but when no tick started in it because the last one took longer (a freeze), the window
+	 * is widened to begin at that tick's start, so it holds at least that tick. Empty only before the first tick.
+	 */
+	public Window windowOrLastTick(long now, int seconds) {
+		Window w = window(now, seconds);
+		if (w.ticks() > 0 || size == 0) {
+			return w;
+		}
+		long since = Math.max(0, now - lastTickStart());
+		return window(now, (int) Math.min(Integer.MAX_VALUE, since / 1_000_000_000L + 1));
 	}
 
 	/** Position of the {@code i}-th newest tick. */
