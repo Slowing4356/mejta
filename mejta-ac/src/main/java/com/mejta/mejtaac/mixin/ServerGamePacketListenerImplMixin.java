@@ -61,8 +61,7 @@ public abstract class ServerGamePacketListenerImplMixin {
 	@Inject(method = "handlePlayerAction", cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = ENSURE_SAME_THREAD))
 	private void mejtaac$onPlayerAction(ServerboundPlayerActionPacket packet, CallbackInfo ci) {
 		AntiCheat antiCheat = AntiCheat.get().orElse(null);
-		if (antiCheat != null && packet.getAction() == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK
-				&& antiCheat.onBlockInteraction(player, packet.getPos(), "start_destroy")) {
+		if (antiCheat != null && antiCheat.onPlayerAction(player, packet.getAction(), packet.getPos())) {
 			ci.cancel();
 		}
 	}

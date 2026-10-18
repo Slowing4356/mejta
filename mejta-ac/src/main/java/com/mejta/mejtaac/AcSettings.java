@@ -127,6 +127,18 @@ public final class AcSettings {
 	public static final Setting<Double> BLOCK_REACH_TOLERANCE = Setting.decimal("checks.interaction.block_reach.tolerance", 0.1, 0.0, 3.0)
 			.describedAs("Extra blocks allowed beyond the block interaction range before any flag");
 
+	// ---------------------------------------------------------------- check: movement.speed
+	public static final Setting<Boolean> SPEED_ENABLED = Setting.bool("checks.movement.speed.enabled", true)
+			.describedAs("[Experimental] Flag horizontal movement faster than vanilla physics allows");
+	public static final Setting<Double> SPEED_KICK_VL = Setting.decimal("checks.movement.speed.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+
+	// ---------------------------------------------------------------- check: interaction.fast_break
+	public static final Setting<Boolean> FAST_BREAK_ENABLED = Setting.bool("checks.interaction.fast_break.enabled", true)
+			.describedAs("[Experimental] Flag blocks broken faster than tool, enchantments and effects allow");
+	public static final Setting<Double> FAST_BREAK_KICK_VL = Setting.decimal("checks.interaction.fast_break.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, LOG_LEVEL,
 					DECAY_PER_MINUTE,
@@ -141,7 +153,9 @@ public final class AcSettings {
 					MULTI_TARGET_ENABLED, MULTI_TARGET_KICK_VL,
 					FLY_ENABLED, FLY_KICK_VL,
 					HITBOX_ENABLED, HITBOX_KICK_VL,
-					BLOCK_REACH_ENABLED, BLOCK_REACH_KICK_VL, BLOCK_REACH_TOLERANCE)
+					BLOCK_REACH_ENABLED, BLOCK_REACH_KICK_VL, BLOCK_REACH_TOLERANCE,
+					SPEED_ENABLED, SPEED_KICK_VL,
+					FAST_BREAK_ENABLED, FAST_BREAK_KICK_VL)
 			.build();
 
 	private AcSettings() {

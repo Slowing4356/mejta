@@ -46,14 +46,17 @@ import com.mejta.mejtaac.check.combat.HitboxCheck;
 import com.mejta.mejtaac.check.combat.MultiTargetCheck;
 import com.mejta.mejtaac.check.combat.ReachCheck;
 import com.mejta.mejtaac.check.interaction.BlockReachCheck;
+import com.mejta.mejtaac.check.interaction.FastBreakCheck;
 import com.mejta.mejtaac.check.movement.FlyCheck;
 import com.mejta.mejtaac.check.movement.GroundSpoofCheck;
+import com.mejta.mejtaac.check.movement.SpeedCheck;
 import com.mejta.mejtaac.check.movement.TimerCheck;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 
 /**
- * Stage 4: timer, ground spoof, fly, reach, hitbox, multi-target and block reach, tested against latency.
+ * Stage 4: timer, ground spoof, fly, speed, reach, hitbox, multi-target, block reach and fast break,
+ * tested against latency.
  *
  * <p>A real client plays on an in-process dedicated server (as a non-op) through
  * {@link LatencySimulator} at several network profiles. For each profile it checks that legitimate
@@ -301,6 +304,47 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 			v = (v - 0.08) * 0.98;
 		}
 		check("fly: a bounce after a landing is not flagged", !bounceFlagged);
+
+		// Sprinting on normal ground: v = v * 0.546 + 0.13, converging on 0.286 blocks/tick.
+		SpeedCheck.State sprint = new SpeedCheck.State();
+		double v2 = 0;
+		boolean sprintFlagged = false;
+		for (int i = 0; i < 100; i++) {
+			v2 = v2 * 0.546 + 0.13;
+			sprintFlagged |= SpeedCheck.onClientTick(sprint, v2, 0.546, 0.13, false, false).isPresent();
+		}
+		check("speed: sprinting on ground never flags", !sprintFlagged);
+		check("speed: sprint-jump boost allowed once on take-off", SpeedCheck.bound(0.286, 0.91, 0.026, true) > 0.286 + 0.2);
+		SpeedCheck.State hack = new SpeedCheck.State();
+		Flag firstSpeed = null;
+		Flag highSpeed = null;
+		for (int i = 0; i < 40; i++) {
+			Optional<Flag> f = SpeedCheck.onClientTick(hack, 0.5, 0.546, 0.13, false, false);
+			if (f.isPresent() && firstSpeed == null) {
+				firstSpeed = f.get();
+			}
+			if (f.isPresent() && f.get().confidence() == Confidence.HIGH && highSpeed == null) {
+				highSpeed = f.get();
+			}
+		}
+		check("speed: 0.5 blocks/tick on ground flagged, HIGH when sustained", firstSpeed != null && highSpeed != null);
+		SpeedCheck.State impulse = new SpeedCheck.State();
+		SpeedCheck.onClientTick(impulse, 0.2, 0.546, 0.13, false, false);
+		boolean impulseFlagged = SpeedCheck.onClientTick(impulse, 1.5, 0.546, 0.13, false, true).isPresent();
+		for (double v3 = 1.5; v3 > 0.05; v3 *= 0.91) {
+			impulseFlagged |= SpeedCheck.onClientTick(impulse, v3, 0.91, 0.026, false, false).isPresent();
+		}
+		check("speed: knockback (untrusted tick) then normal decay not flagged", !impulseFlagged);
+
+		check("fast break: expected ticks = ceil(1 / progress)", FastBreakCheck.expectedTicks(1.0 / 15) == 15
+				&& FastBreakCheck.expectedTicks(0.3) == 4 && FastBreakCheck.expectedTicks(1.0) == 1);
+		check("fast break: on time is fine, 2 ticks of slack",
+				FastBreakCheck.onFinish(1.0 / 15, 15).isEmpty() && FastBreakCheck.onFinish(1.0 / 15, 13).isEmpty());
+		Optional<Flag> breakMedium = FastBreakCheck.onFinish(1.0 / 15, 11);
+		check("fast break: 25 % early -> MEDIUM", breakMedium.isPresent() && breakMedium.get().confidence() == Confidence.MEDIUM);
+		Optional<Flag> breakHigh = FastBreakCheck.onFinish(1.0 / 15, 3);
+		check("fast break: 80 % early -> HIGH", breakHigh.isPresent() && breakHigh.get().confidence() == Confidence.HIGH);
+		check("fast break: instant blocks ignored", FastBreakCheck.onFinish(1.0, 0).isEmpty());
 	}
 
 	/** A 0.5-wide, 2-high box whose near face is {@code distance} blocks from the origin along +X. */
@@ -358,9 +402,13 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		int blockActions = blockInteractions(ctx, server, arena);
 		double launchHeight = knockbackLaunch(ctx, server, arena);
 		int bounces = slimeBounce(ctx, server, arena);
+		double sprintSpeed = sprintJumps(ctx, server, arena, null);
+		double potionSpeed = sprintJumps(ctx, server, arena, "speed");
+		double iceSpeed = sprintJumps(ctx, server, arena, "ice");
+		boolean mined = mineDirt(ctx, server, arena);
 		List<FlagEvent> legit = flagsSince(legitStart);
-		for (String checkId : List.of(TimerCheck.ID, GroundSpoofCheck.ID, FlyCheck.ID, ReachCheck.ID, HitboxCheck.ID,
-				MultiTargetCheck.ID, BlockReachCheck.ID)) {
+		for (String checkId : List.of(TimerCheck.ID, GroundSpoofCheck.ID, FlyCheck.ID, SpeedCheck.ID, ReachCheck.ID, HitboxCheck.ID,
+				MultiTargetCheck.ID, BlockReachCheck.ID, FastBreakCheck.ID)) {
 			long count = legit.stream().filter(f -> f.check().equals(checkId)).count();
 			check(p.name() + ": legitimate play, no " + checkId + " flags (" + count + ")", count == 0);
 		}
@@ -376,6 +424,10 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		check(p.name() + String.format(Locale.ROOT, ": knockback really launched the player (%.2f blocks up)", launchHeight),
 				launchHeight >= 2.0);
 		check(p.name() + ": the player really bounced on slime (" + bounces + " bounces)", bounces >= 1);
+		check(p.name() + ": legitimate mining really broke the dirt block", mined);
+		check(p.name() + String.format(Locale.ROOT, ": sprint-jumping really reached %.3f blocks/tick", sprintSpeed), sprintSpeed >= 0.25);
+		check(p.name() + String.format(Locale.ROOT, ": with Speed II really reached %.3f blocks/tick", potionSpeed), potionSpeed > sprintSpeed);
+		check(p.name() + String.format(Locale.ROOT, ": on packed ice really reached %.3f blocks/tick", iceSpeed), iceSpeed >= 0.4);
 		if (!legit.isEmpty()) {
 			LOG.error("[MejtaAcTest] legitimate-play flags at {}: {}", p.name(), legit);
 		}
@@ -388,8 +440,10 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		String hitbox = hitboxCheat(ctx, server, arena, p);
 		String blockReach = blockReachCheats(ctx, server, arena, p);
 		String fly = flyCheats(ctx, server, arena, p);
-		table.add(String.format(Locale.ROOT, "| %s | %d | %d (%d legit hits, up to %.2f blocks uncompensated) | %s | %s | %s | %s | %s | %s | %s |",
-				p.name(), rtt, legit.size(), legitAttacks, uncompensated, timer, ground, fly, reach, hitbox, multi, blockReach));
+		String speed = speedCheat(ctx, server, arena, p);
+		String fastBreak = fastBreakCheats(ctx, server, arena, p);
+		table.add(String.format(Locale.ROOT, "| %s | %d | %d (%d legit hits, up to %.2f blocks uncompensated) | %s | %s | %s | %s | %s | %s | %s | %s | %s |",
+				p.name(), rtt, legit.size(), legitAttacks, uncompensated, timer, ground, fly, speed, reach, hitbox, multi, blockReach, fastBreak));
 		resetViolations(server, arena);
 	}
 
@@ -746,6 +800,123 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		return (first.nanos() - t0) / 1_000_000 + " ms / " + (high == null ? "-" : (high.nanos() - t0) / 1_000_000 + " ms");
 	}
 
+	/**
+	 * Real input: sprint-jumping across the platform along +X, optionally with Speed II or on packed
+	 * ice (the fastest normal ground movement).
+	 */
+	private double sprintJumps(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena, String variant) {
+		Vec3 start = arena.feet().add(-6, 0, 0);
+		if ("ice".equals(variant)) {
+			server.runCommand(String.format("fill %d %d %d %d %d %d minecraft:packed_ice",
+					arena.x() - 8, arena.y(), arena.z() - 1, arena.x() + 8, arena.y(), arena.z() + 1));
+		}
+		if ("speed".equals(variant)) {
+			server.runCommand("effect give " + arena.name() + " minecraft:speed 30 1 true");
+		}
+		server.runCommand(String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f -90 0", arena.name(), start.x, start.y, start.z));
+		waitUntil(ctx, 200, () -> ctx.computeOnClient(mc -> mc.player.onGround() && mc.player.position().distanceTo(start) < 0.5));
+		ctx.waitTicks(10);
+		ctx.getInput().holdKey(options -> options.keyUp);
+		ctx.getInput().holdKey(options -> options.keySprint);
+		ctx.getInput().holdKey(options -> options.keyJump);
+		double fastest = 0;
+		Vec3 last = ctx.computeOnClient(mc -> mc.player.position());
+		for (int i = 0; i < ("ice".equals(variant) ? 18 : 25); i++) {
+			ctx.waitTick();
+			Vec3 now = ctx.computeOnClient(mc -> mc.player.position());
+			fastest = Math.max(fastest, Math.hypot(now.x - last.x, now.z - last.z));
+			last = now;
+		}
+		ctx.getInput().releaseKey(options -> options.keyJump);
+		ctx.getInput().releaseKey(options -> options.keySprint);
+		ctx.getInput().releaseKey(options -> options.keyUp);
+		ctx.waitTicks(30);
+		if ("ice".equals(variant)) {
+			server.runCommand(String.format("fill %d %d %d %d %d %d minecraft:stone",
+					arena.x() - 8, arena.y(), arena.z() - 1, arena.x() + 8, arena.y(), arena.z() + 1));
+		}
+		server.runCommand("effect clear " + arena.name());
+		heal(server, arena);
+		teleportHome(ctx, server, arena);
+		return fastest;
+	}
+
+	/** Real input: hold attack on a dirt block until it breaks (15 ticks by hand). */
+	private boolean mineDirt(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena) {
+		teleportHome(ctx, server, arena);
+		BlockPos dirt = new BlockPos(arena.x() + 2, arena.y() + 1, arena.z());
+		server.runCommand(String.format("setblock %d %d %d minecraft:dirt", dirt.getX(), dirt.getY(), dirt.getZ()));
+		ctx.waitTicks(10);
+		ctx.runOnClient(mc -> aimAt(mc, Vec3.atCenterOf(dirt)));
+		ctx.waitTick();
+		ctx.getInput().holdKeyFor(options -> options.keyAttack, 40);
+		ctx.waitTicks(10);
+		boolean broken = server.computeOnServer(s -> s.overworld().getBlockState(dirt).isAir());
+		server.runCommand(String.format("setblock %d %d %d minecraft:air", dirt.getX(), dirt.getY(), dirt.getZ()));
+		server.runCommand("kill @e[type=item]");
+		return broken;
+	}
+
+	/** The real client forces 0.5 blocks/tick along the ground (sprinting is about 0.29). */
+	private String speedCheat(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena, Profile p) {
+		Vec3 start = arena.feet().add(-7, 0, 0);
+		server.runCommand(String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f -90 0", arena.name(), start.x, start.y, start.z));
+		waitUntil(ctx, 200, () -> ctx.computeOnClient(mc -> mc.player.onGround() && mc.player.position().distanceTo(start) < 0.5));
+		ctx.waitTicks(10);
+		int start0 = flags.size();
+		long t0 = System.nanoTime();
+		for (int i = 0; i < 24; i++) {
+			ctx.runOnClient(mc -> mc.player.setDeltaMovement(0.5, mc.player.getDeltaMovement().y, 0));
+			ctx.waitTick();
+		}
+		ctx.waitTicks(p.rttMs() / 50 + 5);
+		FlagEvent first = firstFlag(start0, SpeedCheck.ID);
+		FlagEvent high = flagsSince(start0).stream()
+				.filter(f -> f.check().equals(SpeedCheck.ID) && f.confidence() == Confidence.HIGH).findFirst().orElse(null);
+		check(p.name() + ": speed 0.5 blocks/tick detected", first != null);
+		check(p.name() + ": speed reaches HIGH when sustained", high != null);
+		teleportHome(ctx, server, arena);
+		resetViolations(server, arena);
+		if (first == null) {
+			return "missed";
+		}
+		return (first.nanos() - t0) / 1_000_000 + " ms / " + (high == null ? "-" : (high.nanos() - t0) / 1_000_000 + " ms");
+	}
+
+	/** Crafted start/finish packets around a dirt block that takes 15 ticks to break by hand. */
+	private String fastBreakCheats(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena, Profile p) {
+		teleportHome(ctx, server, arena);
+		BlockPos dirt = new BlockPos(arena.x() + 2, arena.y() + 1, arena.z());
+		record Case(int ticks, String expect) {
+		}
+		StringBuilder result = new StringBuilder();
+		for (Case c : List.of(new Case(3, "HIGH"), new Case(11, "MEDIUM"), new Case(16, "none"))) {
+			// A break finished too early is not discarded by vanilla: it completes the destroy itself once
+			// enough server ticks have passed ("delayed destroy"). Let that happen before the next case.
+			ctx.waitTicks(25);
+			server.runCommand(String.format("setblock %d %d %d minecraft:dirt", dirt.getX(), dirt.getY(), dirt.getZ()));
+			ctx.waitTicks(p.rttMs() / 50 + 5);
+			check(p.name() + ": dirt present before the " + c.ticks() + "-tick case",
+					server.computeOnServer(s -> s.overworld().getBlockState(dirt).is(net.minecraft.world.level.block.Blocks.DIRT)));
+			int start = flags.size();
+			ctx.runOnClient(mc -> mc.getConnection().send(
+					new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, dirt, Direction.WEST)));
+			ctx.waitTicks(c.ticks());
+			ctx.runOnClient(mc -> mc.getConnection().send(
+					new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, dirt, Direction.WEST)));
+			ctx.waitTicks(p.rttMs() / 50 + 10);
+			List<FlagEvent> got = flagsSince(start).stream().filter(f -> f.check().equals(FastBreakCheck.ID)).toList();
+			String actual = got.isEmpty() ? "none" : got.get(0).confidence().name();
+			check(p.name() + ": fast break after " + c.ticks() + " of 15 ticks -> " + c.expect(), actual.equals(c.expect()));
+			result.append(result.isEmpty() ? "" : ", ").append(c.ticks()).append("/15: ").append(actual);
+		}
+		server.runCommand(String.format("setblock %d %d %d minecraft:air", dirt.getX(), dirt.getY(), dirt.getZ()));
+		server.runCommand("kill @e[type=item]");
+		resetViolations(server, arena);
+		return result.toString();
+	}
+
+
 	private static void heal(TestDedicatedServerContext server, Arena arena) {
 		server.runOnServer(s -> {
 			ServerPlayer player = s.getPlayerList().getPlayer(arena.player());
@@ -840,8 +1011,8 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 
 	private void writeTable() {
 		List<String> lines = new ArrayList<>();
-		lines.add("| Profile | Measured RTT (ms) | Legitimate-play flags | Timer (time to detect) | Ground spoof (time to detect) | Fly (time to first flag / to HIGH) | Reach (crafted hits) | Hitbox (crafted hit) | Multi-target (time to detect) | Block reach (crafted actions) |");
-		lines.add("|---|---|---|---|---|---|---|---|---|---|");
+		lines.add("| Profile | Measured RTT (ms) | Legitimate-play flags | Timer (time to detect) | Ground spoof (time to detect) | Fly (time to first flag / to HIGH) | Speed (first flag / HIGH) | Reach (crafted hits) | Hitbox (crafted hit) | Multi-target (time to detect) | Block reach (crafted actions) | Fast break (crafted) |");
+		lines.add("|---|---|---|---|---|---|---|---|---|---|---|---|");
 		lines.addAll(table);
 		for (String line : lines) {
 			LOG.info("[MejtaAcTest] TABLE {}", line);

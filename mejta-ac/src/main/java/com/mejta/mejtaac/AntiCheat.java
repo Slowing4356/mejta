@@ -19,12 +19,15 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.ServerTickRateManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.AttackRange;
 import net.minecraft.world.level.block.Blocks;
@@ -39,8 +42,10 @@ import com.mejta.mejtaac.check.combat.HitboxCheck;
 import com.mejta.mejtaac.check.combat.MultiTargetCheck;
 import com.mejta.mejtaac.check.combat.ReachCheck;
 import com.mejta.mejtaac.check.interaction.BlockReachCheck;
+import com.mejta.mejtaac.check.interaction.FastBreakCheck;
 import com.mejta.mejtaac.check.movement.FlyCheck;
 import com.mejta.mejtaac.check.movement.GroundSpoofCheck;
+import com.mejta.mejtaac.check.movement.SpeedCheck;
 import com.mejta.mejtaac.check.movement.TimerCheck;
 import com.mejta.mejtaac.check.protocol.InvalidMoveCheck;
 import com.mejta.mejtaac.check.protocol.MoveData;
@@ -141,6 +146,19 @@ public final class AntiCheat {
 		float yaw;
 		float pitch;
 		final List<PendingAttack> pendingAttacks = new ArrayList<>();
+		final SpeedCheck.State speed = new SpeedCheck.State();
+		double lastTickX = Double.NaN;
+		double lastTickZ = Double.NaN;
+		/** Server-side ground state at the end of the last two client ticks. */
+		boolean groundOneAgo;
+		boolean groundTwoAgo;
+		float frictionOneAgo = 0.6F;
+		float frictionTwoAgo = 0.6F;
+		/** Client ticks seen so far (tick-end packets), a latency-proof clock. */
+		long clientTicks;
+		BlockPos breakPos;
+		long breakStartTicks;
+		double breakProgress;
 		volatile boolean singleplayerOwner;
 		volatile float msPerTick;
 	}
@@ -236,6 +254,7 @@ public final class AntiCheat {
 	public boolean onClientTickEnd(ServerPlayer player) {
 		AcConfig cfg = config;
 		PlayerData d = data(player.getUUID());
+		d.clientTicks++;
 		MultiTargetCheck.onClientTickEnd(d.multiTarget);
 		if (!cfg.enabled()) {
 			d.pendingTimerFlags.clear();
@@ -259,7 +278,11 @@ public final class AntiCheat {
 		if (evaluatePendingAttacks(player, d, cfg)) {
 			return true;
 		}
-		return cfg.flyEnabled() && evaluateFly(player, d, cfg);
+		boolean impulse = impulseUntrusted(player, d);
+		if (cfg.flyEnabled() && evaluateFly(player, d, cfg, impulse)) {
+			return true;
+		}
+		return cfg.speedEnabled() && evaluateSpeed(player, d, cfg, impulse);
 	}
 
 	/**
@@ -382,11 +405,27 @@ public final class AntiCheat {
 		}
 	}
 
-	private boolean evaluateFly(ServerPlayer player, PlayerData d, AcConfig cfg) {
+	/**
+	 * Whether a velocity change from the server (knockback, explosion...) is still in flight or was
+	 * just applied by the client; movement predictions must restart after it.
+	 */
+	private boolean impulseUntrusted(ServerPlayer player, PlayerData d) {
+		if (!d.impulsePending) {
+			return false;
+		}
+		OptionalInt ack = sync.lastAckTick(player.getUUID());
+		boolean applied = ack.isPresent() ? ack.getAsInt() >= d.impulseTick : System.nanoTime() - d.impulseNanos > 2_000_000_000L;
+		if (applied) {
+			d.impulsePending = false;
+		}
+		return true; // this tick is the first one with the new velocity (or still before it)
+	}
+
+	private boolean evaluateFly(ServerPlayer player, PlayerData d, AcConfig cfg, boolean impulse) {
 		double y = player.getY();
 		double dy = Double.isNaN(d.lastTickY) ? 0 : y - d.lastTickY;
 		d.lastTickY = y;
-		boolean untrusted = Double.isNaN(dy) || flyUntrusted(player, d, dy);
+		boolean untrusted = impulse || flyUntrusted(player, d, dy);
 		Optional<Flag> flag = FlyCheck.onClientTick(d.fly, dy, player.getGravity(), untrusted);
 		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.flyKickVl());
 	}
@@ -399,15 +438,6 @@ public final class AntiCheat {
 				|| player.hasEffect(MobEffects.SLOW_FALLING) || player.isInPowderSnow || touchesSlowingBlock(player)) {
 			return true;
 		}
-		if (d.impulsePending) {
-			OptionalInt ack = sync.lastAckTick(player.getUUID());
-			boolean applied = ack.isPresent() ? ack.getAsInt() >= d.impulseTick
-					: System.nanoTime() - d.impulseNanos > 2_000_000_000L;
-			if (applied) {
-				d.impulsePending = false;
-			}
-			return true; // this tick is the first one with the new velocity (or still before it)
-		}
 		// Ground, or a collision on the predicted path (landing), limits the movement: not predictable.
 		AABB box = player.getBoundingBox();
 		if (!player.level().noCollision(player, box.expandTowards(0, -0.05, 0))) {
@@ -419,6 +449,104 @@ public final class AntiCheat {
 			return !player.level().noCollision(player, before.expandTowards(0, expected.getAsDouble() - 0.05, 0));
 		}
 		return false;
+	}
+
+	private boolean evaluateSpeed(ServerPlayer player, PlayerData d, AcConfig cfg, boolean impulse) {
+		double x = player.getX();
+		double z = player.getZ();
+		double moved = Double.isNaN(d.lastTickX) ? 0 : Math.hypot(x - d.lastTickX, z - d.lastTickZ);
+		d.lastTickX = x;
+		d.lastTickZ = z;
+		boolean groundNow = !player.level().noCollision(player, player.getBoundingBox().expandTowards(0, -0.05, 0));
+		float[] friction = frictionUnder(player);
+		// Vanilla order within a tick: acceleration uses the ground state at the start of this tick
+		// (end of the last one); the decay carried over from the last tick used the ground state at the
+		// start of that tick (two ticks ago). Take the most permissive of everything that could apply.
+		boolean groundBefore = d.groundOneAgo;
+		double decay = d.groundTwoAgo && d.groundOneAgo
+				? Math.max(friction[1], Math.max(d.frictionOneAgo, d.frictionTwoAgo)) * 0.91 : 0.91;
+		double moveSpeed = player.getAttributeValue(Attributes.MOVEMENT_SPEED) * (player.isSprinting() ? 1.0 : 1.3);
+		double groundAccel = groundBefore || groundNow ? moveSpeed * 0.216 / Math.pow(friction[0], 3) : 0;
+		double accel = Math.max(groundAccel, 0.026);
+		boolean tookOff = groundBefore && !groundNow;
+		d.groundTwoAgo = d.groundOneAgo;
+		d.groundOneAgo = groundNow;
+		d.frictionTwoAgo = d.frictionOneAgo;
+		d.frictionOneAgo = friction[1];
+		boolean untrusted = impulse || groundExempt(player);
+		Optional<Flag> flag = SpeedCheck.onClientTick(d.speed, moved, decay, accel, tookOff, untrusted);
+		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.speedKickVl());
+	}
+
+	/** {min, max} friction of the blocks under the player's feet (0.6 for most, ice up to 0.989). */
+	private static float[] frictionUnder(ServerPlayer player) {
+		AABB box = player.getBoundingBox();
+		double y = box.minY - 0.5000001;
+		float min = Float.MAX_VALUE;
+		float max = 0;
+		for (double[] corner : new double[][] {{box.minX, box.minZ}, {box.minX, box.maxZ}, {box.maxX, box.minZ}, {box.maxX, box.maxZ}}) {
+			float f = player.level().getBlockState(BlockPos.containing(corner[0], y, corner[1])).getBlock().getFriction();
+			min = Math.min(min, f);
+			max = Math.max(max, f);
+		}
+		return new float[] {min, max};
+	}
+
+	/**
+	 * Server thread: the client started, finished or aborted breaking a block.
+	 *
+	 * @return {@code true} if the player was kicked
+	 */
+	public boolean onPlayerAction(ServerPlayer player, ServerboundPlayerActionPacket.Action action, BlockPos pos) {
+		AcConfig cfg = config;
+		if (!cfg.enabled() || player.isSpectator()) {
+			return false;
+		}
+		PlayerData d = data(player.getUUID());
+		switch (action) {
+			case START_DESTROY_BLOCK -> {
+				if (onBlockInteraction(player, pos, "start_destroy")) {
+					return true;
+				}
+				if (cfg.fastBreakEnabled() && !player.isCreative()) {
+					d.breakPos = pos.immutable();
+					d.breakStartTicks = d.clientTicks;
+					d.breakProgress = bestDestroyProgress(player, pos);
+				}
+			}
+			case STOP_DESTROY_BLOCK -> {
+				if (cfg.fastBreakEnabled() && pos.equals(d.breakPos)) {
+					double progress = Math.max(d.breakProgress, bestDestroyProgress(player, pos));
+					int ticks = (int) Math.min(Integer.MAX_VALUE, d.clientTicks - d.breakStartTicks);
+					d.breakPos = null;
+					Optional<Flag> flag = FastBreakCheck.onFinish(progress, ticks);
+					return flag.isPresent() && handle(player, flag.get(), cfg, cfg.fastBreakKickVl());
+				}
+			}
+			case ABORT_DESTROY_BLOCK -> d.breakPos = null;
+			default -> {
+			}
+		}
+		return false;
+	}
+
+	/** Destroy progress per tick in the player's favour: without the airborne and underwater penalties. */
+	private static double bestDestroyProgress(ServerPlayer player, BlockPos pos) {
+		BlockState state = player.level().getBlockState(pos);
+		if (state.isAir()) {
+			return 0;
+		}
+		double progress = state.getDestroyProgress(player, player.level(), pos);
+		if (!player.onGround()) {
+			progress *= 5.0;
+		}
+		if (player.isEyeInFluid(FluidTags.WATER)) {
+			double submerged = player.getAttributeValue(Attributes.SUBMERGED_MINING_SPEED);
+			if (submerged > 0 && submerged < 1) {
+				progress /= submerged;
+			}
+		}
+		return progress;
 	}
 
 	/** Cobwebs, berry bushes, honey, scaffolding and bubble columns change vertical movement. */
@@ -536,6 +664,8 @@ public final class AntiCheat {
 		clearIfDisabled(previous.flyEnabled(), updated.flyEnabled(), FlyCheck.ID);
 		clearIfDisabled(previous.hitboxEnabled(), updated.hitboxEnabled(), HitboxCheck.ID);
 		clearIfDisabled(previous.blockReachEnabled(), updated.blockReachEnabled(), BlockReachCheck.ID);
+		clearIfDisabled(previous.speedEnabled(), updated.speedEnabled(), SpeedCheck.ID);
+		clearIfDisabled(previous.fastBreakEnabled(), updated.fastBreakEnabled(), FastBreakCheck.ID);
 		if (!updated.timerEnabled() || !updated.enabled()) {
 			players.values().forEach(d -> d.timer.reset());
 		}
@@ -543,6 +673,13 @@ public final class AntiCheat {
 			players.values().forEach(d -> {
 				d.fly.reset();
 				d.lastTickY = Double.NaN;
+			});
+		}
+		if (!updated.speedEnabled() || !updated.enabled()) {
+			players.values().forEach(d -> {
+				d.speed.reset();
+				d.lastTickX = Double.NaN;
+				d.lastTickZ = Double.NaN;
 			});
 		}
 		if (!previous.equals(updated)) {

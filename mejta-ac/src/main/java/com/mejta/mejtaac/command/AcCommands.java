@@ -78,6 +78,8 @@ public final class AcCommands {
 		line(source, "Check combat.hitbox", cfg.hitboxEnabled() + " (kick VL " + cfg.hitboxKickVl() + ")");
 		line(source, "Check interaction.block_reach", cfg.blockReachEnabled() + " (kick VL " + cfg.blockReachKickVl()
 				+ ", tolerance " + cfg.blockReachTolerance() + ")");
+		line(source, "Check movement.speed", cfg.speedEnabled() + " (kick VL " + cfg.speedKickVl() + ")");
+		line(source, "Check interaction.fast_break", cfg.fastBreakEnabled() + " (kick VL " + cfg.fastBreakKickVl() + ")");
 		line(source, "Players with violations", String.valueOf(ac.violations().trackedPlayers()));
 		return 1;
 	}
