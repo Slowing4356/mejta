@@ -9,9 +9,9 @@ The first release of the Mejta mods for **Minecraft Java 26.1.2**:
 |---|---|---|---|
 | **MejtaCore** | 1.3.0 | The shared platform: settings (with in-game editing), permissions, notifications, secrets, data store, audit log, presence, server menus, scheduler and metrics. Required by every other mod. | Server (and client, for the `/mejta` menu) |
 | **MejtaAC** | 1.0.0 | Server-side anti-cheat with lag-compensated movement, combat and interaction checks. Starts in `DRY_RUN`: it alerts and records, but never kicks until you switch it to `ENFORCE`. | Server |
-| **MejtaUtils** | 1.0.0 | Staff tools: `/invsee` and `/ecsee` (online and offline), `/status`, `/vanish`, `/freeze`, `/staffmode`. | Server |
 | **MejtaDiscord** | 1.0.0 | Anti-cheat alerts to Discord webhooks, Minecraft chat to Discord, and (experimental) Discord chat to Minecraft. | Server |
-| **MejtaPerf** | 1.0.0 | `/mperf`: TPS and MSPT, lag alerts, a profiler that charges server time to mods, and reports. | Server |
+
+Not in this release: **MejtaUtils** (staff tools) and **MejtaPerf** (profiler) are in the repository but will be released separately.
 
 Every addon needs **MejtaCore 1.3.0** and **Fabric API**. Addons never depend on each other: install only what you want. Vanilla clients can join; players need no mods.
 
@@ -33,7 +33,7 @@ Every jar in this release was built from the tagged commit by the release workfl
 - **Client game tests:** a real Minecraft client joins a real dedicated server, under a virtual display. Each mod's test drives commands, menus and clicks and checks the results:
   - MejtaCore: about 190 checks.
   - MejtaAC: legitimate play under five latency profiles must produce zero flags, and every simulated cheat must be detected.
-  - MejtaUtils, MejtaDiscord and MejtaPerf: their own end-to-end checks.
+  - MejtaDiscord: its own end-to-end checks, without contacting Discord.
 
 Not covered by automated tests:
 - **Discord:** delivery to real Discord was not tested. Each mod's README has a short hand-check list.
@@ -43,6 +43,5 @@ Not covered by automated tests:
 
 See each mod's `CHANGELOG.md` for the full list. Before this release, every mod went through a full code review, and everything it found was fixed. The most important fixes:
 - **MejtaAC:** a server freeze by forcing far chunk loads, false kicks after teleports, and MEDIUM-confidence flags no longer count towards kicks.
-- **MejtaUtils:** two item-duplication paths, and item loss after a crash.
 - **MejtaDiscord:** fake chat lines sent from Discord.
 - **MejtaCore:** audit-log and data-store races.
