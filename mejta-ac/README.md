@@ -276,8 +276,8 @@ A MejtaDiscord mod would register a `NotificationProvider`. It would route the c
 ## Building and testing
 
 ```bash
-cd ../core && ./gradlew publishToMavenLocal    # MejtaCore 1.1.0 into ~/.m2
-cd ../ac && ./gradlew build                    # build/libs/mejtaac-0.4.0.jar
+cd ../mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.2.0 into ~/.m2
+cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-0.4.0.jar
 ./gradlew runClientGameTest                    # end-to-end tests
 ```
 
