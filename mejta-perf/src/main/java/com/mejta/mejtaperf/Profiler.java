@@ -98,11 +98,17 @@ final class Profiler {
 		return current != null;
 	}
 
-	/** One line about the current or last run. */
+	/** One line about the current or last run, naming who started it. */
 	String status() {
+		return status(true);
+	}
+
+	/** @param names whether to say who started a running profile (not in reports, which name no players) */
+	String status(boolean names) {
 		Run run = current;
 		if (run != null) {
-			return Fmt.f("Profiler: running for %s (%s), %s samples", Fmt.duration(run.sampler.elapsedNanos() / 1_000_000_000L), run.reason,
+			String why = names || !run.reason.startsWith("started by ") ? run.reason : "started from a command";
+			return Fmt.f("Profiler: running for %s (%s), %s samples", Fmt.duration(run.sampler.elapsedNanos() / 1_000_000_000L), why,
 					Fmt.count(run.sampler.samples()));
 		}
 		Result r = last;

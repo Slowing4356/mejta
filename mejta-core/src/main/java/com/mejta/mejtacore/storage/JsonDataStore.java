@@ -153,6 +153,17 @@ public final class JsonDataStore implements DataStore {
 	public List<String> keys(String folder) {
 		String prefix = folder.isEmpty() ? "" : folder + "/";
 		Path dir = folder.isEmpty() ? root : fileFor(folder).resolveSibling(lastSegment(folder));
+		// Pending writes are read before the folder: a write the I/O thread finishes in between is then
+		// either still pending in the copy or already on disk, never missed.
+		Map<String, Boolean> queued = new java.util.HashMap<>();
+		synchronized (this) {
+			for (Map.Entry<String, Pending> entry : pending.entrySet()) {
+				String key = entry.getKey();
+				if (key.startsWith(prefix) && key.indexOf('/', prefix.length()) < 0) {
+					queued.put(key, entry.getValue().value != null);
+				}
+			}
+		}
 		TreeSet<String> keys = new TreeSet<>();
 		if (Files.isDirectory(dir)) {
 			try (Stream<Path> files = Files.list(dir)) {
@@ -169,18 +180,13 @@ public final class JsonDataStore implements DataStore {
 				Diagnostics.warn(owner, "Could not list data folder " + dir + ": " + e);
 			}
 		}
-		synchronized (this) {
-			for (Map.Entry<String, Pending> entry : pending.entrySet()) {
-				String key = entry.getKey();
-				if (key.startsWith(prefix) && key.indexOf('/', prefix.length()) < 0) {
-					if (entry.getValue().value == null) {
-						keys.remove(key);
-					} else {
-						keys.add(key);
-					}
-				}
+		queued.forEach((key, present) -> {
+			if (present) {
+				keys.add(key);
+			} else {
+				keys.remove(key);
 			}
-		}
+		});
 		return List.copyOf(keys);
 	}
 

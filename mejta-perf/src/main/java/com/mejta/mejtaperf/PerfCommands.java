@@ -186,7 +186,7 @@ final class PerfCommands {
 
 	private static int report(CommandContext<CommandSourceStack> ctx) {
 		CommandSourceStack source = ctx.getSource();
-		String text = PerfReports.build(source.getServer(), MejtaPerf.monitor(), MejtaPerf.profiler().status());
+		String text = PerfReports.build(source.getServer(), MejtaPerf.monitor(), MejtaPerf.profiler().status(false));
 		Instant now = Instant.now();
 		boolean queued = MejtaPerf.io().submit(() -> {
 			Path file;

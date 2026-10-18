@@ -516,6 +516,23 @@ ServerMenus.confirm(player, title, List.of(question), () -> doIt());   // re-che
 
 **Scheduler.** `MejtaCoreAPI.scheduler().runLater(20, task)` and `runEvery(20, task)` run on the server thread at the end of a tick. Both return a task you can `cancel()`.
 
+**Metrics.** These are timers, counters and gauges that performance tools such as MejtaPerf read (`/perf metrics`).
+
+```java
+private static final Metrics.Timer MOVE = MejtaCoreAPI.metrics().timer("myaddon", "hook.move");
+private static final Metrics.Counter DROPPED = MejtaCoreAPI.metrics().counter("myaddon", "queue.dropped");
+
+long start = Metrics.Timer.start();
+try { handleMove(); } finally { MOVE.stop(start); }
+DROPPED.increment();
+MejtaCoreAPI.metrics().gauge("myaddon", "queue.size", queue::size);   // read on the reader's thread: keep it thread-safe
+```
+
+- **Cost:** recording takes no locks and allocates nothing. A timer costs two `System.nanoTime()` calls, so it is safe in hot paths on the server thread.
+- **Values:** they are cumulative since startup. Readers compare two `snapshot()`s to get rates. A timer also keeps its longest single duration over roughly the last minute.
+- **Names:** lowercase letters, digits, `.`, `_` and `-`, up to 64 characters. They are fixed strings chosen by the addon, never player names. Asking twice for the same name returns the same instrument.
+- **What core reports:** `mejtacore:notify.queue.<provider>`, `notify.dropped.<provider>` and `notify.deliver.<provider>` for each notification provider, and `scheduler.tasks`.
+
 ## 7. Testing
 
 `test-addon/` contains:
@@ -539,7 +556,7 @@ It also checks the API 4 additions:
 
 The suite had 144 checks in 1.2.x. 1.3.0 adds about 40; the `SUMMARY` line prints the total.
 
-**Unit tests** (JUnit 6, `./gradlew test`) cover the logic that needs no running game: secret storage and masking, the data store (ordering, coalescing, durability, corrupt files, key validation) and the audit hash chain.
+**Unit tests** (JUnit 6, `./gradlew test`) cover the logic that needs no running game: secret storage and masking, the data store (ordering, coalescing, durability, corrupt files, key validation), the audit hash chain, and metrics (timers and their peaks, counters, gauges, name rules, concurrent recording): 25 tests.
 
 To run everything:
 
