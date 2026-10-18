@@ -7,13 +7,16 @@ import java.util.Objects;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 
+import com.mejta.mejtacore.api.metrics.Metrics;
 import com.mejta.mejtacore.api.server.Scheduler;
 import com.mejta.mejtacore.logging.Diagnostics;
+import com.mejta.mejtacore.metrics.MetricRegistry;
 
 /** {@link Scheduler} driven by the end of each server tick. */
 public final class TickScheduler implements Scheduler {
 	private static final TickScheduler INSTANCE = new TickScheduler();
 
+	private final Metrics.Timer taskTime = MetricRegistry.get().timer(MejtaCore.MOD_ID, "scheduler.tasks");
 	private final List<Entry> tasks = new ArrayList<>();
 	private final List<Entry> added = new ArrayList<>();
 	private long tick;
@@ -87,11 +90,13 @@ public final class TickScheduler implements Scheduler {
 			if (e.cancelled) {
 				continue;
 			}
+			long start = Metrics.Timer.start();
 			try {
 				e.task.run();
 			} catch (Throwable t) {
 				Diagnostics.error("scheduler", "Scheduled task failed", t);
 			}
+			taskTime.stop(start);
 			if (e.interval > 0) {
 				e.due += e.interval;
 			} else {

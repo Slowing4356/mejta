@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtaperf_test",
+	"version": "1.0.0",
+	"name": "MejtaPerf Tests",
+	"description": "Client game tests for MejtaPerf. Development only.",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"com.mejta.mejtaperf.test.MejtaPerfClientGameTest"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtaperf": "*"
+	}
+}

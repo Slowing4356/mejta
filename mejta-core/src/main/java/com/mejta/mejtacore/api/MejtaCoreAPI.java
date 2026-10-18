@@ -18,6 +18,7 @@ import com.mejta.mejtacore.api.addon.AddonDefinition;
 import com.mejta.mejtacore.api.addon.AddonInfo;
 import com.mejta.mejtacore.api.audit.AuditActor;
 import com.mejta.mejtacore.api.audit.AuditService;
+import com.mejta.mejtacore.api.metrics.Metrics;
 import com.mejta.mejtacore.api.notify.NotificationService;
 import com.mejta.mejtacore.api.permission.MejtaPermission;
 import com.mejta.mejtacore.api.presence.PresenceService;
@@ -30,6 +31,7 @@ import com.mejta.mejtacore.commands.ServerCommands;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.core.TickScheduler;
 import com.mejta.mejtacore.logging.MejtaLog;
+import com.mejta.mejtacore.metrics.MetricRegistry;
 import com.mejta.mejtacore.notify.NotificationBus;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
 import com.mejta.mejtacore.presence.Presence;
@@ -55,7 +57,7 @@ import com.mejta.mejtacore.storage.RecordLogs;
  * <h2>API version 4 (MejtaCore 1.3.0)</h2>
  * Top-level commands ({@link #registerRootCommand}), a JSON data store ({@link #dataStore}), the
  * shared audit log ({@link #audit()}), presence for vanish-aware addons ({@link #presence()}), a
- * server-thread scheduler ({@link #scheduler()}), server-side menus
+ * server-thread scheduler ({@link #scheduler()}), metrics ({@link #metrics()}), server-side menus
  * ({@code com.mejta.mejtacore.api.menu.ServerMenu}), and secret and experimental settings.
  */
 public final class MejtaCoreAPI {
@@ -228,5 +230,10 @@ public final class MejtaCoreAPI {
 	/** @since API version 4 */
 	public static Scheduler scheduler() {
 		return TickScheduler.get();
+	}
+
+	/** Timers, counters and gauges for performance tools such as MejtaPerf. @since API version 4 */
+	public static Metrics metrics() {
+		return MetricRegistry.get();
 	}
 }

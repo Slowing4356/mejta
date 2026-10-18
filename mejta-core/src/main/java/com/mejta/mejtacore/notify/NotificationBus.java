@@ -17,6 +17,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
+import com.mejta.mejtacore.api.metrics.Metrics;
 import com.mejta.mejtacore.api.notify.Notification;
 import com.mejta.mejtacore.api.notify.NotificationProvider;
 import com.mejta.mejtacore.api.notify.NotificationService;
@@ -24,6 +25,7 @@ import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.logging.MejtaLog;
+import com.mejta.mejtacore.metrics.MetricRegistry;
 import com.mejta.mejtacore.storage.RecordLogs;
 
 /**
@@ -50,6 +52,7 @@ public final class NotificationBus implements NotificationService {
 		final NotificationProvider provider;
 		final BlockingQueue<Notification> queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
 		final AtomicLong dropped = new AtomicLong();
+		volatile Metrics.Timer deliverTime;
 		long lastErrorLog;
 
 		Lane(NotificationProvider provider) {
@@ -90,11 +93,26 @@ public final class NotificationBus implements NotificationService {
 			lane = new Lane(provider);
 			lanes.add(lane);
 		}
+		registerMetrics(lane);
 		Thread thread = new Thread(() -> run(lane), "MejtaCore-Notify-" + provider.id());
 		thread.setDaemon(true);
 		thread.start();
 		MejtaLog.debug("Registered notification provider '{}'", provider.id());
 		return true;
+	}
+
+	/** Queue depth, drops and delivery time of each provider, under {@code mejtacore:notify.*.<provider>}. */
+	private static void registerMetrics(Lane lane) {
+		String id = lane.provider.id().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+		id = id.substring(0, Math.min(id.length(), 40));
+		try {
+			MetricRegistry metrics = MetricRegistry.get();
+			metrics.gauge(MejtaCore.MOD_ID, "notify.queue." + id, lane.queue::size);
+			metrics.gauge(MejtaCore.MOD_ID, "notify.dropped." + id, lane.dropped::get);
+			lane.deliverTime = metrics.timer(MejtaCore.MOD_ID, "notify.deliver." + id);
+		} catch (IllegalArgumentException e) {
+			Diagnostics.warn("notifications", "No metrics for provider '" + lane.provider.id() + "': " + e.getMessage());
+		}
 	}
 
 	@Override
@@ -146,7 +164,12 @@ public final class NotificationBus implements NotificationService {
 			}
 			try {
 				if (lane.provider.accepts(notification)) {
+					long start = Metrics.Timer.start();
 					lane.provider.deliver(notification);
+					Metrics.Timer timer = lane.deliverTime;
+					if (timer != null) {
+						timer.stop(start);
+					}
 				}
 			} catch (Throwable t) {
 				long now = System.currentTimeMillis();

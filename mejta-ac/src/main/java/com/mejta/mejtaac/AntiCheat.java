@@ -63,6 +63,7 @@ import com.mejta.mejtaac.sync.TickSync;
 import com.mejta.mejtaac.violation.Throttle;
 import com.mejta.mejtaac.violation.ViolationTracker;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
+import com.mejta.mejtacore.api.metrics.Metrics;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 
 /**
@@ -71,6 +72,16 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
  * Each stage is configurable on its own and a failure in one never breaks packet handling.
  */
 public final class AntiCheat {
+	// Cost of each hook, shown by MejtaPerf (/perf metrics mejtaac). Two clock reads per call.
+	private static final Metrics.Timer T_MOVE_PACKET = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.move");
+	private static final Metrics.Timer T_SERVER_TICK_END = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.server_tick");
+	private static final Metrics.Timer T_PONG = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.pong");
+	private static final Metrics.Timer T_CLIENT_TICK_ARRIVAL = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.client_tick_arrival");
+	private static final Metrics.Timer T_CLIENT_TICK_END = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.client_tick");
+	private static final Metrics.Timer T_ATTACK = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.attack");
+	private static final Metrics.Timer T_BLOCK_INTERACTION = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.block_interaction");
+	private static final Metrics.Timer T_PLAYER_ACTION = MejtaCoreAPI.metrics().timer(MejtaAC.ID, "hook.player_action");
+
 	/** At most one violation record and one log line per player and check per second. */
 	private static final long RECORD_INTERVAL_MS = 1_000;
 	/** Client ticks after leaving a vehicle in which movement is not predicted (dismount placement). */
@@ -217,6 +228,15 @@ public final class AntiCheat {
 	 * @return {@code true} if the player was kicked and the packet should not be processed further
 	 */
 	public boolean onMovePacket(ServerPlayer player, ServerboundMovePlayerPacket packet) {
+		long start = Metrics.Timer.start();
+		try {
+			return onMovePacketMeasured(player, packet);
+		} finally {
+			T_MOVE_PACKET.stop(start);
+		}
+	}
+
+	private boolean onMovePacketMeasured(ServerPlayer player, ServerboundMovePlayerPacket packet) {
 		AcConfig cfg = config;
 		PlayerData pd = data(player.getUUID());
 		pd.claimedOnGround = packet.isOnGround();
@@ -247,6 +267,15 @@ public final class AntiCheat {
 
 	/** Server thread, end of every server tick: entity history and sync pings, if a check needs them. */
 	public void onServerTickEnd(MinecraftServer server) {
+		long start = Metrics.Timer.start();
+		try {
+			onServerTickEndMeasured(server);
+		} finally {
+			T_SERVER_TICK_END.stop(start);
+		}
+	}
+
+	private void onServerTickEndMeasured(MinecraftServer server) {
 		if (config.needsSync()) {
 			history.record(server, server.getTickCount());
 			sync.sendPings(server);
@@ -260,11 +289,29 @@ public final class AntiCheat {
 
 	/** Server thread, in packet order: one of our pongs. */
 	public void onPong(ServerPlayer player, int pongId) {
+		long start = Metrics.Timer.start();
+		try {
+			onPongMeasured(player, pongId);
+		} finally {
+			T_PONG.stop(start);
+		}
+	}
+
+	private void onPongMeasured(ServerPlayer player, int pongId) {
 		sync.onPong(player.getUUID(), pongId);
 	}
 
 	/** Network thread: a client tick ended (timer accounting uses the arrival time). */
 	public void onClientTickArrival(UUID player, long nanos, MinecraftServer server) {
+		long start = Metrics.Timer.start();
+		try {
+			onClientTickArrivalMeasured(player, nanos, server);
+		} finally {
+			T_CLIENT_TICK_ARRIVAL.stop(start);
+		}
+	}
+
+	private void onClientTickArrivalMeasured(UUID player, long nanos, MinecraftServer server) {
 		AcConfig cfg = config;
 		PlayerData d = players.get(player);
 		if (d == null || !cfg.enabled() || !cfg.timerEnabled() || d.singleplayerOwner) {
@@ -289,6 +336,15 @@ public final class AntiCheat {
 	 * @return {@code true} if the player was kicked
 	 */
 	public boolean onClientTickEnd(ServerPlayer player) {
+		long start = Metrics.Timer.start();
+		try {
+			return onClientTickEndMeasured(player);
+		} finally {
+			T_CLIENT_TICK_END.stop(start);
+		}
+	}
+
+	private boolean onClientTickEndMeasured(ServerPlayer player) {
 		AcConfig cfg = config;
 		PlayerData d = data(player.getUUID());
 		d.clientTicks++;
@@ -338,6 +394,15 @@ public final class AntiCheat {
 	 * @return {@code true} if the player was kicked and the attack should not be processed
 	 */
 	public boolean onAttack(ServerPlayer player, int entityId) {
+		long start = Metrics.Timer.start();
+		try {
+			return onAttackMeasured(player, entityId);
+		} finally {
+			T_ATTACK.stop(start);
+		}
+	}
+
+	private boolean onAttackMeasured(ServerPlayer player, int entityId) {
 		AcConfig cfg = config;
 		if (!cfg.enabled() || player.isSpectator()) {
 			return false;
@@ -433,6 +498,15 @@ public final class AntiCheat {
 	 * @return {@code true} if the player was kicked
 	 */
 	public boolean onBlockInteraction(ServerPlayer player, BlockPos pos, String action) {
+		long start = Metrics.Timer.start();
+		try {
+			return onBlockInteractionMeasured(player, pos, action);
+		} finally {
+			T_BLOCK_INTERACTION.stop(start);
+		}
+	}
+
+	private boolean onBlockInteractionMeasured(ServerPlayer player, BlockPos pos, String action) {
 		AcConfig cfg = config;
 		if (!cfg.enabled() || !cfg.blockReachEnabled() || player.isSpectator()) {
 			return false;
@@ -708,6 +782,15 @@ public final class AntiCheat {
 	 * @return {@code true} if the player was kicked
 	 */
 	public boolean onPlayerAction(ServerPlayer player, ServerboundPlayerActionPacket.Action action, BlockPos pos) {
+		long start = Metrics.Timer.start();
+		try {
+			return onPlayerActionMeasured(player, action, pos);
+		} finally {
+			T_PLAYER_ACTION.stop(start);
+		}
+	}
+
+	private boolean onPlayerActionMeasured(ServerPlayer player, ServerboundPlayerActionPacket.Action action, BlockPos pos) {
 		AcConfig cfg = config;
 		if (!cfg.enabled() || player.isSpectator()) {
 			return false;

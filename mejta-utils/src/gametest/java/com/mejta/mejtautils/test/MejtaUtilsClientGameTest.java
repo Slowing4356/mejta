@@ -1,5 +1,7 @@
 package com.mejta.mejtautils.test;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -115,7 +117,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 				"/staffmode", "/invsee claims")) {
 			clearChat(ctx);
 			chat(ctx, command);
-			check("unauthorized: " + command + " is not available to a non-operator", chatContains(ctx, "Unknown or incomplete command"));
+			check("unauthorized: " + command + " is not available to a non-operator", refused(ctx));
 		}
 		UUID id = id(ctx);
 		check("unauthorized: nothing happened", server.computeOnServer(s -> !MejtaUtils.vanish().isHidden(id)
@@ -198,7 +200,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		connection.close();
 		check("offline: snapshot reads the saved inventory", server.computeOnServer(s -> OfflineSnapshot.load(s, new net.minecraft.server.players.NameAndId(me, name))
 				.map(snap -> snap.inventory(0).is(Items.DIAMOND) && snap.inventory(0).getCount() == 3).orElse(false)));
-		server.runOnServer(s -> {
+		onServer(server, s -> {
 			HolderLookup.Provider r = s.registryAccess();
 			PendingChange c = new PendingChange(me, name, STAFF, "TestStaff", Instant.now());
 			c.remove(Container.INVENTORY, 0, ItemJson.encode(r, new ItemStack(Items.DIAMOND, 3)));
@@ -222,7 +224,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 		// 2. The save changed in between: refused, added items returned.
 		connection.close();
-		server.runOnServer(s -> {
+		onServer(server, s -> {
 			MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test"));
 			HolderLookup.Provider r = s.registryAccess();
 			PendingChange c = new PendingChange(me, name, STAFF, "TestStaff", Instant.now());
@@ -248,7 +250,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		// 5. Interrupted, and the save shows neither: nothing is changed.
 		recoveryCheck(ctx, server, connection = reconnectWithChange(server, connection, me, name, 24, new ItemStack(Items.COAL, 5)),
 				me, 24, PendingChange.State.APPLYING, false, "unknown");
-		server.runOnServer(s -> MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test")));
+		onServer(server, s -> MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test")));
 		return connection;
 	}
 
@@ -256,7 +258,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 	private TestServerConnection reconnectWithChange(TestDedicatedServerContext server, TestServerConnection connection, UUID me, String name,
 			int slot, ItemStack item) {
 		connection.close();
-		server.runOnServer(s -> {
+		onServer(server, s -> {
 			MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test"));
 			PendingChange c = new PendingChange(me, name, STAFF, "TestStaff", Instant.now());
 			c.remove(Container.INVENTORY, slot, ItemJson.encode(s.registryAccess(), item));
@@ -426,7 +428,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 				&& sameInventory(player(s, me), before)));
 
 		// Interrupted while ENTERING, before anything changed: the session is dropped, nothing lost.
-		server.runOnServer(s -> {
+		onServer(server, s -> {
 			ServerPlayer p = player(s, me);
 			JsonObject snapshot = StaffSnapshot.capture(p);
 			JsonObject session = new JsonObject();
@@ -481,7 +483,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 	}
 
 	private static void setSessionState(TestDedicatedServerContext server, UUID me, String state) {
-		server.runOnServer(s -> {
+		onServer(server, s -> {
 			DataStore store = MejtaCoreAPI.dataStore(MejtaUtils.ID);
 			JsonObject session = store.read(DataStore.playerKey("staffmode", me)).orElseThrow();
 			session.addProperty("state", state);
@@ -642,6 +644,30 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	private static boolean chatHas(ClientGameTestContext ctx, String text) {
 		return ctx.computeOnClient(mc -> chatLines(mc).stream().anyMatch(line -> line.contains(text)));
+	}
+
+	/** Minecraft's answer to a command the player may not use: unknown at the top level, an incorrect argument below it. */
+	private static boolean refused(ClientGameTestContext ctx) {
+		boolean found = waitUntil(ctx, () -> chatHas(ctx, "Unknown or incomplete command") || chatHas(ctx, "Incorrect argument for command"));
+		if (!found) {
+			LOG.error("[MejtaUtilsTest] the command was not refused. Chat: {}", ctx.computeOnClient(MejtaUtilsClientGameTest::chatLines));
+		}
+		return found;
+	}
+
+	/** For server actions that throw {@code IOException}: a failure fails the test with its cause. */
+	private interface IoAction {
+		void run(MinecraftServer server) throws IOException;
+	}
+
+	private static void onServer(TestDedicatedServerContext server, IoAction action) {
+		server.runOnServer(s -> {
+			try {
+				action.run(s);
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		});
 	}
 
 	private static boolean chatContains(ClientGameTestContext ctx, String text) {

@@ -60,7 +60,7 @@ public final class MejtaDiscordClientGameTest implements FabricClientGameTest {
 			connection.getClientLevel().waitForChunksRender();
 			try {
 				chat(ctx, "/mejtaadmin mejtadiscord status");
-				check("unauthorized: status is not available to a non-operator", chatContains(ctx, "Unknown or incomplete command"));
+				check("unauthorized: status is not available to a non-operator", refused(ctx));
 				grant(server, true);
 				unconfiguredChecks(ctx, server);
 				secretChecks(ctx, server);
@@ -230,6 +230,15 @@ public final class MejtaDiscordClientGameTest implements FabricClientGameTest {
 
 	private static boolean chatHas(ClientGameTestContext ctx, String text) {
 		return ctx.computeOnClient(mc -> chatLines(mc).stream().anyMatch(line -> line.contains(text)));
+	}
+
+	/** Minecraft's answer to a command the player may not use: unknown at the top level, an incorrect argument below it. */
+	private static boolean refused(ClientGameTestContext ctx) {
+		boolean found = waitUntil(ctx, () -> chatHas(ctx, "Unknown or incomplete command") || chatHas(ctx, "Incorrect argument for command"));
+		if (!found) {
+			LOG.error("[MejtaDiscordTest] the command was not refused. Chat: {}", ctx.computeOnClient(MejtaDiscordClientGameTest::chatLines));
+		}
+		return found;
 	}
 
 	private static boolean chatContains(ClientGameTestContext ctx, String text) {
