@@ -54,12 +54,31 @@ public final class StackSampler {
 	private volatile long samples;
 	private volatile long finishedAt;
 	private final Runnable onFinish;
+	// Only-slow-ticks mode: samples of the current tick wait here until its duration is known.
+	private final TickLog ticks;
+	private final long slowNanos;
+	private final java.util.ArrayList<String[]> pending = new java.util.ArrayList<>();
+	private long pendingTick = -1;
+	private volatile long keptSamples;
+	private volatile long slowTicks;
 
 	/**
 	 * @param inTick whether the target is inside a server tick right now
 	 * @param onFinish runs on the sampler thread once sampling has ended for any reason
 	 */
 	public StackSampler(Thread target, long intervalNanos, long limitNanos, BooleanSupplier inTick, LongSupplier clock, Runnable onFinish) {
+		this(target, intervalNanos, limitNanos, inTick, clock, onFinish, null, 0);
+	}
+
+	/**
+	 * Only keeps samples of ticks that took at least {@code slowNanos}, like Spark's {@code --only-ticks-over}: a
+	 * tick's samples are held until the tick has ended and its duration is known from {@code ticks}. Samples
+	 * between ticks are dropped. With {@code ticks == null} or {@code slowNanos <= 0} every sample is kept.
+	 */
+	public StackSampler(Thread target, long intervalNanos, long limitNanos, BooleanSupplier inTick, LongSupplier clock, Runnable onFinish,
+			TickLog ticks, long slowNanos) {
+		this.ticks = slowNanos > 0 ? ticks : null;
+		this.slowNanos = slowNanos;
 		this.target = target;
 		this.intervalNanos = Math.max(1_000_000, intervalNanos);
 		this.limitNanos = limitNanos;
@@ -97,8 +116,13 @@ public final class StackSampler {
 						StackTraceElement e = stack[stack.length - i];
 						frames[i] = e.getClassName() + "." + e.getMethodName();
 					}
-					tree.add(frames);
 					samples++;
+					if (ticks == null) {
+						tree.add(frames);
+						keptSamples++;
+					} else {
+						keepIfSlow(tick, ticks.current(), frames);
+					}
 				}
 				next += intervalNanos;
 				long wait = next - clock.getAsLong();
@@ -109,9 +133,49 @@ public final class StackSampler {
 				}
 			}
 		} finally {
+			if (ticks != null) {
+				settlePending(true);
+			}
 			finishedAt = clock.getAsLong();
 			onFinish.run();
 		}
+	}
+
+	/** Holds a sample of tick {@code tickId} until that tick's duration is known. */
+	private void keepIfSlow(boolean inTick, long tickId, String[] frames) {
+		if (pendingTick >= 0 && tickId != pendingTick) {
+			settlePending(false);
+		}
+		if (!inTick) {
+			settlePending(false); // the tick ended: its duration may be known now
+			return;
+		}
+		if (pendingTick < 0) {
+			pendingTick = tickId;
+		}
+		if (pending.size() < 100_000) {
+			pending.add(frames);
+		}
+	}
+
+	/** Commits or drops the held samples once their tick's duration is known; {@code last} gives up waiting. */
+	private void settlePending(boolean last) {
+		if (pendingTick < 0) {
+			return;
+		}
+		long duration = ticks.duration(pendingTick);
+		if (duration < 0 && !last && ticks.current() == pendingTick) {
+			return; // still running
+		}
+		if (duration >= slowNanos) {
+			for (String[] frames : pending) {
+				tree.add(frames);
+			}
+			keptSamples += pending.size();
+			slowTicks++;
+		}
+		pending.clear();
+		pendingTick = -1;
 	}
 
 	/** Asks sampling to end; the reason is recorded unless it already ended (the first reason wins). */
@@ -132,6 +196,21 @@ public final class StackSampler {
 
 	public long samples() {
 		return samples;
+	}
+
+	/** Samples in the report: all of them, or in only-slow-ticks mode those of slow ticks. */
+	public long keptSamples() {
+		return keptSamples;
+	}
+
+	/** Only-slow-ticks mode: the slow ticks whose samples were kept. */
+	public long slowTicks() {
+		return slowTicks;
+	}
+
+	/** The only-slow-ticks threshold, or 0 when every sample is kept. */
+	public long slowNanos() {
+		return ticks == null ? 0 : slowNanos;
 	}
 
 	public long intervalNanos() {

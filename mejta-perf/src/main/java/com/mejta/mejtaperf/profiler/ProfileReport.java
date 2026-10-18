@@ -19,7 +19,8 @@ public final class ProfileReport {
 	static final int TREE_MAX_DEPTH = 80;
 
 	/** What the caller knows about the run, beyond the samples. */
-	public record Info(String started, String endReason, double seconds, double intervalMs, String ticks) {
+	/** @param filter which samples were kept, empty when all were (only-slow-ticks mode) */
+	public record Info(String started, String endReason, double seconds, double intervalMs, String ticks, String filter) {
 	}
 
 	/** The computed figures, also used for the chat summary. */
@@ -79,6 +80,9 @@ public final class ProfileReport {
 		out.append("Duration:  ").append(fmt("%.1f s", info.seconds())).append(", one sample every ").append(fmt("%.0f ms", info.intervalMs()))
 				.append(" (").append(info.endReason()).append(")\n");
 		out.append("Server:    ").append(info.ticks()).append('\n');
+		if (!info.filter().isEmpty()) {
+			out.append("Filter:    ").append(info.filter()).append('\n');
+		}
 		out.append("Samples:   ").append(summary.samples()).append(": working in ").append(summary.busy())
 				.append(", waiting for the next tick in ").append(summary.idle()).append('\n');
 		if (tree.truncated() > 0) {

@@ -28,7 +28,7 @@ import com.mejta.mejtaperf.tick.TickStats;
  * <li>{@code /mperf} or {@code /mperf status}: TPS, MSPT, world, memory, CPU</li>
  * <li>{@code /mperf entities}: entity types and crowded chunks</li>
  * <li>{@code /mperf metrics [addon]}: Mejta metrics</li>
- * <li>{@code /mperf profiler start [seconds] | stop | status}</li>
+ * <li>{@code /mperf profiler start [seconds] | slow <ms> [seconds] | stop | status}</li>
  * <li>{@code /mperf report}: saves a full report</li>
  * </ul>
  */
@@ -51,9 +51,15 @@ final class PerfCommands {
 				.then(Commands.literal("profiler")
 						.requires(MejtaCoreAPI.requires(PerfPermissions.PROFILER))
 						.then(Commands.literal("start")
-								.executes(ctx -> startProfiler(ctx, -1))
+								.executes(ctx -> startProfiler(ctx, -1, 0))
 								.then(Commands.argument("seconds", IntegerArgumentType.integer(5, 3600))
-										.executes(ctx -> startProfiler(ctx, IntegerArgumentType.getInteger(ctx, "seconds")))))
+										.executes(ctx -> startProfiler(ctx, IntegerArgumentType.getInteger(ctx, "seconds"), 0))))
+						.then(Commands.literal("slow")
+								.then(Commands.argument("ms", IntegerArgumentType.integer(10, 60_000))
+										.executes(ctx -> startProfiler(ctx, -1, IntegerArgumentType.getInteger(ctx, "ms")))
+										.then(Commands.argument("seconds", IntegerArgumentType.integer(5, 3600))
+												.executes(ctx -> startProfiler(ctx, IntegerArgumentType.getInteger(ctx, "seconds"),
+														IntegerArgumentType.getInteger(ctx, "ms"))))))
 						.then(Commands.literal("stop").executes(PerfCommands::stopProfiler))
 						.then(Commands.literal("status").executes(PerfCommands::profilerStatus)))
 				.then(Commands.literal("report")
@@ -152,19 +158,22 @@ final class PerfCommands {
 
 	// ---------------------------------------------------------------- profiler and reports
 
-	private static int startProfiler(CommandContext<CommandSourceStack> ctx, int requested) {
+	/** @param slowMs only keep samples of ticks at least this long; 0 keeps every sample */
+	private static int startProfiler(CommandContext<CommandSourceStack> ctx, int requested, int slowMs) {
 		CommandSourceStack source = ctx.getSource();
 		MejtaPerf.Snapshot s = MejtaPerf.snapshot();
 		int seconds = requested < 0 ? s.profilerMax() : Math.min(requested, s.profilerMax());
 		String reason = "started by " + source.getTextName();
-		String problem = MejtaPerf.profiler().start(source.getServer(), seconds, s.profilerInterval(), reason, result -> MejtaPerf.announce(result));
-		audit(ctx, "profiler.start", problem == null ? AuditOutcome.SUCCESS : AuditOutcome.FAILED, Map.of("seconds", seconds));
+		String problem = MejtaPerf.profiler().start(source.getServer(), seconds, s.profilerInterval(), slowMs, reason,
+				result -> MejtaPerf.announce(result));
+		audit(ctx, "profiler.start", problem == null ? AuditOutcome.SUCCESS : AuditOutcome.FAILED, Map.of("seconds", seconds, "slow_ms", slowMs));
 		if (problem != null) {
 			source.sendFailure(Component.literal(problem));
 			return 0;
 		}
-		source.sendSuccess(() -> Component.literal(Fmt.f("Profiling the server thread for up to %s, one sample every %d ms. ",
-				Fmt.duration(seconds), s.profilerInterval())).append(Component.literal("/mperf profiler stop").withStyle(ChatFormatting.YELLOW))
+		source.sendSuccess(() -> Component.literal(Fmt.f("Profiling the server thread for up to %s, one sample every %d ms%s. ",
+				Fmt.duration(seconds), s.profilerInterval(), slowMs > 0 ? ", keeping only ticks of " + slowMs + " ms or more" : ""))
+				.append(Component.literal("/mperf profiler stop").withStyle(ChatFormatting.YELLOW))
 				.append(" ends it early; the report is saved either way."), true);
 		return 1;
 	}

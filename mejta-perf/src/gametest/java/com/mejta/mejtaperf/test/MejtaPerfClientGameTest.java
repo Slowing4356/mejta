@@ -127,6 +127,12 @@ public final class MejtaPerfClientGameTest implements FabricClientGameTest {
 				&& text.contains("Call tree"));
 		check("profiler: the server thread was sampled", text.contains("net.minecraft.server.MinecraftServer") && text.contains("[minecraft]"));
 		check("profiler: in-tick samples were taken", text.contains("[tick]"));
+
+		// Only slow ticks: a run with a threshold starts, says so, and still saves its report (CI ticks may all be fast).
+		clearChat(ctx);
+		chat(ctx, "/mperf profiler slow 10 5");
+		check("profiler slow: started", chatContains(ctx, "keeping only ticks of 10 ms or more"));
+		check("profiler slow: report announced", waitUntil(ctx, 600, () -> chatHas(ctx, "Profile saved")));
 	}
 
 	private void lagChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {

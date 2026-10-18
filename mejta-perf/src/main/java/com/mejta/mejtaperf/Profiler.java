@@ -64,9 +64,10 @@ final class Profiler {
 	 * Starts a run. Server thread only.
 	 *
 	 * @param reason why it runs, shown in the report ("started by Alex", "lag alert")
+	 * @param slowMs only keep samples of ticks that took at least this long; 0 keeps everything
 	 * @return {@code null} on success, otherwise why it could not start
 	 */
-	String start(MinecraftServer server, int seconds, int intervalMs, String reason, Consumer<Result> done) {
+	String start(MinecraftServer server, int seconds, int intervalMs, int slowMs, String reason, Consumer<Result> done) {
 		if (current != null) {
 			return "A profile is already running (" + current.reason + ").";
 		}
@@ -77,11 +78,12 @@ final class Profiler {
 		Run[] holder = new Run[1];
 		// Once the server is stopping, the sampler no longer hands the run back: cancel() has dealt with it.
 		StackSampler sampler = new StackSampler(thread, intervalMs * 1_000_000L, seconds * 1_000_000_000L, monitor::inTick, System::nanoTime,
-				() -> MejtaPerf.runOnServer(server, () -> finished(holder[0])));
+				() -> MejtaPerf.runOnServer(server, () -> finished(holder[0])), monitor.tickLog(), slowMs * 1_000_000L);
 		holder[0] = new Run(sampler, reason, done);
 		current = holder[0];
 		sampler.start();
-		log.info("Profiler started ({}) for at most {} s, sampling every {} ms", reason, seconds, intervalMs);
+		log.info("Profiler started ({}) for at most {} s, sampling every {} ms{}", reason, seconds, intervalMs,
+				slowMs > 0 ? ", only ticks of " + slowMs + " ms or more" : "");
 		return null;
 	}
 
@@ -170,8 +172,10 @@ final class Profiler {
 				: "its last " + Fmt.count(window.ticks()) + " ticks (the history holds 15 minutes)";
 		String ticks = Fmt.f("%s ticks, TPS %s; MSPT over %s: mean %s ms, max %s ms", Fmt.count(tickCount),
 				Fmt.tps(tickCount / (elapsed / 1e9)), span, Fmt.ms(window.meanMs()), Fmt.ms(window.maxMs()));
+		String filter = sampler.slowNanos() <= 0 ? "" : Fmt.f("only ticks of %s ms or more: %s such ticks; %s of %s samples kept",
+				Fmt.ms(sampler.slowNanos() / 1e6), Fmt.count(sampler.slowTicks()), Fmt.count(sampler.keptSamples()), Fmt.count(sampler.samples()));
 		ProfileReport.Info info = new ProfileReport.Info(run.started.toString() + " (" + run.reason + ")", endReason,
-				sampler.elapsedNanos() / 1e9, sampler.intervalNanos() / 1e6, ticks);
+				sampler.elapsedNanos() / 1e9, sampler.intervalNanos() / 1e6, ticks, filter);
 		boolean queued = MejtaPerf.io().submit(() -> {
 			Result result;
 			try {

@@ -126,8 +126,9 @@ public final class MejtaPerf implements MejtaAddon {
 				publishLag(s, now, settings);
 			}
 			if (settings.autoProfile() && !profiler.running()) {
-				String problem = profiler.start(s, Math.min(AUTO_PROFILE_SECONDS, settings.profilerMax()), settings.profilerInterval(), "lag alert",
-						MejtaPerf::announce);
+				// Only the slow ticks: the report then shows what made them slow, not the normal ticks around them.
+				String problem = profiler.start(s, Math.min(AUTO_PROFILE_SECONDS, settings.profilerMax()), settings.profilerInterval(),
+						settings.msptThreshold(), "lag alert", MejtaPerf::announce);
 				if (problem != null) {
 					log.info("No automatic profile: {}", problem);
 				}

@@ -17,5 +17,6 @@ First release.
   - Samples the server thread with Java stack traces and separates real work from waiting for the next tick.
   - Charges time to mods, counting mixin handlers for the mod that added them.
   - Saves a report with mods, hottest methods and the call tree.
+  - `/mperf profiler slow <ms>` keeps only the samples of ticks that took at least that long, for lag spikes. An automatic profile on a lag alert uses it with the alert threshold.
 - **`/mperf`, `/mperf entities`, `/mperf metrics [addon]`** and **`/mperf report`**: status in chat, and full text reports in `mejta-data/mejtaperf/reports/`.
 - **Privacy:** no player names, addresses or secrets in notifications or reports. The one exception is that a profile report names who started it.
