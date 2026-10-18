@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 
 import com.mejta.mejtacore.menu.ButtonMenu;
@@ -94,6 +95,14 @@ public final class ServerMenu {
 
 	public Consumer<ServerPlayer> onClose() {
 		return onClose;
+	}
+
+	/**
+	 * Whether {@code menu} is an open server menu (made with this class). Lets addons tell them apart
+	 * from real containers, e.g. to block item transfers in containers but not clicks on server menus.
+	 */
+	public static boolean isServerMenu(AbstractContainerMenu menu) {
+		return menu instanceof ButtonMenu;
 	}
 
 	/** Opens the menu for {@code player} (closing whatever they had open). Call on the server thread. */
