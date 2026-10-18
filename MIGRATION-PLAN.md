@@ -2,6 +2,8 @@
 
 Status: **Milestone 1 complete. Your decisions are recorded in section 8 (2026-10-18). Milestone 2 in progress.**
 
+The integration design for MejtaUtils and MejtaDiscord, including the proposed MejtaCore 1.3.0 API, is in [`INTEGRATION-DESIGN.md`](INTEGRATION-DESIGN.md) and awaits your decisions (its section 7).
+
 This plan covers the upgrade of the existing MejtaCore and MejtaAC projects and the creation of the new addons. It records what exists today, what changes, what each change breaks (nothing so far), and what still needs your decision.
 
 ---

@@ -14,7 +14,7 @@ Mejta is a family of Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.
 
 Each folder is a standalone Gradle project with its own wrapper, README and version. Build one with `cd <folder> && ./gradlew build`. An addon compiles against MejtaCore from Maven Local, so publish that first with `cd mejta-core && ./gradlew publishToMavenLocal`.
 
-[`MIGRATION-PLAN.md`](MIGRATION-PLAN.md) holds the roadmap, the check inventory and the threat model.
+[`MIGRATION-PLAN.md`](MIGRATION-PLAN.md) holds the roadmap, the check inventory and the threat model. [`INTEGRATION-DESIGN.md`](INTEGRATION-DESIGN.md) holds the design of MejtaUtils, MejtaDiscord and the MejtaCore 1.3.0 API they need (draft, awaiting approval).
 
 ## Repository rules
 
