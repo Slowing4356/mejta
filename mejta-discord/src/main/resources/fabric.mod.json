@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtadiscord",
+	"version": "${version}",
+	"name": "MejtaDiscord",
+	"description": "Sends MejtaAC anti-cheat alerts to Discord and relays chat between Discord and Minecraft, through MejtaCore.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.mejtadiscord.MejtaDiscord"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.3.0 <2.0.0"
+	}
+}
