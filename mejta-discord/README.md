@@ -10,21 +10,19 @@ It never talks to MejtaAC directly: MejtaAC publishes notifications to MejtaCore
 
 | | |
 |---|---|
-| Version | 0.1.0 (first release; **not yet built or run**, see [Status](#status)) |
+| Version | 1.0.0 (first release; see [Status](#status)) |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | **MejtaCore 1.3.0 or newer, below 2.0.0** (API version 4) |
 | Third-party libraries | None. Webhooks use Java's built-in `HttpClient`; the gateway uses Java's built-in WebSocket client. |
 
 ## Status
 
-This release was written without access to the Minecraft jars or to Discord, so it has **not been compiled against Minecraft, run on a server, or connected to Discord yet**.
-
+- **Built and game-tested in CI.** It is compiled against Minecraft 26.1.2, and the client game test passes on a real client and dedicated server. That test covers the unconfigured case, secrets, routing, and Discord messages shown in Minecraft with their rate limit.
+- **Not tested against real Discord.** Delivery has to be checked by hand: see [Checking it by hand](#checking-it-by-hand).
 - The network and text code contains no Minecraft code and is unit-tested: **54 JUnit tests**.
   - Webhooks are tested against a local HTTP server: ordering, `allowed_mentions`, 429 handling, rate-limit headers, retries, deleted webhooks, a full queue, a failing message, and no URLs in errors.
   - The gateway is tested against a local WebSocket server that speaks Discord's protocol: identify, heartbeats, zombie connections, resume, reconnect requests, invalid sessions, fatal close codes, stalled handshakes, repeatedly failing resumes, and a prompt close.
   - The rest covers the bridge (settings changes keep queued messages, re-enabling refused webhooks), sanitising, redaction, rate limits, routing, embeds and inbound message parsing.
-- The Minecraft side (settings, commands, chat events) is covered by a client game test, but it has not run yet.
-- Delivery to real Discord has to be checked by hand: see [Checking it by hand](#checking-it-by-hand).
 
 ## Installing
 
@@ -240,14 +238,6 @@ cd ../mejta-discord
 ```
 
 The game test logs each check as `[MejtaDiscordTest] PASS/FAIL`. It never contacts Discord: it uses a made-up webhook URL that is never sent to.
-
-### Things to verify
-
-These Minecraft names were not found in the reference sources. Check them on the first build:
-
-- `PlayerChatMessage.signedContent()`, used for the plain chat text in `ChatRelay`;
-- `SharedSuggestionProvider.suggest(Iterable<String>, SuggestionsBuilder)`;
-- `CommandSourceStack.getTextName()`.
 
 ## Limitations
 

@@ -14,7 +14,7 @@ Mejta is a family of Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.
 
 Each folder is a standalone Gradle project with its own wrapper, README, changelog and version. Build one with `cd <folder> && ./gradlew build`. An addon compiles against MejtaCore from Maven Local, so publish that first with `cd mejta-core && ./gradlew publishToMavenLocal`.
 
-**CI** (`.github/workflows/ci.yml`) builds every project on each push, runs the unit tests, and runs each project's client game test (a real client against a dedicated server) under a virtual display. The built jars are attached to each run. **Releases** (`.github/workflows/release.yml`): pushing a tag such as `v2026.10.0` builds and tests everything again and publishes a GitHub release with all jars, checksums and `RELEASE-NOTES.md`.
+**CI** (`.github/workflows/ci.yml`) builds every project and runs the unit tests on every push to `main` and every pull request; that takes a few minutes, and the built jars are attached to the run. The client game tests (a real client against a dedicated server, under a virtual display) take up to half an hour, so they run only on demand: **Actions > CI > Run workflow**, then choose `all` or one project. Run them before tagging a release. **Releases** (`.github/workflows/release.yml`): pushing a tag such as `v2026.10.0` builds and tests everything again and publishes a GitHub release with all jars, checksums and `RELEASE-NOTES.md`.
 
 [`MIGRATION-PLAN.md`](MIGRATION-PLAN.md) holds the roadmap, the check inventory and the threat model. [`INTEGRATION-DESIGN.md`](INTEGRATION-DESIGN.md) holds the design of MejtaUtils, MejtaDiscord and the MejtaCore 1.3.0 API they need, and what was built (its section 8).
 

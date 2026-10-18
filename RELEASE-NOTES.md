@@ -27,7 +27,7 @@ Every addon needs **MejtaCore 1.3.0** and **Fabric API**. Addons never depend on
 
 ## Tested
 
-Every jar in this release was built by CI from the tagged commit. The CI runs:
+Every jar in this release was built from the tagged commit by the release workflow, which also runs the unit tests. The client game tests run on demand (Actions > CI > Run workflow) and were run before tagging. CI covers:
 - **Build:** every project compiled against Minecraft 26.1.2.
 - **Unit tests:** JUnit 6.1.3 tests for the logic that needs no running game.
 - **Client game tests:** a real Minecraft client joins a real dedicated server, under a virtual display. Each mod's test drives commands, menus and clicks and checks the results:

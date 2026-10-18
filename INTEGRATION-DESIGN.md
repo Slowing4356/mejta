@@ -1,6 +1,6 @@
 # MejtaUtils and MejtaDiscord: integration design
 
-Status: **approved and implemented (2026-10-18), with the reduced Discord scope you chose.** Section 8 records your decisions and what was built; where it differs from sections 2 to 5, section 8 wins. None of it has been compiled against Minecraft yet: building and testing happen on your machine (decision 5).
+Status: **approved and implemented (2026-10-18), with the reduced Discord scope you chose.** Section 8 records your decisions and what was built; where it differs from sections 2 to 5, section 8 wins. Everything is now compiled and tested against Minecraft 26.1.2 by the repository's CI, which can reach the Fabric and Mojang servers that the authoring environment could not. MejtaUtils, MejtaDiscord and MejtaPerf were released as 1.0.0.
 
 The requests for `smp-utils` and `smp-discord` both say to inspect the real core API and settle the integration design before writing code. This document does that. It records:
 
@@ -939,7 +939,7 @@ Your answers to section 7:
 
 Built as described in section 3. Offline editing is included, experimental and off by default.
 
-The 16 JUnit tests pass here. The client game test is written but has not been run. Names not found in the reference sources are listed under "Things to verify" in `mejta-utils/README.md`.
+Released as 1.0.0. It is compiled in CI, and its JUnit tests and client game test run there; `mejta-utils/README.md` has the current status.
 
 ### 8.3 MejtaDiscord 0.1.0
 
@@ -951,6 +951,6 @@ Built in the reduced scope:
 
 Sections 4.5 to 4.8 are **not built**: account verification, role sync, the staff alert centre and its actions, performance alerts, and remote administration. No Discord input can run anything on the server.
 
-38 JUnit tests pass here. They run the webhook client against a local HTTP server, and the gateway client against a local WebSocket server that speaks Discord's protocol.
+54 JUnit tests (after the release review). They run the webhook client against a local HTTP server, and the gateway client against a local WebSocket server that speaks Discord's protocol.
 
-The client game test is written but has not been run. Delivery to real Discord is checked by hand, as listed in `mejta-discord/README.md`.
+Released as 1.0.0. It is compiled in CI, and its client game test passes there. Delivery to real Discord is checked by hand, as listed in `mejta-discord/README.md`.
