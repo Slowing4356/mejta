@@ -1,6 +1,6 @@
 # MejtaUtils and MejtaDiscord: integration design
 
-Status: **draft for your approval (2026-10-18). Nothing in this document is implemented yet.**
+Status: **approved and implemented (2026-10-18), with the reduced Discord scope you chose.** Section 8 records your decisions and what was built; where it differs from sections 2 to 5, section 8 wins. None of it has been compiled against Minecraft yet: building and testing happen on your machine (decision 5).
 
 The requests for `smp-utils` and `smp-discord` both say to inspect the real core API and settle the integration design before writing code. This document does that. It records:
 
@@ -884,7 +884,7 @@ Anyone with `mejtadiscord.verification.bypass` (default OWNERS) can always join,
 | 2 | **MejtaCore 1.3.0, part 2:** B, C, D, E, F, G, H, I, J; persistent mutes | Test addon gametests; old-API addon compatibility; MejtaAC suite unchanged |
 | 3 | **MejtaUtils 0.1.0:** online `/invsee`, `/ecsee`, status, freeze, vanish (all leak-audit rows), staff mode, offline viewing | JUnit and gametests from 3.11 |
 | 4 | **MejtaUtils 0.2.0:** offline editing (experimental, off by default) | Conflict suite from 3.11 |
-| 5 | **MejtaDiscord 0.1.0:** webhooks, routing, embeds, Minecraft-to-Discord chat, events, performance alerts | JUnit and gametests from 4.10 |
+| 5 | **MejtaDiscord 0.1.0:** webhooks, routing, embeds, Minecraft-to-Discord chat, events, performance alerts (as built: see 8.3) | JUnit and gametests from 4.10 |
 | 6 | **MejtaDiscord 0.2.0:** bot (after decision 2): Discord-to-Minecraft chat, verification, buttons, slash commands, remote admin | JUnit and gametests from 4.10 |
 
 Each step ends with its README, the test results actually run, and a commit.
@@ -906,3 +906,51 @@ Each step ends with its README, the test results actually run, and a commit.
    - the command names in 3.1 (`/status` especially; it's a generic name);
    - the permission defaults in 3.2.
 5. **Build environment:** allow `maven.fabricmc.net`, `meta.fabricmc.net` and the Mojang hosts (`piston-meta.mojang.com`, `piston-data.mojang.com`, `libraries.minecraft.net`, `resources.download.minecraft.net`) in this environment, plus a Java 25 download? Or should implementation happen on your machine? Without one of these, no code can be compiled or tested.
+
+## 8. Decisions taken, and what was built
+
+Your answers to section 7:
+
+1. **Core API:** approved, with the instruction to improve it.
+2. **Discord scope, reduced:** MejtaDiscord only sends anti-cheat messages to Discord and relays chat both ways. Bot connection: the built-in Gateway client (no library).
+3. **Order:** core, then MejtaUtils, then MejtaDiscord, then performance (MejtaPerf). MejtaAC already exists.
+4. **IDs and commands:** as proposed.
+5. **Build environment:** builds and tests run on your machine.
+
+### 8.1 MejtaCore 1.3.0 (API 4)
+
+| Part | State |
+|---|---|
+| A. Secret settings, and the three leak fixes | Built |
+| B. Top-level commands | Built |
+| C. JSON data store | Built |
+| D. Event bus | **Deferred.** Nothing in the reduced scope needs it: MejtaDiscord subscribes to notifications, which already carry MejtaAC's events. |
+| E. Presence | Built |
+| F. Action registry | **Deferred.** It was for Discord buttons and remote actions, which are out of scope. |
+| G. Offline permission check | **Partly built.** `MejtaCoreAPI.hasPermission(MinecraftServer, NameAndId, MejtaPermission)` exists. The rest is deferred with F. |
+| H. Audit log | Built |
+| I. Server-side menus | Built |
+| J. Notification queues and scheduler | Built |
+| K. `experimental` flag | Built |
+
+20 JUnit tests cover secrets, the data store and the audit chain. They pass on Java 21 here. The test addon's gametest has new checks for API 4.
+
+### 8.2 MejtaUtils 0.1.0
+
+Built as described in section 3. Offline editing is included, experimental and off by default.
+
+The 16 JUnit tests pass here. The client game test is written but has not been run. Names not found in the reference sources are listed under "Things to verify" in `mejta-utils/README.md`.
+
+### 8.3 MejtaDiscord 0.1.0
+
+Built in the reduced scope:
+
+- **Notifications:** MejtaCore notifications go to up to three webhooks (`default`, `alerts`, `staff`), chosen by routing rules, as embeds with a colour for each severity. The default route is `mejtaac.*=default`.
+- **Minecraft to Discord:** chat goes through a chat webhook, under each player's name. Join and leave messages are optional and respect vanish.
+- **Discord to Minecraft:** messages are read through a built-in, read-only Gateway v10 client. It needs only View Channels, Read Message History and the Message Content intent. Messages are shown as plain text, with a rate limit per user and a word filter.
+
+Sections 4.5 to 4.8 are **not built**: account verification, role sync, the staff alert centre and its actions, performance alerts, and remote administration. No Discord input can run anything on the server.
+
+38 JUnit tests pass here. They run the webhook client against a local HTTP server, and the gateway client against a local WebSocket server that speaks Discord's protocol.
+
+The client game test is written but has not been run. Delivery to real Discord is checked by hand, as listed in `mejta-discord/README.md`.
