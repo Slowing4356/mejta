@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
@@ -52,6 +53,7 @@ import com.mejta.mejtacore.api.storage.RecordLog;
 import com.mejta.mejtacore.api.storage.RecordLogOptions;
 import com.mejta.mejtacore.core.CoreSettings;
 import com.mejta.mejtacore.core.MejtaCore;
+import com.mejta.mejtacore.network.ConfigPayloads;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
 import com.mejta.mejtacore.ui.ChestMenuScreen;
 import com.mejta.mejtacore.ui.TextInputScreen;
@@ -86,6 +88,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 			addonMenuEntryChecks(ctx);
 			pagingChecks(ctx);
 			inGameNotificationChecks(ctx, world.getServer());
+			noServerSettingsInSingleplayer(ctx);
 		}
 
 		try (TestDedicatedServerContext server = ctx.worldBuilder().createServer();
@@ -93,6 +96,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 			connection.getClientLevel().waitForChunksRender();
 			multiplayerChecks(ctx);
 			serverCommandChecks(ctx, server);
+			remoteConfigChecks(ctx, server);
 		}
 
 		resetToKnownState(ctx);
@@ -382,8 +386,13 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	private final List<Notification> captured = new CopyOnWriteArrayList<>();
 
 	private void permissionConfigChecks(Path configDir) {
-		check("API_VERSION is 2", MejtaCoreAPI.API_VERSION == 2);
 		String file = read(configDir.resolve(PermissionRegistry.CONFIG_ID + ".json"));
+		check("API_VERSION is 3", MejtaCoreAPI.API_VERSION == 3);
+		Setting<String> choice = Setting.choice("pick", "b", List.of("a", "b", "c"));
+		check("choice setting accepts its options only", choice.isValid("c") && !choice.isValid("d") && choice.options().size() == 3);
+		check("enum setting lists its constants as options", ExampleAddon.MODE.options().equals(List.of("NORMAL", "FAST", "SILENT")));
+		check("permissions file lists config editing nodes", file.contains("\"mejtacore.config.edit\": \"ADMINS\"")
+				&& file.contains("\"mejtacore.config.permissions\": \"OWNERS\""));
 		check("permissions file lists core node with default level", file.contains("\"mejtacore.admin\": \"GAMEMASTERS\""));
 		check("permissions file lists addon nodes", file.contains("\"example.ping\": \"ALL\"")
 				&& file.contains("\"example.secret\": \"OWNERS\""));
@@ -556,6 +565,103 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/mejtaadmin addons");
 		check("resetting the override denies again", !chatHas(ctx, "Example Addon 1.0.0 (example)"));
 	}
+
+	// ---------------------------------------------------------------- remote config editing (API 3)
+
+	private void noServerSettingsInSingleplayer(ClientGameTestContext ctx) {
+		chat(ctx, "/mejta gui");
+		waitForMenu(ctx, "MejtaCore");
+		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
+		waitForMenu(ctx, "Configuration");
+		check("single-player: no Server Settings entry (local files are the server's)", findSlot(ctx, "server_settings") < 0);
+		closeMenu(ctx);
+	}
+
+	private void remoteConfigChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
+		ConfigHandle example = ExampleAddon.config();
+		ConfigHandle perms = MejtaCore.configs().find(PermissionRegistry.CONFIG_ID).orElseThrow();
+		@SuppressWarnings("unchecked")
+		Setting<PermissionLevel> edit = (Setting<PermissionLevel>) perms.spec().setting("mejtacore.config.edit").orElseThrow();
+		example.resetAll();
+		example.save();
+
+		chat(ctx, "/mejta gui");
+		waitForMenu(ctx, "MejtaCore");
+		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
+		check("remote: Configuration page opens on a server", waitForMenu(ctx, "Configuration"));
+		check("remote: Server Settings entry offered by a MejtaCore server", findSlot(ctx, "server_settings") >= 0);
+		clickSlot(ctx, findSlot(ctx, "server_settings"), 0);
+		check("remote: Server Settings page opens", waitForMenu(ctx, "Server Settings"));
+		check("remote: non-op sees 'No permission'", waitUntil(ctx, () -> findSlot(ctx, "server_no_permission") >= 0));
+		ctx.takeScreenshot("mejtacore-08-server-settings-denied");
+
+		perms.set(edit, PermissionLevel.ALL);
+		perms.save(); // a config change: the server pushes fresh catalogs, the open page refreshes
+		check("remote: granting mejtacore.config.edit shows the server's configs",
+				waitUntil(ctx, () -> findSlot(ctx, "server_config_example") >= 0));
+		check("remote: permissions file hidden without mejtacore.config.permissions",
+				findSlot(ctx, "server_config_mejtacore.permissions") < 0);
+		ctx.takeScreenshot("mejtacore-09-server-settings");
+
+		clickSlot(ctx, findSlot(ctx, "server_config_example"), 0);
+		check("remote: server config page opens", waitForMenu(ctx, "Example Addon (Server)"));
+		clickSlot(ctx, findSlot(ctx, "setting_radius"), 0);
+		check("remote: left click changes the server's value (8 -> 9)", waitUntil(ctx, () -> example.get(ExampleAddon.RADIUS) == 9));
+		check("remote: server saved the change to disk", waitUntil(ctx,
+				() -> read(example.file()).contains("\"radius\": 9")));
+		clickSlot(ctx, findSlot(ctx, "setting_mode"), 0);
+		check("remote: enum setting cycles on the server (NORMAL -> FAST)",
+				waitUntil(ctx, () -> example.get(ExampleAddon.MODE) == ExampleAddon.Mode.FAST));
+		check("remote: page shows the server's value", waitUntil(ctx, () -> ctx.computeOnClient(mc -> {
+			if (!(mc.screen instanceof ChestMenuScreen menu)) {
+				return false;
+			}
+			int slot = findSlotOn(menu, "setting_radius");
+			return slot >= 0 && menu.entryAt(slot).title().getString().contains("9");
+		})));
+		ctx.takeScreenshot("mejtacore-10-server-config-edit");
+		closeMenu(ctx);
+
+		ctx.runOnClient(mc -> ClientPlayNetworking.send(new ConfigPayloads.EditConfig("example", "SET", "radius", "999")));
+		ctx.runOnClient(mc -> ClientPlayNetworking.send(new ConfigPayloads.EditConfig("example", "SET", "greeting", "   ")));
+		ctx.runOnClient(mc -> ClientPlayNetworking.send(new ConfigPayloads.EditConfig("mejtacore.permissions", "SET",
+				"mejtacore.config.permissions", "ALL")));
+		ctx.waitTicks(20);
+		check("remote: server rejects out-of-range values", example.get(ExampleAddon.RADIUS) == 9);
+		check("remote: server applies the addon's own validator", !example.get(ExampleAddon.GREETING).isBlank());
+		check("remote: non-owner cannot raise their own permissions",
+				PermissionRegistry.requiredLevel(PermissionRegistry.CONFIG_PERMISSIONS) == PermissionLevel.OWNERS);
+
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin config set example radius 12");
+		check("command: /mejtaadmin config set", waitUntil(ctx, () -> example.get(ExampleAddon.RADIUS) == 12));
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin config get example radius");
+		check("command: /mejtaadmin config get", chatContains(ctx, "radius = 12"));
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin config set example radius banana");
+		check("command: invalid value explained", chatContains(ctx, "expected a whole number"));
+
+		perms.reset(edit);
+		perms.save();
+		ctx.waitTicks(10);
+		ctx.runOnClient(mc -> ClientPlayNetworking.send(new ConfigPayloads.EditConfig("example", "SET", "radius", "20")));
+		ctx.waitTicks(20);
+		check("remote: edits refused after the permission is revoked", example.get(ExampleAddon.RADIUS) == 12);
+		example.resetAll();
+		example.save();
+	}
+
+	private static int findSlotOn(ChestMenuScreen menu, String entryId) {
+		for (int slot = 0; slot < 54; slot++) {
+			MenuEntry entry = menu.entryAt(slot);
+			if (entry != null && entry.id().equals(entryId)) {
+				return slot;
+			}
+		}
+		return -1;
+	}
+
 
 	private static NotificationProvider provider(String id, java.util.function.Consumer<Notification> action) {
 		return new NotificationProvider() {

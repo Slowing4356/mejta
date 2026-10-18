@@ -47,7 +47,7 @@ public final class MejtaCoreAPI {
 	 * Version of the public API contract. Incremented when the API changes in a way addons may need
 	 * to check for. Addons should prefer a {@code fabric.mod.json} version range on {@code mejtacore}.
 	 */
-	public static final int API_VERSION = 2;
+	public static final int API_VERSION = 3;
 
 	private MejtaCoreAPI() {
 	}

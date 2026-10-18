@@ -321,11 +321,22 @@ public final class ConfigFile implements ConfigHandle {
 				}
 				case DECIMAL -> p.isNumber() ? p.getAsDouble() : null;
 				case STRING -> p.isString() ? p.getAsString() : null;
-				case ENUM -> p.isString() ? findEnum(setting.valueClass(), p.getAsString()) : null;
+				case ENUM -> !p.isString() ? null
+						: setting.valueClass() == String.class ? findOption(setting, p.getAsString())
+						: findEnum(setting.valueClass(), p.getAsString());
 			};
 		} catch (ArithmeticException | NumberFormatException e) {
 			return null;
 		}
+	}
+
+	private static Object findOption(Setting<?> setting, String name) {
+		for (String option : setting.options()) {
+			if (option.equalsIgnoreCase(name)) {
+				return option;
+			}
+		}
+		return null;
 	}
 
 	private static Object findEnum(Class<?> enumClass, String name) {

@@ -13,6 +13,7 @@ import com.mejta.mejtacore.commands.ServerCommands;
 import com.mejta.mejtacore.config.ConfigManager;
 import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.logging.MejtaLog;
+import com.mejta.mejtacore.network.ServerConfigSync;
 import com.mejta.mejtacore.notify.InGameProvider;
 import com.mejta.mejtacore.notify.NotificationBus;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
@@ -50,6 +51,7 @@ public final class MejtaCore implements ModInitializer {
 		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) ->
 				ServerCommands.register(dispatcher, buildContext));
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> RecordLogs.flushAll(5_000));
+		ServerConfigSync.register();
 
 		for (EntrypointContainer<MejtaAddon> container : loader.getEntrypointContainers(ADDON_ENTRYPOINT, MejtaAddon.class)) {
 			String modId = container.getProvider().getMetadata().getId();
@@ -65,6 +67,7 @@ public final class MejtaCore implements ModInitializer {
 	public static void finishInitialization() {
 		AddonRegistry.get().finalizeRegistrations(configs);
 		PermissionRegistry.initialize(configs, AddonRegistry.get().all());
+		ServerConfigSync.watch(configs.all());
 	}
 
 	public static ConfigManager configs() {

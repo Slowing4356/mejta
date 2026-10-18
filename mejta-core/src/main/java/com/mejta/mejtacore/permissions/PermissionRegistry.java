@@ -28,6 +28,10 @@ public final class PermissionRegistry {
 	/** Core's own nodes. */
 	public static final MejtaPermission ADMIN = MejtaPermission.of("mejtacore.admin", PermissionLevel.GAMEMASTERS)
 			.describedAs("Use /mejtaadmin addons and /mejtaadmin config reload");
+	public static final MejtaPermission CONFIG_EDIT = MejtaPermission.of("mejtacore.config.edit", PermissionLevel.ADMINS)
+			.describedAs("View and change the server's settings from the MejtaCore menu or /mejtaadmin config");
+	public static final MejtaPermission CONFIG_PERMISSIONS = MejtaPermission.of("mejtacore.config.permissions", PermissionLevel.OWNERS)
+			.describedAs("Also change these permission levels remotely (needs mejtacore.config.edit too)");
 
 	private static final Map<String, Setting<PermissionLevel>> SETTINGS = new LinkedHashMap<>();
 	private static volatile ConfigHandle config;
@@ -41,6 +45,8 @@ public final class PermissionRegistry {
 			return;
 		}
 		add(ADMIN);
+		add(CONFIG_EDIT);
+		add(CONFIG_PERMISSIONS);
 		for (AddonInfo addon : addons) {
 			for (MejtaPermission permission : addon.definition().permissions()) {
 				add(permission);

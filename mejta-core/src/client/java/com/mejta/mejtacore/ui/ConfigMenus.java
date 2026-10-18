@@ -181,7 +181,13 @@ public final class ConfigMenus {
 				editAsText(ctx, handle, s, text -> text);
 				return;
 			}
-			case ENUM -> cycleEnum(handle, raw, back ? -1 : 1);
+			case ENUM -> {
+				if (raw.valueClass() == String.class) {
+					cycleChoice(handle, cast(raw), back ? -1 : 1);
+				} else {
+					cycleEnum(handle, raw, back ? -1 : 1);
+				}
+			}
 		}
 		ctx.refresh();
 	}
@@ -193,6 +199,16 @@ public final class ConfigMenus {
 		for (int i = 1; i <= values.length; i++) {
 			E candidate = values[Math.floorMod(index + direction * i, values.length)];
 			if (handle.trySet(s, candidate)) {
+				return;
+			}
+		}
+	}
+
+	private static void cycleChoice(ConfigHandle handle, Setting<String> s, int direction) {
+		List<String> options = s.options();
+		int index = Math.max(0, options.indexOf(handle.get(s)));
+		for (int i = 1; i <= options.size(); i++) {
+			if (handle.trySet(s, options.get(Math.floorMod(index + direction * i, options.size())))) {
 				return;
 			}
 		}

@@ -1,5 +1,7 @@
 package com.mejta.mejtacore.api.config;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -15,7 +17,8 @@ import java.util.regex.Pattern;
  * public static final Setting<Mode> MODE = Setting.enumeration("mode", Mode.NORMAL);
  * }</pre>
  *
- * @param <T> value type: {@link Boolean}, {@link Integer}, {@link Double}, {@link String} or an enum
+ * @param <T> value type: {@link Boolean}, {@link Integer}, {@link Double}, {@link String} or an enum;
+ *            {@link #choice} settings are {@link SettingType#ENUM} with {@link String} values
  */
 public final class Setting<T> {
 	/** Setting keys: lowercase letters, digits, {@code _}, {@code -} and {@code .}; max 64 chars. */
@@ -30,9 +33,10 @@ public final class Setting<T> {
 	private final Predicate<T> validator;
 	private final String description;
 	private final String displayName;
+	private final List<String> options;
 
 	private Setting(String key, SettingType type, Class<T> valueClass, T defaultValue, Number min, Number max,
-			Predicate<T> validator, String description, String displayName) {
+			Predicate<T> validator, String description, String displayName, List<String> options) {
 		this.key = key;
 		this.type = type;
 		this.valueClass = valueClass;
@@ -42,9 +46,11 @@ public final class Setting<T> {
 		this.validator = validator;
 		this.description = description;
 		this.displayName = displayName;
+		this.options = options;
 	}
 
-	private static <T> Setting<T> create(String key, SettingType type, Class<T> valueClass, T def, Number min, Number max) {
+	private static <T> Setting<T> create(String key, SettingType type, Class<T> valueClass, T def, Number min, Number max,
+			List<String> options) {
 		Objects.requireNonNull(key, "key");
 		Objects.requireNonNull(def, "default value");
 		if (!KEY_PATTERN.matcher(key).matches()) {
@@ -53,7 +59,7 @@ public final class Setting<T> {
 		if (key.equals(ConfigSpec.VERSION_KEY)) {
 			throw new IllegalArgumentException("Setting key '" + key + "' is reserved");
 		}
-		Setting<T> setting = new Setting<>(key, type, valueClass, def, min, max, v -> true, "", prettify(key));
+		Setting<T> setting = new Setting<>(key, type, valueClass, def, min, max, v -> true, "", prettify(key), options);
 		if (!setting.isValid(def)) {
 			throw new IllegalArgumentException("Default value " + def + " of setting '" + key + "' is out of range");
 		}
@@ -61,14 +67,14 @@ public final class Setting<T> {
 	}
 
 	public static Setting<Boolean> bool(String key, boolean defaultValue) {
-		return create(key, SettingType.BOOLEAN, Boolean.class, defaultValue, null, null);
+		return create(key, SettingType.BOOLEAN, Boolean.class, defaultValue, null, null, List.of());
 	}
 
 	public static Setting<Integer> integer(String key, int defaultValue, int min, int max) {
 		if (min > max) {
 			throw new IllegalArgumentException("min > max for setting '" + key + "'");
 		}
-		return create(key, SettingType.INTEGER, Integer.class, defaultValue, min, max);
+		return create(key, SettingType.INTEGER, Integer.class, defaultValue, min, max, List.of());
 	}
 
 	public static Setting<Integer> integer(String key, int defaultValue) {
@@ -79,7 +85,7 @@ public final class Setting<T> {
 		if (min > max || Double.isNaN(min) || Double.isNaN(max)) {
 			throw new IllegalArgumentException("Invalid range for setting '" + key + "'");
 		}
-		return create(key, SettingType.DECIMAL, Double.class, defaultValue, min, max);
+		return create(key, SettingType.DECIMAL, Double.class, defaultValue, min, max, List.of());
 	}
 
 	public static Setting<Double> decimal(String key, double defaultValue) {
@@ -87,30 +93,48 @@ public final class Setting<T> {
 	}
 
 	public static Setting<String> string(String key, String defaultValue) {
-		return create(key, SettingType.STRING, String.class, defaultValue, null, null);
+		return create(key, SettingType.STRING, String.class, defaultValue, null, null, List.of());
 	}
 
 	@SuppressWarnings("unchecked")
 	public static <E extends Enum<E>> Setting<E> enumeration(String key, E defaultValue) {
 		Objects.requireNonNull(defaultValue, "default value");
-		return create(key, SettingType.ENUM, (Class<E>) defaultValue.getDeclaringClass(), defaultValue, null, null);
+		List<String> names = new ArrayList<>();
+		for (E constant : defaultValue.getDeclaringClass().getEnumConstants()) {
+			names.add(constant.name());
+		}
+		return create(key, SettingType.ENUM, (Class<E>) defaultValue.getDeclaringClass(), defaultValue, null, null, List.copyOf(names));
+	}
+
+	/**
+	 * A choice between fixed text options, stored like an enum setting. Use it when the options are
+	 * not known as a Java enum, e.g. settings described by a server to a client.
+	 *
+	 * @since API version 3
+	 */
+	public static Setting<String> choice(String key, String defaultValue, List<String> options) {
+		Objects.requireNonNull(options, "options");
+		if (options.isEmpty() || options.stream().anyMatch(o -> o == null || o.isBlank())) {
+			throw new IllegalArgumentException("Choice setting '" + key + "' needs non-blank options");
+		}
+		return create(key, SettingType.ENUM, String.class, defaultValue, null, null, List.copyOf(options));
 	}
 
 	/** Returns a copy with the given description (shown as tooltip in the settings menu). */
 	public Setting<T> describedAs(String description) {
-		return new Setting<>(key, type, valueClass, defaultValue, min, max, validator, Objects.requireNonNull(description), displayName);
+		return new Setting<>(key, type, valueClass, defaultValue, min, max, validator, Objects.requireNonNull(description), displayName, options);
 	}
 
 	/** Returns a copy with a custom display name. Defaults to the key in title case ({@code menu_rows} -> {@code Menu Rows}). */
 	public Setting<T> named(String displayName) {
 		Objects.requireNonNull(displayName, "displayName");
-		return new Setting<>(key, type, valueClass, defaultValue, min, max, validator, description, displayName);
+		return new Setting<>(key, type, valueClass, defaultValue, min, max, validator, description, displayName, options);
 	}
 
 	/** Returns a copy with an extra validation rule. Invalid values loaded from disk are replaced by the default. */
 	public Setting<T> validatedBy(Predicate<T> rule) {
 		Objects.requireNonNull(rule, "rule");
-		Setting<T> copy = new Setting<>(key, type, valueClass, defaultValue, min, max, validator.and(rule), description, displayName);
+		Setting<T> copy = new Setting<>(key, type, valueClass, defaultValue, min, max, validator.and(rule), description, displayName, options);
 		if (!copy.isValid(defaultValue)) {
 			throw new IllegalArgumentException("Default value of setting '" + key + "' fails its validator");
 		}
@@ -133,6 +157,11 @@ public final class Setting<T> {
 			case DECIMAL -> {
 				double v = (Double) typed;
 				if (Double.isNaN(v) || Double.isInfinite(v) || v < min.doubleValue() || v > max.doubleValue()) {
+					return false;
+				}
+			}
+			case ENUM -> {
+				if (typed instanceof String text && !options.contains(text)) {
 					return false;
 				}
 			}
@@ -174,6 +203,16 @@ public final class Setting<T> {
 
 	public String displayName() {
 		return displayName;
+	}
+
+	/**
+	 * For {@code ENUM} settings: the allowed values by name, in order (enum constant names, or the
+	 * options of a {@link #choice} setting). Empty for other types.
+	 *
+	 * @since API version 3
+	 */
+	public List<String> options() {
+		return options;
 	}
 
 	private static String prettify(String key) {

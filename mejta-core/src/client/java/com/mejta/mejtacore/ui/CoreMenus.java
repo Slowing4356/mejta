@@ -17,10 +17,11 @@ import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.addon.AddonInfo;
 import com.mejta.mejtacore.api.client.MenuEntry;
 import com.mejta.mejtacore.api.config.ConfigHandle;
+import com.mejta.mejtacore.config.ConfigNames;
 import com.mejta.mejtacore.core.CoreSettings;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.logging.Diagnostics;
-import com.mejta.mejtacore.permissions.PermissionRegistry;
+import com.mejta.mejtacore.network.RemoteConfigs;
 
 /** The built-in MejtaCore menus. */
 public final class CoreMenus {
@@ -52,9 +53,12 @@ public final class CoreMenus {
 		entries.add(MenuEntry.builder("configuration")
 				.icon(() -> new ItemStack(Items.BOOK))
 				.title(Component.literal("Configuration").withStyle(ChatFormatting.GOLD))
-				.dynamicDescription(() -> List.of(
-						gray(MejtaCore.configs().all().size() + " configuration file(s)"),
-						gray("View, edit and reload settings")))
+				.dynamicDescription(() -> RemoteConfigs.supported()
+						? List.of(gray(MejtaCore.configs().all().size() + " configuration file(s) on this computer"),
+								Component.literal("+ Server Settings").withStyle(ChatFormatting.AQUA),
+								gray("View, edit and reload settings"))
+						: List.of(gray(MejtaCore.configs().all().size() + " configuration file(s)"),
+								gray("View, edit and reload settings")))
 				.onClick(ctx -> ctx.openPage(Component.literal("Configuration"), CoreMenus::configEntries))
 				.build());
 		entries.add(null);
@@ -166,17 +170,72 @@ public final class CoreMenus {
 		return entries;
 	}
 
+	private static List<Component> serverSettingsDescription() {
+		if (!RemoteConfigs.received()) {
+			return List.of(gray("Settings of the server you are playing on"), dark("Click to load"));
+		}
+		if (!RemoteConfigs.permitted()) {
+			return List.of(gray("Settings of the server you are playing on"),
+					Component.literal("You need the permission mejtacore.config.edit").withStyle(ChatFormatting.RED));
+		}
+		return List.of(gray("Settings of the server you are playing on"),
+				gray(RemoteConfigs.configs().size() + " configuration file(s)"),
+				dark("Changes are checked and saved by the server"));
+	}
+
+	private static List<MenuEntry> serverConfigEntries() {
+		List<MenuEntry> entries = new ArrayList<>();
+		if (!RemoteConfigs.received()) {
+			entries.add(MenuEntry.builder("server_loading")
+					.icon(() -> new ItemStack(Items.CLOCK))
+					.title(Component.literal("Loading from the server...").withStyle(ChatFormatting.GRAY))
+					.build());
+			return entries;
+		}
+		if (!RemoteConfigs.permitted()) {
+			entries.add(MenuEntry.builder("server_no_permission")
+					.icon(() -> new ItemStack(Items.BARRIER))
+					.title(Component.literal("No permission").withStyle(ChatFormatting.RED))
+					.description(gray("Editing server settings needs the permission"), gray("mejtacore.config.edit (operator level 3 by default)"))
+					.build());
+			return entries;
+		}
+		for (ConfigHandle config : RemoteConfigs.configs()) {
+			String name = RemoteConfigs.name(config);
+			entries.add(MenuEntry.builder("server_config_" + config.id())
+					.icon(() -> new ItemStack(Items.ENCHANTED_BOOK))
+					.title(Component.literal(name).withStyle(ChatFormatting.AQUA))
+					.dynamicDescription(() -> List.of(
+							gray("On the server: config/mejta/" + config.id() + ".json"),
+							gray(config.spec().settings().size() + " setting(s)"),
+							dark("Click to edit")))
+					.onClick(ctx -> ctx.openPage(Component.literal(name + " (Server)"), () -> ConfigMenus.settingsEntries(config)))
+					.build());
+		}
+		return entries;
+	}
+
 	private static List<MenuEntry> configEntries() {
 		List<MenuEntry> entries = new ArrayList<>();
+		if (RemoteConfigs.supported()) {
+			entries.add(MenuEntry.builder("server_settings")
+					.icon(() -> new ItemStack(Items.COMMAND_BLOCK))
+					.title(Component.literal("Server Settings").withStyle(ChatFormatting.GOLD))
+					.dynamicDescription(CoreMenus::serverSettingsDescription)
+					.onClick(ctx -> {
+						RemoteConfigs.request();
+						ctx.openPage(Component.literal("Server Settings"), CoreMenus::serverConfigEntries);
+					})
+					.build());
+		}
 		for (ConfigHandle config : MejtaCore.configs().all()) {
-			String name = config.id().equals(MejtaCore.MOD_ID) ? "MejtaCore"
-					: config.id().equals(PermissionRegistry.CONFIG_ID) ? "Permissions"
-					: MejtaCoreAPI.getAddon(config.id()).map(AddonInfo::name).orElse(config.id());
+			String name = ConfigNames.displayName(config);
 			entries.add(MenuEntry.builder("config_" + config.id())
 					.icon(() -> new ItemStack(Items.BOOK))
 					.title(Component.literal(name).withStyle(ChatFormatting.AQUA))
 					.dynamicDescription(() -> List.of(
-							gray("File: config/mejta/" + config.file().getFileName()),
+							gray((RemoteConfigs.supported() ? "On this computer: " : "File: ") + "config/mejta/"
+									+ config.file().getFileName()),
 							gray(config.spec().settings().size() + " setting(s), format v" + config.spec().version()),
 							config.isDirty() ? Component.literal("Unsaved changes").withStyle(ChatFormatting.YELLOW)
 									: dark("Saved"),

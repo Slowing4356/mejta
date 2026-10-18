@@ -11,6 +11,7 @@ import com.mejta.mejtacore.addons.ClientAddonExtensions;
 import com.mejta.mejtacore.api.client.MejtaClientAddon;
 import com.mejta.mejtacore.commands.MejtaCommands;
 import com.mejta.mejtacore.logging.Diagnostics;
+import com.mejta.mejtacore.network.RemoteConfigs;
 import com.mejta.mejtacore.storage.RecordLogs;
 import com.mejta.mejtacore.ui.ScreenOpener;
 
@@ -32,6 +33,7 @@ public final class MejtaCoreClient implements ClientModInitializer {
 			}
 		}
 
+		RemoteConfigs.register();
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> MejtaCommands.register(dispatcher));
 		ClientTickEvents.END_CLIENT_TICK.register(ScreenOpener::tick);
 		ClientLifecycleEvents.CLIENT_STARTED.register(client -> ClientAddonExtensions.reportOrphans());
