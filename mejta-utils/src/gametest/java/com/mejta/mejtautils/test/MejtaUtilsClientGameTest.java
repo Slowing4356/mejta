@@ -26,6 +26,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -80,28 +82,35 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	private final List<String> failures = new ArrayList<>();
 	private int passed;
+	/** The live connection; null while disconnected. Only {@link #connect} and {@link #disconnect} change it. */
+	private TestServerConnection connection;
 
 	@Override
 	public void runTest(ClientGameTestContext ctx) {
 		check("mejtautils addon active", MejtaCoreAPI.getAddon(MejtaUtils.ID).map(a -> a.state() == AddonState.ACTIVE).orElse(false));
 		try (TestDedicatedServerContext server = ctx.worldBuilder().createServer()) {
 			server.runCommand("difficulty easy");
-			server.runCommand("gamerule doDaylightCycle false");
+			// No daylight-cycle game rule needed: client gametest worlds are created with GameRules.ADVANCE_TIME
+			// (26.1 id "advance_time", formerly doDaylightCycle) already off.
 			server.runCommand("time set noon");
-			server.runCommand("fill -2 99 -2 12 99 12 stone");
-			TestServerConnection connection = server.connect();
-			connection.getClientLevel().waitForChunksRender();
 			try {
+				connect(server);
+				// Only after joining: the area is not loaded before a player is near it.
+				server.runCommand("fill -2 99 -2 12 99 12 stone");
 				unauthorizedChecks(ctx, server);
 				grant(server, true);
 				inspectionChecks(ctx, server);
-				connection = offlineChangeChecks(ctx, server, connection);
-				connection = vanishChecks(ctx, server, connection);
-				connection = freezeChecks(ctx, server, connection);
-				connection = staffModeChecks(ctx, server, connection);
+				offlineChangeChecks(ctx, server);
+				vanishChecks(ctx, server);
+				freezeChecks(ctx, server);
+				staffModeChecks(ctx, server);
 			} finally {
 				grant(server, false);
-				connection.close();
+				// Never mask the original failure: close only a connection the client still has.
+				if (connection != null && ctx.computeOnClient(mc -> mc.level != null)) {
+					connection.close();
+				}
+				connection = null;
 			}
 		}
 		LOG.info("[MejtaUtilsTest] SUMMARY: {} passed, {} failed", passed, failures.size());
@@ -141,9 +150,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		check("invsee: view menu opens as a chest", waitForScreen(ctx, "Viewing InvTarget"));
 		clickSlot(ctx, 27, 0);
 		clickSlot(ctx, 27, 1);
-		ctx.getInput().holdShift();
-		clickSlot(ctx, 27, 0);
-		ctx.getInput().releaseShift();
+		shiftClickSlot(ctx, 27);
 		hoverSlot(ctx, 27);
 		ctx.getInput().pressKey(GLFW.GLFW_KEY_2);
 		ctx.getInput().pressKey(GLFW.GLFW_KEY_Q);
@@ -159,12 +166,10 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 		server.runOnServer(s -> LiveInventoryMenu.open(player(s, me), FakePlayer.get(s.overworld(), targetProfile), true));
 		check("invsee: edit menu opens", waitForScreen(ctx, "Editing InvTarget"));
-		ctx.getInput().holdShift();
-		clickSlot(ctx, 27, 0);
-		ctx.getInput().releaseShift();
+		shiftClickSlot(ctx, 27);
 		check("invsee edit: shift-click moves the stack, exactly once", waitUntil(ctx, () -> server.computeOnServer(s ->
 				FakePlayer.get(s.overworld(), targetProfile).getInventory().countItem(Items.DIAMOND) == 0
-						&& player(s, me).getInventory().countItem(Items.DIAMOND) == 4)));
+						&& player(s, me).getInventory().countItem(Items.DIAMOND) == 4 && player(s, me).containerMenu.getCarried().isEmpty())));
 		clickSlot(ctx, 41, 0); // crafting display slot: never vanilla-handled
 		check("invsee edit: crafting grid stays view-only", server.computeOnServer(s -> player(s, me).containerMenu.getCarried().isEmpty()));
 		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
@@ -180,9 +185,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/invsee " + name(ctx) + " edit");
 		check("invsee: own inventory in edit mode opens read-only", waitForScreen(ctx, "Viewing " + name(ctx))
 				&& chatContains(ctx, "can only be viewed"));
-		ctx.getInput().holdShift();
-		clickSlot(ctx, 27, 0);
-		ctx.getInput().releaseShift();
+		shiftClickSlot(ctx, 27);
 		clickSlot(ctx, 27, 0);
 		ctx.waitTicks(5);
 		check("invsee self: shift-click and pick-up move nothing", server.computeOnServer(s ->
@@ -203,7 +206,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	// ---------------------------------------------------------------- queued offline changes
 
-	private TestServerConnection offlineChangeChecks(ClientGameTestContext ctx, TestDedicatedServerContext server, TestServerConnection connection) {
+	private void offlineChangeChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
 		UUID me = id(ctx);
 		String name = name(ctx);
 		server.runOnServer(s -> {
@@ -217,7 +220,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		ctx.waitTicks(5);
 
 		// 1. Applied exactly once.
-		connection.close();
+		disconnect(ctx, server);
 		check("offline: snapshot reads the saved inventory", server.computeOnServer(s -> OfflineSnapshot.load(s, new net.minecraft.server.players.NameAndId(me, name))
 				.map(snap -> snap.inventory(0).is(Items.DIAMOND) && snap.inventory(0).getCount() == 3).orElse(false)));
 		onServer(server, s -> {
@@ -227,7 +230,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 			c.add(Container.INVENTORY, 20, ItemJson.encode(r, new ItemStack(Items.EMERALD, 2)));
 			MejtaUtils.pending().save(c);
 		});
-		connection = reconnect(server);
+		connect(server);
 		check("offline: queued change applied on join", server.computeOnServer(s -> {
 			ServerPlayer p = player(s, me);
 			return p.getInventory().getItem(0).isEmpty() && p.getInventory().getItem(20).is(Items.EMERALD)
@@ -238,12 +241,12 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 			return c != null && c.state() == PendingChange.State.APPLIED && c.claims().size() == 1
 					&& ItemJson.matches(s.registryAccess(), new ItemStack(Items.DIAMOND, 3), c.claims().getFirst());
 		}));
-		connection = reconnect(server);
+		rejoin(ctx, server);
 		check("offline: not applied a second time on the next join", server.computeOnServer(s ->
 				player(s, me).getInventory().getItem(20).getCount() == 2 && MejtaUtils.pending().get(me).map(c -> c.claims().size()).orElse(0) == 1));
 
 		// 2. The save changed in between: refused, added items returned.
-		connection.close();
+		disconnect(ctx, server);
 		onServer(server, s -> {
 			MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test"));
 			HolderLookup.Provider r = s.registryAccess();
@@ -252,7 +255,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 			c.add(Container.INVENTORY, 21, ItemJson.encode(r, new ItemStack(Items.GOLD_INGOT, 1)));
 			MejtaUtils.pending().save(c);
 		});
-		connection = reconnect(server);
+		connect(server);
 		check("offline conflict: nothing changed on the player", server.computeOnServer(s -> {
 			ServerPlayer p = player(s, me);
 			return p.getInventory().getItem(9).getCount() == 5 && p.getInventory().getItem(21).isEmpty();
@@ -262,22 +265,20 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 						&& ItemJson.matches(s.registryAccess(), new ItemStack(Items.GOLD_INGOT, 1), c.claims().getFirst())).orElse(false)));
 
 		// 3. Interrupted while applying, and the save already shows the result.
-		recoveryCheck(ctx, server, connection = reconnectWithChange(server, connection, me, name, 22, new ItemStack(Items.LAPIS_LAZULI, 4)),
-				me, 22, PendingChange.State.APPLIED, true, "already applied");
+		rejoinWithChange(ctx, server, me, name, 22, new ItemStack(Items.LAPIS_LAZULI, 4));
+		recoveryCheck(server, me, 22, PendingChange.State.APPLIED, true, "already applied");
 		// 4. Interrupted while applying, the save still shows the state before: applied now.
-		recoveryCheck(ctx, server, connection = reconnectWithChange(server, connection, me, name, 23, new ItemStack(Items.REDSTONE, 7)),
-				me, 23, PendingChange.State.APPLIED, true, "not yet applied");
+		rejoinWithChange(ctx, server, me, name, 23, new ItemStack(Items.REDSTONE, 7));
+		recoveryCheck(server, me, 23, PendingChange.State.APPLIED, true, "not yet applied");
 		// 5. Interrupted, and the save shows neither: nothing is changed.
-		recoveryCheck(ctx, server, connection = reconnectWithChange(server, connection, me, name, 24, new ItemStack(Items.COAL, 5)),
-				me, 24, PendingChange.State.APPLYING, false, "unknown");
+		rejoinWithChange(ctx, server, me, name, 24, new ItemStack(Items.COAL, 5));
+		recoveryCheck(server, me, 24, PendingChange.State.APPLYING, false, "unknown");
 		onServer(server, s -> MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test")));
-		return connection;
 	}
 
 	/** Disconnects, stores an APPLYING change removing {@code item} from {@code slot}, reconnects. */
-	private TestServerConnection reconnectWithChange(TestDedicatedServerContext server, TestServerConnection connection, UUID me, String name,
-			int slot, ItemStack item) {
-		connection.close();
+	private void rejoinWithChange(ClientGameTestContext ctx, TestDedicatedServerContext server, UUID me, String name, int slot, ItemStack item) {
+		disconnect(ctx, server);
 		onServer(server, s -> {
 			MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test"));
 			PendingChange c = new PendingChange(me, name, STAFF, "TestStaff", Instant.now());
@@ -285,11 +286,10 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 			c.markApplying();
 			MejtaUtils.pending().save(c);
 		});
-		return reconnect(server);
+		connect(server);
 	}
 
-	private void recoveryCheck(ClientGameTestContext ctx, TestDedicatedServerContext server, TestServerConnection connection, UUID me, int slot,
-			PendingChange.State expected, boolean slotEmpty, String what) {
+	private void recoveryCheck(TestDedicatedServerContext server, UUID me, int slot, PendingChange.State expected, boolean slotEmpty, String what) {
 		check("offline recovery (" + what + "): state " + expected, server.computeOnServer(s ->
 				MejtaUtils.pending().get(me).map(c -> c.state() == expected).orElse(false)));
 		check("offline recovery (" + what + "): slot " + (slotEmpty ? "empty" : "unchanged"), server.computeOnServer(s ->
@@ -298,7 +298,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	// ---------------------------------------------------------------- vanish
 
-	private TestServerConnection vanishChecks(ClientGameTestContext ctx, TestDedicatedServerContext server, TestServerConnection connection) {
+	private void vanishChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
 		UUID me = id(ctx);
 		String name = name(ctx);
 		List<String> presence = new CopyOnWriteArrayList<>();
@@ -336,15 +336,15 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		ctx.waitTicks(20);
 		check("vanish: pressure plates are not pressed", server.computeOnServer(s ->
 				!s.overworld().getBlockState(new BlockPos(5, 100, 7)).getValue(BlockStateProperties.POWERED)));
-		server.runCommand("setblock 3 99 3 farmland");
+		server.runCommand("setblock 3 99 3 farmland[moisture=7]"); // dry farmland may turn to dirt on a random tick
 		server.runCommand("tp " + name + " 3.5 103 3.5");
 		ctx.waitTicks(40);
 		check("vanish: farmland is not trampled", server.computeOnServer(s -> s.overworld().getBlockState(new BlockPos(3, 99, 3)).is(Blocks.FARMLAND)));
 
-		connection.close();
+		disconnect(ctx, server);
 		check("vanish: a vanished player's leave is not public", presence.stream().noneMatch(e -> e.startsWith("LEAVE")));
 		clearChat(ctx);
-		connection = reconnect(server);
+		connect(server);
 		check("vanish: still vanished after rejoining", server.computeOnServer(s -> MejtaUtils.vanish().isHidden(me)));
 		check("vanish: no join message and no public join", !chatHas(ctx, "joined the game") && presence.stream().noneMatch(e -> e.startsWith("JOIN")));
 
@@ -360,12 +360,11 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		setBool(UtilsSettings.VANISH_FAKE_PRESENCE, false);
 		server.runCommand("kill @e[type=husk]");
 		server.runCommand("kill @e[type=item]");
-		return connection;
 	}
 
 	// ---------------------------------------------------------------- freeze
 
-	private TestServerConnection freezeChecks(ClientGameTestContext ctx, TestDedicatedServerContext server, TestServerConnection connection) {
+	private void freezeChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
 		UUID me = id(ctx);
 		String name = name(ctx);
 		server.runCommand("tp " + name + " 5 100 5");
@@ -391,22 +390,21 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/msg " + name + " still here");
 		check("freeze: allowed commands still work", chatContains(ctx, "still here"));
 
-		connection.close();
+		disconnect(ctx, server);
 		check("freeze: logout reported to staff (not punished)", waitUntil(ctx, () -> !notifications(r ->
 				r.get("channel").getAsString().equals("mejtautils.freeze") && r.get("title").getAsString().contains("logged out while frozen")
 						&& r.get("message").getAsString().contains("not proof")).isEmpty()));
-		connection = reconnect(server);
+		connect(server);
 		check("freeze: still frozen after rejoining", server.computeOnServer(s -> MejtaUtils.freeze().isFrozen(me)));
 		server.runCommand("unfreeze " + name);
 		check("freeze: unfrozen", waitUntil(ctx, () -> server.computeOnServer(s -> !MejtaUtils.freeze().isFrozen(me))));
 		check("freeze: flight given for hovering is taken back", server.computeOnServer(s -> !player(s, me).getAbilities().mayfly));
 		check("freeze: start and stop audited", recentAudit("freeze.start") != null && recentAudit("freeze.stop") != null);
-		return connection;
 	}
 
 	// ---------------------------------------------------------------- staff mode
 
-	private TestServerConnection staffModeChecks(ClientGameTestContext ctx, TestDedicatedServerContext server, TestServerConnection connection) {
+	private void staffModeChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
 		UUID me = id(ctx);
 		givePlayerKit(server, me);
 		List<ItemStack> before = server.computeOnServer(s -> inventoryCopy(player(s, me)));
@@ -435,8 +433,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		// Disconnect while ACTIVE: staff mode continues, then restores.
 		chat(ctx, "/staffmode");
 		waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)));
-		connection.close();
-		connection = reconnect(server);
+		rejoin(ctx, server);
 		check("staff recovery (active): resumed with tools", server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me) && onlyTools(player(s, me))));
 		chat(ctx, "/staffmode off");
 		check("staff recovery (active): restored afterwards", waitUntil(ctx, () -> server.computeOnServer(s ->
@@ -446,8 +443,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/staffmode");
 		waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)));
 		setSessionState(server, me, "RESTORING");
-		connection.close();
-		connection = reconnect(server);
+		rejoin(ctx, server);
 		check("staff recovery (restoring): restored after joining", waitUntil(ctx, () -> server.computeOnServer(s ->
 				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), before))));
 
@@ -466,8 +462,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 			store.writeNow(DataStore.playerKey("staffmode", me), session);
 			MejtaUtils.staffMode().reload(me);
 		});
-		connection.close();
-		connection = reconnect(server);
+		rejoin(ctx, server);
 		check("staff recovery (restored marker): finished without restoring again", waitUntil(ctx, () -> server.computeOnServer(s ->
 				!MejtaUtils.staffMode().isActive(me) && player(s, me).getInventory().getItem(5).isEmpty()
 						&& player(s, me).getInventory().getItem(0).is(Items.DIAMOND_SWORD))));
@@ -490,8 +485,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 			MejtaUtils.store().writeNow(DataStore.playerKey("staffmode", me), session);
 			MejtaUtils.staffMode().reload(me);
 		});
-		connection.close();
-		connection = reconnect(server);
+		rejoin(ctx, server);
 		check("staff recovery (entering): session dropped, inventory untouched", server.computeOnServer(s ->
 				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), before)));
 
@@ -499,8 +493,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/staffmode");
 		waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)));
 		server.runOnServer(s -> player(s, me).getInventory().setItem(30, new ItemStack(Items.DIRT, 1)));
-		connection.close();
-		connection = reconnect(server);
+		rejoin(ctx, server);
 		check("staff recovery (ambiguous): asks instead of guessing", server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)
 				&& MejtaUtils.staffMode().confirmationNeeded(me).isPresent() && player(s, me).getInventory().getItem(30).is(Items.DIRT)));
 		chat(ctx, "/staffmode restore confirm");
@@ -509,12 +502,10 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 		// A tool outside staff mode is removed on join.
 		server.runOnServer(s -> player(s, me).getInventory().setItem(35, StaffTools.create(StaffTools.Kind.COMPASS)));
-		connection.close();
-		connection = reconnect(server);
+		rejoin(ctx, server);
 		check("staff tools: removed outside staff mode", server.computeOnServer(s -> countTools(player(s, me)) == 0));
 		check("staff mode: enter, exit and recoveries audited", recentAudit("staffmode.enter") != null && recentAudit("staffmode.exit") != null
 				&& recentAudit("staffmode.recover") != null);
-		return connection;
 	}
 
 	private static void givePlayerKit(TestDedicatedServerContext server, UUID me) {
@@ -540,10 +531,35 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	// ---------------------------------------------------------------- helpers
 
-	private static TestServerConnection reconnect(TestDedicatedServerContext server) {
-		TestServerConnection connection = server.connect();
+	private void connect(TestDedicatedServerContext server) {
+		if (connection != null) {
+			// The test server allows one player: a second connect would be refused ("The server is full!").
+			throw new IllegalStateException("connect() while still connected; disconnect first");
+		}
+		connection = server.connect();
 		connection.getClientLevel().waitForChunksRender();
-		return connection;
+	}
+
+	/**
+	 * Closes the live connection and waits until the server has handled the leave (removed and saved the
+	 * player, run the leave hooks): the client side of {@code close()} returns before that.
+	 */
+	private void disconnect(ClientGameTestContext ctx, TestDedicatedServerContext server) {
+		if (connection == null) {
+			throw new IllegalStateException("disconnect() while not connected");
+		}
+		UUID me = id(ctx);
+		TestServerConnection closing = connection;
+		connection = null;
+		closing.close();
+		if (!waitUntil(ctx, () -> server.computeOnServer(s -> s.getPlayerList().getPlayer(me) == null))) {
+			throw new AssertionError("The server did not process the disconnect of " + me);
+		}
+	}
+
+	private void rejoin(ClientGameTestContext ctx, TestDedicatedServerContext server) {
+		disconnect(ctx, server);
+		connect(server);
 	}
 
 	private static ServerPlayer player(MinecraftServer s, UUID id) {
@@ -652,6 +668,26 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 	private static void clickSlot(ClientGameTestContext ctx, int slot, int button) {
 		hoverSlot(ctx, slot);
 		ctx.getInput().pressMouse(button);
+		ctx.waitTicks(3);
+	}
+
+	/**
+	 * A real shift-click through the open screen. {@code TestInput.holdShift()} alone is not enough: it makes
+	 * {@code Minecraft.hasShiftDown()} true, but the mouse events it sends carry no modifiers, and container
+	 * screens read shift from the click event's modifiers, so the click would be a plain pick-up.
+	 */
+	private static void shiftClickSlot(ClientGameTestContext ctx, int slot) {
+		hoverSlot(ctx, slot);
+		ctx.getInput().holdShift();
+		ctx.runOnClient(mc -> {
+			AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) mc.screen;
+			var s = screen.getMenu().getSlot(slot);
+			MouseButtonEvent event = new MouseButtonEvent(intField(screen, "leftPos") + s.x + 8, intField(screen, "topPos") + s.y + 8,
+					new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_LEFT, GLFW.GLFW_MOD_SHIFT));
+			screen.mouseClicked(event, false);
+			screen.mouseReleased(event);
+		});
+		ctx.getInput().releaseShift();
 		ctx.waitTicks(3);
 	}
 
