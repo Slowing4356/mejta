@@ -12,6 +12,7 @@ base {
 
 repositories {
 	// Loom adds the Minecraft, Fabric and Mojang repositories automatically.
+	mavenCentral() // JUnit (test-only)
 }
 
 loom {
@@ -31,6 +32,19 @@ dependencies {
 
 	// Fabric API is a required runtime dependency (players install it separately).
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Unit tests for logic that needs no running game (`gradlew test`). Test-only; never shipped.
+	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
+	testImplementation "org.junit.jupiter:junit-jupiter"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+	useJUnitPlatform()
+	testLogging {
+		events "failed"
+		exceptionFormat "full"
+	}
 }
 
 processResources {

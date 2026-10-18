@@ -1,9 +1,16 @@
 package com.mejta.mejtacore.commands;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.regex.Pattern;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -16,6 +23,7 @@ import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.addon.AddonDefinition;
@@ -25,7 +33,9 @@ import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.server.ServerCommandProvider;
 import com.mejta.mejtacore.config.ConfigEditing;
 import com.mejta.mejtacore.config.SettingText;
+import com.mejta.mejtacore.core.CoreSettings;
 import com.mejta.mejtacore.core.MejtaCore;
+import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.network.ServerConfigSync;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
@@ -39,6 +49,17 @@ public final class ServerCommands {
 
 	private static final Map<String, List<ServerCommandProvider>> PROVIDERS = new TreeMap<>();
 
+	/** Top-level command names an addon may claim: lowercase, max 32 characters. */
+	public static final Pattern ROOT_NAME = Pattern.compile("[a-z][a-z0-9_-]{0,31}");
+	private static final Set<String> RESERVED_ROOTS = Set.of(ROOT, "mejta", "mejtacore");
+
+	private record RootCommand(String addonId, String name, ServerCommandProvider provider) {
+	}
+
+	private static final List<RootCommand> ROOTS = new CopyOnWriteArrayList<>();
+	/** Names already reported as unavailable, so a command-tree rebuild (/reload) doesn't repeat the warning. */
+	private static final Set<String> REPORTED = ConcurrentHashMap.newKeySet();
+
 	private ServerCommands() {
 	}
 
@@ -49,6 +70,21 @@ public final class ServerCommands {
 		synchronized (PROVIDERS) {
 			PROVIDERS.computeIfAbsent(addonId, k -> new CopyOnWriteArrayList<>()).add(provider);
 		}
+	}
+
+	/** @see com.mejta.mejtacore.api.MejtaCoreAPI#registerRootCommand */
+	public static void addRootCommand(String addonId, String name, ServerCommandProvider provider) {
+		Objects.requireNonNull(provider, "provider");
+		if (AddonDefinition.RESERVED_IDS.contains(addonId)) {
+			throw new IllegalArgumentException("'" + addonId + "' is reserved");
+		}
+		if (name == null || !ROOT_NAME.matcher(name).matches()) {
+			throw new IllegalArgumentException("Invalid command name '" + name + "': must match " + ROOT_NAME.pattern());
+		}
+		if (RESERVED_ROOTS.contains(name)) {
+			throw new IllegalArgumentException("Command name '" + name + "' is reserved by MejtaCore");
+		}
+		ROOTS.add(new RootCommand(addonId, name, provider));
 	}
 
 	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext buildContext) {
@@ -86,6 +122,9 @@ public final class ServerCommands {
 		synchronized (PROVIDERS) {
 			snapshot = new TreeMap<>(PROVIDERS);
 		}
+		for (RootCommand command : ROOTS) {
+			snapshot.computeIfAbsent(command.addonId(), k -> new ArrayList<>());
+		}
 		for (Map.Entry<String, List<ServerCommandProvider>> entry : snapshot.entrySet()) {
 			String addonId = entry.getKey();
 			if (!MejtaCoreAPI.isAddonActive(addonId)) {
@@ -99,9 +138,86 @@ public final class ServerCommands {
 					Diagnostics.error(addonId, "Server command provider failed", t);
 				}
 			}
+			// Every top-level command is also reachable as /mejtaadmin <addon> <name>, in case its name is taken.
+			for (RootCommand command : ROOTS) {
+				if (command.addonId().equals(addonId)) {
+					build(command, buildContext).ifPresent(addonRoot::then);
+				}
+			}
 			root.then(addonRoot);
 		}
 		dispatcher.register(root);
+		registerRootCommands(dispatcher, buildContext);
+	}
+
+	private static void registerRootCommands(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext buildContext) {
+		Set<String> disabled = disabledRootCommands();
+		Set<String> claimed = new HashSet<>();
+		for (RootCommand command : ROOTS) {
+			String name = command.name();
+			if (!MejtaCoreAPI.isAddonActive(command.addonId())) {
+				continue;
+			}
+			String fallback = "/" + ROOT + " " + command.addonId() + " " + name;
+			if (disabled.contains(name)) {
+				report(name, null, "Command /" + name + " of addon '" + command.addonId() + "' is disabled in mejtacore.json ("
+						+ CoreSettings.DISABLED_COMMANDS.key() + "); use " + fallback);
+				continue;
+			}
+			if (!claimed.add(name) || dispatcher.getRoot().getChild(name) != null) {
+				report(name, command.addonId(), "Command /" + name + " of addon '" + command.addonId()
+						+ "' is not registered: the name is already used by Minecraft, another mod or addon. Use " + fallback
+						+ ", or disable the other command.");
+				continue;
+			}
+			build(command, buildContext).ifPresent(dispatcher::register);
+		}
+	}
+
+	private static Optional<LiteralArgumentBuilder<CommandSourceStack>> build(RootCommand command, CommandBuildContext buildContext) {
+		LiteralArgumentBuilder<CommandSourceStack> literal = Commands.literal(command.name());
+		try {
+			command.provider().register(literal, buildContext);
+			return Optional.of(literal);
+		} catch (Throwable t) {
+			Diagnostics.error(command.addonId(), "Command /" + command.name() + " failed to build", t);
+			return Optional.empty();
+		}
+	}
+
+	private static void report(String name, String addonId, String message) {
+		if (REPORTED.add(name + "|" + addonId)) {
+			if (addonId == null) {
+				MejtaLog.CORE.info(message);
+			} else {
+				Diagnostics.warn(addonId, message);
+			}
+		}
+	}
+
+	private static Set<String> disabledRootCommands() {
+		Set<String> out = new HashSet<>();
+		for (String part : MejtaCore.coreConfig().get(CoreSettings.DISABLED_COMMANDS).split(",")) {
+			String name = part.trim().toLowerCase(java.util.Locale.ROOT);
+			if (name.startsWith("/")) {
+				name = name.substring(1);
+			}
+			if (!name.isEmpty()) {
+				out.add(name);
+			}
+		}
+		return out;
+	}
+
+	/** Top-level commands of active addons, as {@code name -> addon id}, for help texts. */
+	public static Map<String, String> rootCommands() {
+		Map<String, String> out = new TreeMap<>();
+		for (RootCommand command : ROOTS) {
+			if (MejtaCoreAPI.isAddonActive(command.addonId())) {
+				out.putIfAbsent(command.name(), command.addonId());
+			}
+		}
+		return out;
 	}
 
 	private static int help(CommandContext<CommandSourceStack> ctx) {
@@ -115,6 +231,9 @@ public final class ServerCommands {
 		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_EDIT)) {
 			line(source, "/" + ROOT + " config get <config> [key]", "show settings");
 			line(source, "/" + ROOT + " config set <config> <key> <value>", "change a setting (saved immediately)");
+			if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_SECRETS)) {
+				line(source, "  secret settings (tokens, webhooks)", "set them from the server console if you can");
+			}
 			line(source, "/" + ROOT + " config reset <config> <key>", "restore a setting's default");
 		}
 		synchronized (PROVIDERS) {
@@ -123,6 +242,9 @@ public final class ServerCommands {
 					line(source, "/" + ROOT + " " + addonId + " ...", "commands of addon '" + addonId + "'");
 				}
 			}
+		}
+		for (Map.Entry<String, String> command : rootCommands().entrySet()) {
+			line(source, "/" + command.getKey() + " ...", "command of addon '" + command.getValue() + "'");
 		}
 		return 1;
 	}
@@ -181,10 +303,18 @@ public final class ServerCommands {
 			if (key != null && !setting.key().equals(key)) {
 				continue;
 			}
-			source.sendSystemMessage(Component.literal(" " + setting.key() + " = ").withStyle(ChatFormatting.GRAY)
-					.append(Component.literal(SettingText.format(setting, handle.get(setting))).withStyle(ChatFormatting.WHITE))
-					.append(Component.literal("  (default " + SettingText.format(setting, setting.defaultValue()) + ")")
-							.withStyle(ChatFormatting.DARK_GRAY)));
+			MutableComponent line = Component.literal(" " + setting.key() + " = ").withStyle(ChatFormatting.GRAY)
+					.append(Component.literal(SettingText.display(setting, handle.get(setting))).withStyle(ChatFormatting.WHITE));
+			if (SettingText.isSensitive(setting)) {
+				line.append(Component.literal("  (secret)").withStyle(ChatFormatting.DARK_GRAY));
+			} else {
+				line.append(Component.literal("  (default " + SettingText.format(setting, setting.defaultValue()) + ")")
+						.withStyle(ChatFormatting.DARK_GRAY));
+			}
+			if (setting.isExperimental()) {
+				line.append(Component.literal(" [experimental]").withStyle(ChatFormatting.LIGHT_PURPLE));
+			}
+			source.sendSystemMessage(line);
 			shown++;
 		}
 		if (shown == 0) {
@@ -196,10 +326,12 @@ public final class ServerCommands {
 	private static int edit(CommandContext<CommandSourceStack> ctx, ConfigEditing.Op op) {
 		CommandSourceStack source = ctx.getSource();
 		String value = op == ConfigEditing.Op.SET ? StringArgumentType.getString(ctx, "value") : "";
-		ConfigEditing.Result result = ServerConfigSync.apply(source, StringArgumentType.getString(ctx, "config"), op.name(),
-				StringArgumentType.getString(ctx, "key"), value);
+		String configId = StringArgumentType.getString(ctx, "config");
+		String key = StringArgumentType.getString(ctx, "key");
+		ConfigEditing.Result result = ServerConfigSync.apply(source, configId, op.name(), key, value);
 		if (result.ok()) {
-			source.sendSuccess(() -> Component.literal(result.message()), true);
+			// The message never holds a secret value, but changes to secrets are not announced to other operators either.
+			source.sendSuccess(() -> Component.literal(result.message()), !ServerConfigSync.isSensitive(configId, key));
 			return 1;
 		}
 		source.sendFailure(Component.literal(result.message()));

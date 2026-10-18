@@ -3,8 +3,9 @@ package com.mejta.mejtacore.api.notify;
 /**
  * Delivers {@link Notification}s somewhere: in-game chat, Discord, a webhook...
  *
- * <p>{@link #deliver} is called on MejtaCore's notification thread, never on the server thread, so
- * it may block on network I/O. Exceptions are caught and logged (rate-limited); they never affect
+ * <p>{@link #deliver} is called on this provider's own notification thread, never on the server
+ * thread, so it may block on network I/O; since API 4 that only delays this provider. Notifications
+ * reach it in publish order. Exceptions are caught and logged (rate-limited); they never affect
  * the publisher or other providers. A provider that needs the server thread must hand work over to
  * it itself (e.g. {@code server.execute(...)}).
  *

@@ -37,6 +37,11 @@ public final class ExampleAddon implements MejtaAddon {
 			.describedAs("Message shown by /mejtacore example status");
 	public static final Setting<Mode> MODE = Setting.enumeration("mode", Mode.NORMAL)
 			.describedAs("Example mode");
+	/** A secret (API 4): stored in config/mejta/secrets/example.json and never shown or sent to clients. */
+	public static final Setting<String> API_TOKEN = Setting.string("api_token", "").secret()
+			.describedAs("Example secret, e.g. a bot token");
+	public static final Setting<Boolean> PREVIEW = Setting.bool("preview_feature", false).experimental()
+			.describedAs("Example experimental setting (API 4)");
 	public static final Setting<Integer> LAUNCH_COUNT = Setting.integer("launch_count", 0, 0, Integer.MAX_VALUE)
 			.named("Launch Count")
 			.describedAs("How many times the game started with this addon");
@@ -46,7 +51,7 @@ public final class ExampleAddon implements MejtaAddon {
 	 * settings that are missing afterwards get their defaults.
 	 */
 	public static final ConfigSpec CONFIG = ConfigSpec.builder(2)
-			.add(ENABLED, RADIUS, SPEED, GREETING, MODE, LAUNCH_COUNT)
+			.add(ENABLED, RADIUS, SPEED, GREETING, MODE, API_TOKEN, PREVIEW, LAUNCH_COUNT)
 			.migration(1, data -> data.rename("range", "radius"))
 			.build();
 

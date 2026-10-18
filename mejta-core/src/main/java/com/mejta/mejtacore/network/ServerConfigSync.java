@@ -121,6 +121,9 @@ public final class ServerConfigSync {
 	private static RemoteConfig describe(ConfigHandle handle) {
 		List<RemoteSetting> settings = new ArrayList<>();
 		for (Setting<?> setting : handle.spec().settings()) {
+			if (SettingText.isSensitive(setting)) {
+				continue; // secrets never leave the server, not even masked
+			}
 			boolean ranged = hasRealRange(setting);
 			settings.add(new RemoteSetting(setting.key(), setting.type().name(), setting.displayName(), setting.description(),
 					SettingText.format(setting, setting.defaultValue()), SettingText.format(setting, handle.get(setting)),
@@ -144,7 +147,8 @@ public final class ServerConfigSync {
 		if (!withinRate(player.getUUID())) {
 			result = new ConfigEditing.Result(false, "Too many changes at once; slow down");
 		} else {
-			result = apply(player.permissions(), player.getGameProfile().name(), edit.configId(), edit.op(), edit.key(), edit.value());
+			result = apply(player.permissions(), player.getGameProfile().name(), edit.configId(), edit.op(), edit.key(), edit.value(),
+					false);
 		}
 		if (ServerPlayNetworking.canSend(player, EditResult.TYPE)) {
 			ServerPlayNetworking.send(player, new EditResult(result.ok(), result.message()));
@@ -152,9 +156,14 @@ public final class ServerConfigSync {
 		sendTo(player); // the authoritative state, also after a rejected edit
 	}
 
-	/** Permission check, edit, save and audit log. Used by the network handler and by commands. */
+	/**
+	 * Permission check, edit, save and audit log. Used by the network handler and by commands.
+	 *
+	 * @param byCommand {@code true} for {@code /mejtaadmin config}: sensitive settings may then be changed
+	 *                  with {@code mejtacore.config.secrets}. Client menus never can.
+	 */
 	public static ConfigEditing.Result apply(PermissionSet permissions, String who, String configId, String opName, String key,
-			String value) {
+			String value, boolean byCommand) {
 		Optional<ConfigHandle> handle = editable(permissions, configId);
 		if (handle.isEmpty()) {
 			return new ConfigEditing.Result(false, "You may not edit config '" + configId + "'");
@@ -165,23 +174,36 @@ public final class ServerConfigSync {
 		} catch (IllegalArgumentException e) {
 			return new ConfigEditing.Result(false, "Unknown operation " + opName);
 		}
-		ConfigEditing.Result result = ConfigEditing.apply(handle.get(), op, key, value);
+		boolean mayChangeSecrets = byCommand && PermissionRegistry.check(permissions, PermissionRegistry.CONFIG_SECRETS);
+		Optional<Setting<?>> target = key == null ? Optional.empty() : handle.get().spec().setting(key);
+		if (op != ConfigEditing.Op.RESET_ALL && byCommand && !mayChangeSecrets
+				&& target.map(SettingText::isSensitive).orElse(false)) {
+			return new ConfigEditing.Result(false, key + " is a secret setting; changing it needs "
+					+ PermissionRegistry.CONFIG_SECRETS.node());
+		}
+		ConfigEditing.Result result = ConfigEditing.apply(handle.get(), op, key, value, mayChangeSecrets);
 		if (result.ok()) {
-			String change = key != null && SECRET_KEY.matcher(key).matches()
-					? configId + ": " + key + " changed (value hidden)" : result.message();
-			MejtaLog.CORE.info("[config] {} changed {}", who, change);
-			publishChange(who, configId, opName, key, change);
+			// The message never contains a sensitive value (see ConfigEditing).
+			MejtaLog.CORE.info("[config] {} changed {}", who, result.message());
+			publishChange(who, configId, opName, key, result.message());
 		}
 		return result;
 	}
 
-	/** Keys whose values must never leave the server log in a notification (tokens, webhook URLs...). */
-	private static final java.util.regex.Pattern SECRET_KEY =
-			java.util.regex.Pattern.compile("(?i).*(token|secret|password|webhook).*");
+	/** Whether {@code key} of {@code configId} holds a secret, so command feedback must not be broadcast. */
+	public static boolean isSensitive(String configId, String key) {
+		if (SettingText.isSensitiveKey(key)) {
+			return true;
+		}
+		return MejtaCore.configs().find(configId)
+				.flatMap(h -> h.spec().setting(key))
+				.map(SettingText::isSensitive)
+				.orElse(false);
+	}
 
 	/**
 	 * Publishes a config change on {@code mejtacore.config}, so it reaches staff chat, the notification
-	 * file log and external providers such as MejtaDiscord. Values of secret-looking keys are hidden.
+	 * file log and external providers such as MejtaDiscord. Values of secret settings are never included.
 	 */
 	private static void publishChange(String who, String configId, String op, String key, String change) {
 		MejtaCoreAPI.notifications().publish(Notification.builder(MejtaCore.MOD_ID, CHANNEL_CONFIG)
@@ -197,7 +219,7 @@ public final class ServerConfigSync {
 	}
 
 	public static ConfigEditing.Result apply(CommandSourceStack source, String configId, String op, String key, String value) {
-		return apply(source.permissions(), source.getTextName(), configId, op, key, value);
+		return apply(source.permissions(), source.getTextName(), configId, op, key, value, true);
 	}
 
 	private static boolean withinRate(UUID player) {

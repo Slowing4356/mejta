@@ -31,6 +31,10 @@ import com.mejta.mejtacore.util.SafeFiles;
  *
  * <p>Unknown keys found in the file are preserved on save, so values written by a newer version
  * (or by an addon that is temporarily removed) are not lost.
+ *
+ * <p>Values of {@link Setting#isSecret() secret} settings live in a second file,
+ * {@code secrets/<id>.json}, written readable by the owner only where supported. A secret found in
+ * the main file (written before the setting was declared secret) is moved there on load.
  */
 public final class ConfigFile implements ConfigHandle {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
@@ -38,17 +42,22 @@ public final class ConfigFile implements ConfigHandle {
 	private final String id;
 	private final ConfigSpec spec;
 	private final Path file;
+	private final Path secretsFile;
 	private final Map<String, Object> values = new LinkedHashMap<>();
 	private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
 	private JsonObject unknownKeys = new JsonObject();
 	private int storedVersion;
 	private boolean dirty;
 	private String lastWritten;
+	private JsonObject unknownSecrets = new JsonObject();
+	private String lastWrittenSecrets;
 
-	ConfigFile(String id, ConfigSpec spec, Path file) {
+	/** @param secretsFile where secret values are stored; {@code null} if the spec has no secret settings */
+	ConfigFile(String id, ConfigSpec spec, Path file, Path secretsFile) {
 		this.id = id;
 		this.spec = spec;
 		this.file = file;
+		this.secretsFile = secretsFile;
 		this.storedVersion = spec.version();
 		applyDefaults();
 	}
@@ -125,17 +134,31 @@ public final class ConfigFile implements ConfigHandle {
 			return;
 		}
 		String content = serialize();
-		if (content.equals(lastWritten)) {
-			dirty = false;
-			return;
+		String secrets = secretsFile == null ? null : serializeSecrets();
+		boolean ok = true;
+		if (!content.equals(lastWritten)) {
+			try {
+				SafeFiles.writeAtomically(file, content);
+				lastWritten = content;
+				MejtaLog.debug("Saved config '{}' to {}", id, file);
+			} catch (IOException e) {
+				ok = false;
+				Diagnostics.error("config:" + id, "Could not save " + file, e);
+			}
 		}
-		try {
-			SafeFiles.writeAtomically(file, content);
-			lastWritten = content;
+		if (secrets != null && !secrets.equals(lastWrittenSecrets)) {
+			try {
+				SafeFiles.writeAtomically(secretsFile, secrets, true);
+				lastWrittenSecrets = secrets;
+				MejtaLog.debug("Saved secrets of config '{}' to {}", id, secretsFile);
+			} catch (IOException e) {
+				ok = false;
+				// The exception names the file, never the values.
+				Diagnostics.error("config:" + id, "Could not save " + secretsFile, e);
+			}
+		}
+		if (ok) {
 			dirty = false;
-			MejtaLog.debug("Saved config '{}' to {}", id, file);
-		} catch (IOException e) {
-			Diagnostics.error("config:" + id, "Could not save " + file, e);
 		}
 	}
 
@@ -157,9 +180,11 @@ public final class ConfigFile implements ConfigHandle {
 		storedVersion = spec.version();
 		lastWritten = null;
 		dirty = false;
+		JsonObject secrets = loadSecrets();
 
 		if (!Files.exists(file)) {
 			MejtaLog.debug("Config '{}' not found, creating {}", id, file);
+			applySecrets(secrets);
 			dirty = true;
 			save();
 			return;
@@ -175,7 +200,7 @@ public final class ConfigFile implements ConfigHandle {
 			}
 			json = parsed.getAsJsonObject();
 		} catch (IOException | JsonParseException | IllegalStateException e) {
-			recoverFromBrokenFile("could not be read: " + e.getMessage());
+			recoverFromBrokenFile("could not be read: " + e.getMessage(), secrets);
 			return;
 		}
 		lastWritten = content;
@@ -197,7 +222,7 @@ public final class ConfigFile implements ConfigHandle {
 				MejtaLog.CORE.info("Migrated config '{}' from version {} to {}", id, fileVersion, spec.version());
 			} catch (RuntimeException e) {
 				Diagnostics.error("config:" + id, "Migration from version " + fileVersion + " failed", e);
-				recoverFromBrokenFile("migration failed");
+				recoverFromBrokenFile("migration failed", secrets);
 				return;
 			}
 			dirty = true;
@@ -209,11 +234,22 @@ public final class ConfigFile implements ConfigHandle {
 
 		for (Setting<?> setting : spec.settings()) {
 			JsonElement element = json.get(setting.key());
+			if (setting.isSecret()) {
+				if (element != null) {
+					// Written before the setting became secret (or by hand): move it to the secrets file.
+					if (!secrets.has(setting.key())) {
+						secrets.add(setting.key(), element);
+					}
+					MejtaLog.CORE.info("Moved secret '{}' of config '{}' to {}", setting.key(), id, secretsFile);
+					dirty = true;
+				}
+				continue;
+			}
 			Object decoded = decode(setting, element);
 			if (decoded == null || !setting.isValid(decoded)) {
 				if (element != null) {
-					Diagnostics.warn("config:" + id, "Invalid value " + element + " for '" + setting.key()
-							+ "', using default " + setting.defaultValue());
+					Diagnostics.warn("config:" + id, "Invalid value " + shown(setting, element) + " for '" + setting.key()
+							+ "', using default " + SettingText.display(setting, setting.defaultValue()));
 				}
 				values.put(setting.key(), setting.defaultValue());
 				dirty = true;
@@ -221,6 +257,7 @@ public final class ConfigFile implements ConfigHandle {
 				values.put(setting.key(), decoded);
 			}
 		}
+		applySecrets(secrets);
 
 		for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
 			if (!entry.getKey().equals(ConfigSpec.VERSION_KEY) && spec.setting(entry.getKey()).isEmpty()) {
@@ -233,7 +270,57 @@ public final class ConfigFile implements ConfigHandle {
 		}
 	}
 
-	private void recoverFromBrokenFile(String reason) {
+	/** Reads the secrets file. Never throws; a broken file is backed up (it may still hold the only copy). */
+	private JsonObject loadSecrets() {
+		unknownSecrets = new JsonObject();
+		lastWrittenSecrets = null;
+		if (secretsFile == null || !Files.exists(secretsFile)) {
+			return new JsonObject();
+		}
+		try {
+			String content = Files.readString(secretsFile, StandardCharsets.UTF_8);
+			JsonElement parsed = JsonParser.parseString(content);
+			if (!parsed.isJsonObject()) {
+				throw new JsonParseException("top-level value is not a JSON object");
+			}
+			lastWrittenSecrets = content;
+			return parsed.getAsJsonObject();
+		} catch (IOException | JsonParseException | IllegalStateException e) {
+			// Not e.getMessage(): a parse error can quote part of the file.
+			try {
+				Path backup = SafeFiles.backupBroken(secretsFile);
+				Diagnostics.error("config:" + id, secretsFile.getFileName() + " could not be read. Backed up to "
+						+ backup.getFileName() + "; secret settings are empty until they are set again.");
+			} catch (IOException ex) {
+				Diagnostics.error("config:" + id, secretsFile.getFileName() + " could not be read or backed up");
+			}
+			return new JsonObject();
+		}
+	}
+
+	/** Puts the secret values from {@code secrets} into {@link #values}; keeps unknown entries for saving. */
+	private void applySecrets(JsonObject secrets) {
+		for (Map.Entry<String, JsonElement> entry : secrets.entrySet()) {
+			Setting<?> setting = spec.setting(entry.getKey()).filter(Setting::isSecret).orElse(null);
+			if (setting == null) {
+				unknownSecrets.add(entry.getKey(), entry.getValue());
+				continue;
+			}
+			Object decoded = decode(setting, entry.getValue());
+			if (decoded == null || !setting.isValid(decoded)) {
+				Diagnostics.warn("config:" + id, "Invalid value (hidden) for secret '" + setting.key() + "', it is now not set");
+				dirty = true;
+			} else {
+				values.put(setting.key(), decoded);
+			}
+		}
+	}
+
+	private static String shown(Setting<?> setting, JsonElement element) {
+		return SettingText.isSensitive(setting) ? "(hidden)" : element.toString();
+	}
+
+	private void recoverFromBrokenFile(String reason, JsonObject secrets) {
 		try {
 			Path backup = SafeFiles.backupBroken(file);
 			Diagnostics.error("config:" + id, file.getFileName() + " " + reason + ". Backed up to "
@@ -243,6 +330,8 @@ public final class ConfigFile implements ConfigHandle {
 		}
 		applyDefaults();
 		unknownKeys = new JsonObject();
+		unknownSecrets = new JsonObject();
+		applySecrets(secrets);
 		lastWritten = null;
 		dirty = true;
 		save();
@@ -287,12 +376,32 @@ public final class ConfigFile implements ConfigHandle {
 		JsonObject out = new JsonObject();
 		out.addProperty(ConfigSpec.VERSION_KEY, storedVersion);
 		for (Setting<?> setting : spec.settings()) {
-			out.add(setting.key(), encode(values.get(setting.key())));
+			if (!setting.isSecret()) {
+				out.add(setting.key(), encode(values.get(setting.key())));
+			}
 		}
 		for (Map.Entry<String, JsonElement> entry : unknownKeys.entrySet()) {
 			out.add(entry.getKey(), entry.getValue());
 		}
 		return GSON.toJson(out) + System.lineSeparator();
+	}
+
+	private String serializeSecrets() {
+		JsonObject out = new JsonObject();
+		for (Setting<?> setting : spec.settings()) {
+			if (setting.isSecret()) {
+				out.add(setting.key(), encode(values.get(setting.key())));
+			}
+		}
+		for (Map.Entry<String, JsonElement> entry : unknownSecrets.entrySet()) {
+			out.add(entry.getKey(), entry.getValue());
+		}
+		return GSON.toJson(out) + System.lineSeparator();
+	}
+
+	/** The file holding this config's secret values, or {@code null} if it has none. */
+	public Path secretsFile() {
+		return secretsFile;
 	}
 
 	private static JsonElement encode(Object value) {

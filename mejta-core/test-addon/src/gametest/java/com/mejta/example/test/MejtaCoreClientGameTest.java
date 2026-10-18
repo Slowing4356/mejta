@@ -661,6 +661,8 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/mejtaadmin config set example radius banana");
 		check("command: invalid value explained", chatContains(ctx, "expected a whole number"));
 
+		secretSettingChecks(ctx, perms);
+
 		perms.reset(edit);
 		perms.save();
 		ctx.waitTicks(10);
@@ -671,6 +673,63 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		example.resetAll();
 		example.set(ExampleAddon.LAUNCH_COUNT, launches); // the next run's persistence check compares against it
 		example.save();
+	}
+
+	/** API 4: secret settings never reach clients, chat, the log or notifications. Needs mejtacore.config.edit granted. */
+	private void secretSettingChecks(ClientGameTestContext ctx, ConfigHandle perms) {
+		ConfigHandle example = ExampleAddon.config();
+		String token = "tok-" + UUID.randomUUID();
+		@SuppressWarnings("unchecked")
+		Setting<PermissionLevel> secrets = (Setting<PermissionLevel>) perms.spec().setting("mejtacore.config.secrets").orElseThrow();
+
+		chat(ctx, "/mejta gui");
+		waitForMenu(ctx, "MejtaCore");
+		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
+		waitForMenu(ctx, "Configuration");
+		clickSlot(ctx, findSlot(ctx, "server_settings"), 0);
+		waitUntil(ctx, () -> findSlot(ctx, "server_config_example") >= 0);
+		clickSlot(ctx, findSlot(ctx, "server_config_example"), 0);
+		check("secret: server config page opens", waitForMenu(ctx, "Example Addon (Server)"));
+		check("secret: not sent to the client's Server Settings", findSlot(ctx, "setting_api_token") < 0
+				&& findSlot(ctx, "setting_radius") >= 0);
+		closeMenu(ctx);
+
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin config set example api_token " + token);
+		ctx.waitTicks(10);
+		check("secret: setting it needs mejtacore.config.secrets", example.get(ExampleAddon.API_TOKEN).isEmpty()
+				&& chatContains(ctx, "mejtacore.config.secrets"));
+
+		ctx.runOnClient(mc -> ClientPlayNetworking.send(new ConfigPayloads.EditConfig("example", "SET", "api_token", token)));
+		ctx.waitTicks(20);
+		check("secret: Server Settings packets cannot set it", example.get(ExampleAddon.API_TOKEN).isEmpty());
+
+		perms.set(secrets, PermissionLevel.ALL);
+		perms.save();
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin config set example api_token " + token);
+		check("secret: set by command with the permission", waitUntil(ctx, () -> token.equals(example.get(ExampleAddon.API_TOKEN))));
+		check("secret: feedback hides the value", chatContains(ctx, "api_token changed (value hidden)") && !chatHas(ctx, token));
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin config get example api_token");
+		check("secret: config get shows (set)", chatContains(ctx, "api_token = (set)") && !chatHas(ctx, token));
+		check("secret: not in the main config file", waitUntil(ctx, () -> !read(example.file()).contains(token)
+				&& !read(example.file()).contains("api_token")));
+		check("secret: stored in secrets/example.json", read(example.file().resolveSibling("secrets").resolve("example.json"))
+				.contains(token));
+		check("secret: published change hides the value", waitUntil(ctx, () -> !notificationLog(r ->
+				r.get("channel").getAsString().equals("mejtacore.config")
+						&& r.getAsJsonObject("fields").get("key").getAsString().equals("api_token")).isEmpty())
+				&& notificationLog(r -> r.toString().contains(token)).isEmpty());
+
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin config get example preview_feature");
+		check("experimental: marked in config get", chatContains(ctx, "[experimental]"));
+
+		example.reset(ExampleAddon.API_TOKEN);
+		example.save();
+		perms.reset(secrets);
+		perms.save();
 	}
 
 	private static int findSlotOn(ChestMenuScreen menu, String entryId) {

@@ -14,6 +14,7 @@ import java.util.regex.Pattern;
 import net.fabricmc.loader.api.FabricLoader;
 
 import com.mejta.mejtacore.addons.AddonRegistry;
+import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtacore.api.storage.RecordLog;
 import com.mejta.mejtacore.api.storage.RecordLogOptions;
 import com.mejta.mejtacore.core.MejtaCore;
@@ -21,7 +22,7 @@ import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.logging.MejtaLog;
 
 /**
- * Owns the shared I/O thread and every open {@link RecordLog}. Data lives in
+ * Owns the shared I/O thread, every open {@link RecordLog} and every {@link DataStore}. Data lives in
  * {@code <game dir>/mejta-data/<addon id>/}.
  */
 public final class RecordLogs {
@@ -36,6 +37,9 @@ public final class RecordLogs {
 			}, new ThreadPoolExecutor.AbortPolicy());
 
 	private static final Map<String, JsonlRecordLog> LOGS = new HashMap<>();
+	private static final Map<String, JsonDataStore> STORES = new HashMap<>();
+	/** Previous versions kept per data-store key. */
+	private static final int STORE_BACKUPS = 3;
 
 	private RecordLogs() {
 	}
@@ -69,12 +73,21 @@ public final class RecordLogs {
 		return log;
 	}
 
-	/** Writes every pending record, waiting at most {@code timeoutMs}. Called on shutdown. */
+	/** The data store of {@code ownerId}: {@code mejta-data/<owner>/store/}. One instance per owner. */
+	public static synchronized DataStore dataStore(String ownerId) {
+		requireOwner(ownerId);
+		return STORES.computeIfAbsent(ownerId, id -> new JsonDataStore(id, dataDirectory(id).resolve("store"), IO, STORE_BACKUPS));
+	}
+
+	/** Writes every pending record and data-store change, waiting at most {@code timeoutMs}. Called on shutdown. */
 	public static void flushAll(long timeoutMs) {
 		List<CompletableFuture<Void>> futures = new ArrayList<>();
 		synchronized (RecordLogs.class) {
 			for (JsonlRecordLog log : LOGS.values()) {
 				futures.add(log.flush());
+			}
+			for (JsonDataStore store : STORES.values()) {
+				futures.add(store.flush());
 			}
 		}
 		try {

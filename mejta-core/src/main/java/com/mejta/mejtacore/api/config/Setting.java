@@ -34,9 +34,12 @@ public final class Setting<T> {
 	private final String description;
 	private final String displayName;
 	private final List<String> options;
+	private final boolean secret;
+	private final boolean experimental;
 
 	private Setting(String key, SettingType type, Class<T> valueClass, T defaultValue, Number min, Number max,
-			Predicate<T> validator, String description, String displayName, List<String> options) {
+			Predicate<T> validator, String description, String displayName, List<String> options, boolean secret,
+			boolean experimental) {
 		this.key = key;
 		this.type = type;
 		this.valueClass = valueClass;
@@ -47,6 +50,13 @@ public final class Setting<T> {
 		this.description = description;
 		this.displayName = displayName;
 		this.options = options;
+		this.secret = secret;
+		this.experimental = experimental;
+	}
+
+	private Setting<T> copy(Predicate<T> validator, String description, String displayName, boolean secret, boolean experimental) {
+		return new Setting<>(key, type, valueClass, defaultValue, min, max, validator, description, displayName, options, secret,
+				experimental);
 	}
 
 	private static <T> Setting<T> create(String key, SettingType type, Class<T> valueClass, T def, Number min, Number max,
@@ -59,7 +69,7 @@ public final class Setting<T> {
 		if (key.equals(ConfigSpec.VERSION_KEY)) {
 			throw new IllegalArgumentException("Setting key '" + key + "' is reserved");
 		}
-		Setting<T> setting = new Setting<>(key, type, valueClass, def, min, max, v -> true, "", prettify(key), options);
+		Setting<T> setting = new Setting<>(key, type, valueClass, def, min, max, v -> true, "", prettify(key), options, false, false);
 		if (!setting.isValid(def)) {
 			throw new IllegalArgumentException("Default value " + def + " of setting '" + key + "' is out of range");
 		}
@@ -122,23 +132,63 @@ public final class Setting<T> {
 
 	/** Returns a copy with the given description (shown as tooltip in the settings menu). */
 	public Setting<T> describedAs(String description) {
-		return new Setting<>(key, type, valueClass, defaultValue, min, max, validator, Objects.requireNonNull(description), displayName, options);
+		return copy(validator, Objects.requireNonNull(description), displayName, secret, experimental);
 	}
 
 	/** Returns a copy with a custom display name. Defaults to the key in title case ({@code menu_rows} -> {@code Menu Rows}). */
 	public Setting<T> named(String displayName) {
 		Objects.requireNonNull(displayName, "displayName");
-		return new Setting<>(key, type, valueClass, defaultValue, min, max, validator, description, displayName, options);
+		return copy(validator, description, displayName, secret, experimental);
 	}
 
 	/** Returns a copy with an extra validation rule. Invalid values loaded from disk are replaced by the default. */
 	public Setting<T> validatedBy(Predicate<T> rule) {
 		Objects.requireNonNull(rule, "rule");
-		Setting<T> copy = new Setting<>(key, type, valueClass, defaultValue, min, max, validator.and(rule), description, displayName, options);
+		Setting<T> copy = copy(validator.and(rule), description, displayName, secret, experimental);
 		if (!copy.isValid(defaultValue)) {
 			throw new IllegalArgumentException("Default value of setting '" + key + "' fails its validator");
 		}
 		return copy;
+	}
+
+	/**
+	 * Returns a copy whose value is a secret (a token, password or webhook URL). Only {@code STRING}
+	 * settings can be secret. MejtaCore then:
+	 * <ul>
+	 * <li>stores the value in {@code config/mejta/secrets/<id>.json}, not in the normal config file,
+	 * readable only by the server's own user where the file system supports that;</li>
+	 * <li>never sends it to clients (Server Settings leaves it out);</li>
+	 * <li>shows only {@code (set)} or {@code (not set)} in menus, commands, logs and notifications;</li>
+	 * <li>lets only holders of {@code mejtacore.config.secrets} (and the console) change it.</li>
+	 * </ul>
+	 *
+	 * @since API version 4
+	 */
+	public Setting<T> secret() {
+		if (type != SettingType.STRING) {
+			throw new IllegalStateException("Only string settings can be secret: '" + key + "'");
+		}
+		return copy(validator, description, displayName, true, experimental);
+	}
+
+	/**
+	 * Returns a copy marked as experimental: menus and {@code /mejtaadmin config get} label it, so
+	 * server owners know the feature may still change.
+	 *
+	 * @since API version 4
+	 */
+	public Setting<T> experimental() {
+		return copy(validator, description, displayName, secret, true);
+	}
+
+	/** @since API version 4 */
+	public boolean isSecret() {
+		return secret;
+	}
+
+	/** @since API version 4 */
+	public boolean isExperimental() {
+		return experimental;
 	}
 
 	/** Checks type, range and custom validation. */
@@ -231,6 +281,6 @@ public final class Setting<T> {
 
 	@Override
 	public String toString() {
-		return "Setting[" + key + ":" + type + "]";
+		return "Setting[" + key + ":" + type + (secret ? " secret" : "") + "]";
 	}
 }

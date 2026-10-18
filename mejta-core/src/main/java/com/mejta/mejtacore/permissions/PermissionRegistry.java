@@ -32,6 +32,9 @@ public final class PermissionRegistry {
 			.describedAs("View and change the server's settings from the MejtaCore menu or /mejtaadmin config");
 	public static final MejtaPermission CONFIG_PERMISSIONS = MejtaPermission.of("mejtacore.config.permissions", PermissionLevel.OWNERS)
 			.describedAs("Also change these permission levels remotely (needs mejtacore.config.edit too)");
+	/** @since API version 4 */
+	public static final MejtaPermission CONFIG_SECRETS = MejtaPermission.of("mejtacore.config.secrets", PermissionLevel.OWNERS)
+			.describedAs("Change secret settings (tokens, webhook URLs) with /mejtaadmin config set (needs mejtacore.config.edit too)");
 
 	private static final Map<String, Setting<PermissionLevel>> SETTINGS = new LinkedHashMap<>();
 	private static volatile ConfigHandle config;
@@ -47,6 +50,7 @@ public final class PermissionRegistry {
 		add(ADMIN);
 		add(CONFIG_EDIT);
 		add(CONFIG_PERMISSIONS);
+		add(CONFIG_SECRETS);
 		for (AddonInfo addon : addons) {
 			for (MejtaPermission permission : addon.definition().permissions()) {
 				add(permission);
