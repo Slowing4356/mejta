@@ -1,0 +1,39 @@
+{
+	"required": true,
+	"package": "com.mejta.mejtautils.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"ChunkMapAccessor",
+		"ClientboundPlayerInfoUpdatePacketAccessor",
+		"DropGuardMixin",
+		"FreezeCommandMixin",
+		"TrackedEntityInvoker",
+		"VanishAdvancementMixin",
+		"VanishBadOmenMixin",
+		"VanishContainerMixin",
+		"VanishEntityMixin",
+		"VanishEntitySelectorMixin",
+		"VanishFallOnBlockMixin",
+		"VanishInsideBlockMixin",
+		"VanishLeaveMixin",
+		"VanishListCommandMixin",
+		"VanishLivingEntityMixin",
+		"VanishOpenersCounterMixin",
+		"VanishPacketMixin",
+		"VanishPhantomMixin",
+		"VanishPlayerListMixin",
+		"VanishPlayerMixin",
+		"VanishServerLevelMixin",
+		"VanishServerPlayerMixin",
+		"VanishServerStatusMixin",
+		"VanishSleepMixin",
+		"VanishStepOnBlockMixin",
+		"VanishSuggestionsMixin",
+		"VanishVibrationMixin",
+		"VanishWardenMixin",
+		"VanishWaypointMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

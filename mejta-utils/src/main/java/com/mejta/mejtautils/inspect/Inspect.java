@@ -121,6 +121,11 @@ public final class Inspect {
 			}
 			return 0;
 		}
+		if (edit && MejtaUtils.staffMode().isActive(target.id())) {
+			source.sendFailure(Component.literal(target.name() + " has a staff-mode session: their survival inventory is in the "
+					+ "staff-mode save, not in their player file. Opening read-only."));
+			edit = false;
+		}
 		if (edit && !OfflineMenu.canQueue(viewer)) {
 			source.sendFailure(Component.literal("Queued offline changes need " + UtilsPermissions.INVSEE_OFFLINE_EDIT.node()
 					+ " and the experimental setting invsee.offline.edit; opening read-only."));

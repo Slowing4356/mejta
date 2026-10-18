@@ -297,6 +297,13 @@ public final class FreezeManager {
 		publish(Severity.WARNING, record.name() + " rejoined while frozen", "They are frozen again.", record);
 	}
 
+	/** After a respawn (a new player object): hover and indicator again. */
+	public void onRespawn(ServerPlayer player) {
+		if (frozen.containsKey(player.getUUID())) {
+			apply(player);
+		}
+	}
+
 	public void onLeave(ServerPlayer player) {
 		Frozen record = frozen.get(player.getUUID());
 		if (record == null) {
