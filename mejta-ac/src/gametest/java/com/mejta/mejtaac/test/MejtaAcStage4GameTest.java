@@ -26,8 +26,12 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.phys.AABB;
@@ -38,15 +42,18 @@ import com.mejta.mejtaac.AntiCheat;
 import com.mejta.mejtaac.MejtaAC;
 import com.mejta.mejtaac.check.Confidence;
 import com.mejta.mejtaac.check.Flag;
+import com.mejta.mejtaac.check.combat.HitboxCheck;
 import com.mejta.mejtaac.check.combat.MultiTargetCheck;
 import com.mejta.mejtaac.check.combat.ReachCheck;
+import com.mejta.mejtaac.check.interaction.BlockReachCheck;
+import com.mejta.mejtaac.check.movement.FlyCheck;
 import com.mejta.mejtaac.check.movement.GroundSpoofCheck;
 import com.mejta.mejtaac.check.movement.TimerCheck;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 
 /**
- * Stage 4a: timer, ground spoof, reach and multi-target, tested against latency.
+ * Stage 4: timer, ground spoof, fly, reach, hitbox, multi-target and block reach, tested against latency.
  *
  * <p>A real client plays on an in-process dedicated server (as a non-op) through
  * {@link LatencySimulator} at several network profiles. For each profile it checks that legitimate
@@ -223,6 +230,77 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 				ReachCheck.evaluate(List.of(eye), ReachCheck.sweep(List.of(left, right)), 3.0, 0.1, true, 0).isEmpty()
 						&& ReachCheck.evaluate(List.of(eye), List.of(left, right), 3.0, 0.1, true, 0).isPresent());
 		check("reach: window covers update interval + interpolation", ReachCheck.windowStart(100, 3) == 92);
+
+		HitboxCheck.Rotation lookX = new HitboxCheck.Rotation(-90, 0); // yaw -90 looks towards +X
+		HitboxCheck.Rotation lookBack = new HitboxCheck.Rotation(90, 0);
+		check("hitbox: looking at the target passes",
+				HitboxCheck.evaluate(List.of(eye), List.of(lookX), List.of(box(2.5)), 4, true, 0).isEmpty());
+		Optional<Flag> away = HitboxCheck.evaluate(List.of(eye), List.of(lookBack), List.of(box(2.5)), 4, true, 0);
+		check("hitbox: looking away flagged HIGH", away.isPresent() && away.get().confidence() == Confidence.HIGH);
+		check("hitbox: either candidate rotation may hit",
+				HitboxCheck.evaluate(List.of(eye), List.of(lookBack, lookX), List.of(box(2.5)), 4, true, 0).isEmpty());
+		HitboxCheck.Rotation slightlyOff = new HitboxCheck.Rotation(-90 + 8, 0); // edge of a 0.5-wide box at 2.5 blocks
+		check("hitbox: grazing the edge passes",
+				HitboxCheck.evaluate(List.of(eye), List.of(slightlyOff), List.of(box(2.5)), 4, true, 0).isEmpty());
+		Optional<Flag> unsyncedAway = HitboxCheck.evaluate(List.of(eye), List.of(lookBack), List.of(box(2.5)), 4, false, -1);
+		check("hitbox: unsynced never above MEDIUM", unsyncedAway.isPresent() && unsyncedAway.get().confidence() == Confidence.MEDIUM);
+
+		AABB block = new AABB(4, 1, 0, 5, 2, 1);
+		Vec3 blockEye = new Vec3(0, 1.62, 0.5);
+		check("block reach: 4.0 within 4.5 range", BlockReachCheck.evaluate(List.of(blockEye), block, 4.5, 0.1, "x").isEmpty());
+		Optional<Flag> blockMedium = BlockReachCheck.evaluate(List.of(blockEye), block.move(0.8, 0, 0), 4.5, 0.1, "x");
+		check("block reach: 0.3 over -> MEDIUM", blockMedium.isPresent() && blockMedium.get().confidence() == Confidence.MEDIUM);
+		Optional<Flag> blockHigh = BlockReachCheck.evaluate(List.of(blockEye), block.move(2, 0, 0), 4.5, 0.1, "x");
+		check("block reach: 1.5 over -> HIGH", blockHigh.isPresent() && blockHigh.get().confidence() == Confidence.HIGH);
+
+		FlyCheck.State fall = new FlyCheck.State();
+		double vy = 0.42; // a jump
+		boolean fallFlagged = false;
+		for (int i = 0; i < 60; i++) {
+			fallFlagged |= FlyCheck.onClientTick(fall, vy, 0.08, false).isPresent();
+			vy = (vy - 0.08) * 0.98;
+		}
+		check("fly: a real jump and 3 s fall never flag", !fallFlagged);
+		FlyCheck.State hover = new FlyCheck.State();
+		Flag firstHover = null;
+		Flag highHover = null;
+		for (int i = 0; i < 40; i++) {
+			Optional<Flag> f = FlyCheck.onClientTick(hover, 0.0, 0.08, false);
+			if (f.isPresent() && firstHover == null) {
+				firstHover = f.get();
+			}
+			if (f.isPresent() && f.get().confidence() == Confidence.HIGH && highHover == null) {
+				highHover = f.get();
+			}
+		}
+		check("fly: hovering flagged (MEDIUM first, HIGH when sustained)", firstHover != null && "hovering".equals(firstHover.reason())
+				&& firstHover.confidence() == Confidence.MEDIUM && highHover != null);
+		FlyCheck.State glide = new FlyCheck.State();
+		boolean glideFlagged = false;
+		for (int i = 0; i < 40; i++) {
+			glideFlagged |= FlyCheck.onClientTick(glide, -0.05, 0.08, false).map(f -> f.reason().equals("falling_too_slowly")).orElse(false);
+		}
+		check("fly: gliding flagged", glideFlagged);
+		FlyCheck.State unloaded = new FlyCheck.State();
+		boolean unloadedFlagged = false;
+		for (int i = 0; i < 60; i++) {
+			unloadedFlagged |= FlyCheck.onClientTick(unloaded, -0.098, 0.08, false).isPresent();
+		}
+		check("fly: constant -0.098 (chunk not loaded on the client) not flagged", !unloadedFlagged);
+		FlyCheck.State bounce = new FlyCheck.State();
+		boolean bounceFlagged = false;
+		double v = -1.2;
+		for (int i = 0; i < 10; i++) { // falling
+			bounceFlagged |= FlyCheck.onClientTick(bounce, v, 0.08, false).isPresent();
+			v = (v - 0.08) * 0.98;
+		}
+		bounceFlagged |= FlyCheck.onClientTick(bounce, 0, 0.08, true).isPresent(); // landing tick: untrusted
+		v = 1.5; // slime bounce
+		for (int i = 0; i < 30; i++) {
+			bounceFlagged |= FlyCheck.onClientTick(bounce, v, 0.08, false).isPresent();
+			v = (v - 0.08) * 0.98;
+		}
+		check("fly: a bounce after a landing is not flagged", !bounceFlagged);
 	}
 
 	/** A 0.5-wide, 2-high box whose near face is {@code distance} blocks from the origin along +X. */
@@ -277,8 +355,12 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		double uncompensated = TestHooks.maxUncompensatedDistance;
 		boolean sameTarget = rapidClicks(ctx, server, arena);
 		floorDisappears(ctx, server, arena);
+		int blockActions = blockInteractions(ctx, server, arena);
+		double launchHeight = knockbackLaunch(ctx, server, arena);
+		int bounces = slimeBounce(ctx, server, arena);
 		List<FlagEvent> legit = flagsSince(legitStart);
-		for (String checkId : List.of(TimerCheck.ID, GroundSpoofCheck.ID, ReachCheck.ID, MultiTargetCheck.ID)) {
+		for (String checkId : List.of(TimerCheck.ID, GroundSpoofCheck.ID, FlyCheck.ID, ReachCheck.ID, HitboxCheck.ID,
+				MultiTargetCheck.ID, BlockReachCheck.ID)) {
 			long count = legit.stream().filter(f -> f.check().equals(checkId)).count();
 			check(p.name() + ": legitimate play, no " + checkId + " flags (" + count + ")", count == 0);
 		}
@@ -290,6 +372,10 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 					+ String.format(Locale.ROOT, "%.2f", uncompensated) + " blocks)", uncompensated > 3.6);
 		}
 		check(p.name() + ": vanilla client attacks one entity per tick (multi_target premise)", sameTarget);
+		check(p.name() + ": legitimate block break/place actions were sent (" + blockActions + ")", blockActions > 0);
+		check(p.name() + String.format(Locale.ROOT, ": knockback really launched the player (%.2f blocks up)", launchHeight),
+				launchHeight >= 2.0);
+		check(p.name() + ": the player really bounced on slime (" + bounces + " bounces)", bounces >= 1);
 		if (!legit.isEmpty()) {
 			LOG.error("[MejtaAcTest] legitimate-play flags at {}: {}", p.name(), legit);
 		}
@@ -299,8 +385,11 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		String multi = multiTargetCheat(ctx, server, arena, p);
 		String timer = timerCheats(ctx, p);
 		String ground = groundSpoofCheat(ctx, server, arena, p);
-		table.add(String.format(Locale.ROOT, "| %s | %d | %d (%d legit hits, up to %.2f blocks uncompensated) | %s | %s | %s | %s |",
-				p.name(), rtt, legit.size(), legitAttacks, uncompensated, timer, ground, reach, multi));
+		String hitbox = hitboxCheat(ctx, server, arena, p);
+		String blockReach = blockReachCheats(ctx, server, arena, p);
+		String fly = flyCheats(ctx, server, arena, p);
+		table.add(String.format(Locale.ROOT, "| %s | %d | %d (%d legit hits, up to %.2f blocks uncompensated) | %s | %s | %s | %s | %s | %s | %s |",
+				p.name(), rtt, legit.size(), legitAttacks, uncompensated, timer, ground, fly, reach, hitbox, multi, blockReach));
 		resetViolations(server, arena);
 	}
 
@@ -497,6 +586,186 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		return detected ? (first.nanos() - t0) / 1_000_000 + " ms" : "missed";
 	}
 
+	// ---------------------------------------------------------------- Stage 4b scenarios
+
+	/** Real input: start breaking a block 3.5 blocks away and place stone against it. */
+	private int blockInteractions(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena) {
+		teleportHome(ctx, server, arena);
+		BlockPos target = new BlockPos(arena.x() + 4, arena.y() + 2, arena.z());
+		server.runCommand(String.format("setblock %d %d %d minecraft:stone", target.getX(), target.getY(), target.getZ()));
+		server.runCommand("give " + arena.name() + " minecraft:stone 16");
+		ctx.waitTicks(20);
+		int start = TestHooks.blockActionsReceived;
+		for (int i = 0; i < 4; i++) {
+			ctx.runOnClient(mc -> aimAt(mc, Vec3.atCenterOf(target)));
+			ctx.waitTick();
+			ctx.runOnClient(mc -> KeyMapping.click(mouseKey(GLFW.GLFW_MOUSE_BUTTON_LEFT)));
+			ctx.waitTicks(10);
+			ctx.runOnClient(mc -> KeyMapping.click(mouseKey(GLFW.GLFW_MOUSE_BUTTON_RIGHT)));
+			ctx.waitTicks(10);
+		}
+		int actions = TestHooks.blockActionsReceived - start;
+		server.runCommand("clear " + arena.name());
+		server.runCommand(String.format("fill %d %d %d %d %d %d minecraft:air",
+				arena.x() - 8, arena.y() + 1, arena.z() - 8, arena.x() + 8, arena.y() + 12, arena.z() + 8));
+		return actions;
+	}
+
+	/**
+	 * The server launches the player upwards and sideways, as knockback or a wind charge would.
+	 *
+	 * @return the highest the client rose above its starting height
+	 */
+	private double knockbackLaunch(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena) {
+		teleportHome(ctx, server, arena);
+		double startY = ctx.computeOnClient(mc -> mc.player.getY());
+		server.runOnServer(s -> {
+			ServerPlayer player = s.getPlayerList().getPlayer(arena.player());
+			player.setDeltaMovement(0.25, 0.9, 0);
+			player.hurtMarked = true;
+		});
+		double maxY = startY;
+		for (int i = 0; i < 80; i++) {
+			maxY = Math.max(maxY, ctx.computeOnClient(mc -> mc.player.getY()));
+			ctx.waitTick();
+		}
+		heal(server, arena);
+		teleportHome(ctx, server, arena);
+		return maxY - startY;
+	}
+
+	/**
+	 * Falling 11 blocks onto slime: several bounces, each one starts a new upward trajectory.
+	 *
+	 * @return how many times the client started moving up again after falling
+	 */
+	private int slimeBounce(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena) {
+		int sx = arena.x() + 3;
+		server.runCommand(String.format("setblock %d %d %d minecraft:slime_block", sx, arena.y(), arena.z()));
+		server.runCommand(String.format(Locale.ROOT, "tp %s %.2f %d %.2f", arena.name(), sx + 0.5, arena.y() + 12, arena.z() + 0.5));
+		int bounces = 0;
+		double previousY = Double.NaN;
+		boolean falling = false;
+		for (int i = 0; i < 140; i++) {
+			double y = ctx.computeOnClient(mc -> mc.player.getY());
+			if (!Double.isNaN(previousY)) {
+				if (y < previousY - 0.05) {
+					falling = true;
+				} else if (falling && y > previousY + 0.05 && y < arena.y() + 6) {
+					bounces++;
+					falling = false;
+				}
+			}
+			previousY = y;
+			ctx.waitTick();
+		}
+		server.runCommand(String.format("setblock %d %d %d minecraft:stone", sx, arena.y(), arena.z()));
+		heal(server, arena);
+		teleportHome(ctx, server, arena);
+		return bounces;
+	}
+
+	private String hitboxCheat(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena, Profile p) {
+		teleportHome(ctx, server, arena);
+		int id = spawnStand(server, arena.feet().add(2.0, 0, 0));
+		ctx.runOnClient(mc -> {
+			mc.player.setYRot(90); // facing -X, away from the stand
+			mc.player.setXRot(0);
+		});
+		ctx.waitTicks(p.rttMs() / 50 + 15);
+		int start = flags.size();
+		long t0 = System.nanoTime();
+		ctx.runOnClient(mc -> mc.getConnection().send(new ServerboundAttackPacket(id)));
+		boolean detected = waitUntil(ctx, p.rttMs() / 50 + 40, () -> firstFlag(start, HitboxCheck.ID) != null);
+		FlagEvent first = firstFlag(start, HitboxCheck.ID);
+		check(p.name() + ": attack while looking away flagged HIGH", detected && first.confidence() == Confidence.HIGH);
+		discard(server, id);
+		resetViolations(server, arena);
+		return detected ? first.confidence() + " after " + (first.nanos() - t0) / 1_000_000 + " ms" : "missed";
+	}
+
+	private String blockReachCheats(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena, Profile p) {
+		teleportHome(ctx, server, arena);
+		int eyeY = arena.y() + 2;
+		record Case(BlockPos pos, String distance, String expect) {
+		}
+		List<Case> cases = List.of(
+				new Case(new BlockPos(arena.x() + 6, eyeY, arena.z()), "5.5", "HIGH"),
+				new Case(new BlockPos(arena.x() + 5, eyeY, arena.z() + 2), "4.74", "MEDIUM"),
+				new Case(new BlockPos(arena.x() + 4, eyeY, arena.z() + 1), "3.54", "none"));
+		StringBuilder result = new StringBuilder();
+		for (Case c : cases) {
+			int start = flags.size();
+			ctx.runOnClient(mc -> mc.getConnection().send(
+					new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, c.pos(), Direction.UP)));
+			ctx.runOnClient(mc -> mc.getConnection().send(
+					new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK, c.pos(), Direction.UP)));
+			ctx.waitTicks(p.rttMs() / 50 + 10);
+			List<FlagEvent> got = flagsSince(start).stream().filter(f -> f.check().equals(BlockReachCheck.ID)).toList();
+			String actual = got.isEmpty() ? "none" : got.get(0).confidence().name();
+			check(p.name() + ": block reach at " + c.distance() + " blocks -> " + c.expect(), actual.equals(c.expect()));
+			result.append(result.isEmpty() ? "" : ", ").append(c.distance()).append(": ").append(actual);
+		}
+		resetViolations(server, arena);
+		return result.toString();
+	}
+
+	private String flyCheats(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena, Profile p) {
+		String hover = flyRun(ctx, server, arena, p, "hover", 0.0, 2, 40);
+		String ascend = flyRun(ctx, server, arena, p, "ascend", 0.2, 2, 30);
+		String glide = flyRun(ctx, server, arena, p, "glide", -0.05, 15, 40);
+		return "hover: " + hover + ", ascend: " + ascend + ", glide: " + glide;
+	}
+
+	/** The real client forces its vertical speed to {@code vy} every tick after rising {@code startHeight} blocks. */
+	private String flyRun(ClientGameTestContext ctx, TestDedicatedServerContext server, Arena arena, Profile p, String label,
+			double vy, int startHeight, int ticks) {
+		teleportHome(ctx, server, arena);
+		Vec3 home = arena.feet();
+		server.runCommand(String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", arena.name(), home.x, home.y + startHeight, home.z));
+		waitUntil(ctx, 100, () -> ctx.computeOnClient(mc -> mc.player.position().distanceTo(home.add(0, startHeight, 0)) < 0.5));
+		int start = flags.size();
+		long t0 = System.nanoTime();
+		for (int i = 0; i < ticks; i++) {
+			ctx.runOnClient(mc -> mc.player.setDeltaMovement(0, vy, 0));
+			ctx.waitTick();
+		}
+		ctx.waitTicks(p.rttMs() / 50 + 5);
+		FlagEvent first = firstFlag(start, FlyCheck.ID);
+		FlagEvent high = flagsSince(start).stream()
+				.filter(f -> f.check().equals(FlyCheck.ID) && f.confidence() == Confidence.HIGH).findFirst().orElse(null);
+		check(p.name() + ": fly " + label + " detected", first != null);
+		check(p.name() + ": fly " + label + " reaches HIGH when sustained", high != null);
+		ctx.waitTicks(60);
+		heal(server, arena);
+		teleportHome(ctx, server, arena);
+		resetViolations(server, arena);
+		if (first == null) {
+			return "missed";
+		}
+		return (first.nanos() - t0) / 1_000_000 + " ms / " + (high == null ? "-" : (high.nanos() - t0) / 1_000_000 + " ms");
+	}
+
+	private static void heal(TestDedicatedServerContext server, Arena arena) {
+		server.runOnServer(s -> {
+			ServerPlayer player = s.getPlayerList().getPlayer(arena.player());
+			if (player != null) {
+				player.setHealth(player.getMaxHealth());
+			}
+		});
+	}
+
+	private static void aimAt(Minecraft mc, Vec3 point) {
+		Vec3 to = point.subtract(mc.player.getEyePosition());
+		double horizontal = Math.sqrt(to.x * to.x + to.z * to.z);
+		mc.player.setYRot((float) Math.toDegrees(Math.atan2(-to.x, to.z)));
+		mc.player.setXRot((float) -Math.toDegrees(Math.atan2(to.y, horizontal)));
+	}
+
+	private static InputConstants.Key mouseKey(int mouseButton) {
+		return InputConstants.Type.MOUSE.getOrCreate(mouseButton);
+	}
+
 	// ---------------------------------------------------------------- helpers
 
 	private static int spawnStand(TestDedicatedServerContext server, Vec3 pos) {
@@ -571,8 +840,8 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 
 	private void writeTable() {
 		List<String> lines = new ArrayList<>();
-		lines.add("| Profile | Measured RTT (ms) | Legitimate-play flags | Timer (time to detect) | Ground spoof (time to detect) | Reach (crafted hits) | Multi-target (time to detect) |");
-		lines.add("|---|---|---|---|---|---|---|");
+		lines.add("| Profile | Measured RTT (ms) | Legitimate-play flags | Timer (time to detect) | Ground spoof (time to detect) | Fly (time to first flag / to HIGH) | Reach (crafted hits) | Hitbox (crafted hit) | Multi-target (time to detect) | Block reach (crafted actions) |");
+		lines.add("|---|---|---|---|---|---|---|---|---|---|");
 		lines.addAll(table);
 		for (String line : lines) {
 			LOG.info("[MejtaAcTest] TABLE {}", line);

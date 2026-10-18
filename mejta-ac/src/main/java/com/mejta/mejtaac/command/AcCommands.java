@@ -74,6 +74,10 @@ public final class AcCommands {
 		line(source, "Check movement.ground_spoof", cfg.groundSpoofEnabled() + " (kick VL " + cfg.groundSpoofKickVl() + ")");
 		line(source, "Check combat.reach", cfg.reachEnabled() + " (kick VL " + cfg.reachKickVl() + ", tolerance " + cfg.reachTolerance() + ")");
 		line(source, "Check combat.multi_target", cfg.multiTargetEnabled() + " (kick VL " + cfg.multiTargetKickVl() + ")");
+		line(source, "Check movement.fly", cfg.flyEnabled() + " (kick VL " + cfg.flyKickVl() + ")");
+		line(source, "Check combat.hitbox", cfg.hitboxEnabled() + " (kick VL " + cfg.hitboxKickVl() + ")");
+		line(source, "Check interaction.block_reach", cfg.blockReachEnabled() + " (kick VL " + cfg.blockReachKickVl()
+				+ ", tolerance " + cfg.blockReachTolerance() + ")");
 		line(source, "Players with violations", String.valueOf(ac.violations().trackedPlayers()));
 		return 1;
 	}

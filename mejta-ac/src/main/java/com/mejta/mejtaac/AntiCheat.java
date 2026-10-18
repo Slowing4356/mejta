@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Queue;
 import java.util.UUID;
@@ -14,6 +15,7 @@ import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
@@ -25,14 +27,19 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.AttackRange;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import com.mejta.mejtaac.AcSettings.LogLevel;
 import com.mejta.mejtaac.alert.AlertPublisher;
 import com.mejta.mejtaac.check.Flag;
+import com.mejta.mejtaac.check.combat.HitboxCheck;
 import com.mejta.mejtaac.check.combat.MultiTargetCheck;
 import com.mejta.mejtaac.check.combat.ReachCheck;
+import com.mejta.mejtaac.check.interaction.BlockReachCheck;
+import com.mejta.mejtaac.check.movement.FlyCheck;
 import com.mejta.mejtaac.check.movement.GroundSpoofCheck;
 import com.mejta.mejtaac.check.movement.TimerCheck;
 import com.mejta.mejtaac.check.protocol.InvalidMoveCheck;
@@ -124,8 +131,23 @@ public final class AntiCheat {
 		final MultiTargetCheck.State multiTarget = new MultiTargetCheck.State();
 		final GroundSpoofCheck.State ground = new GroundSpoofCheck.State();
 		volatile boolean claimedOnGround = true;
+		final FlyCheck.State fly = new FlyCheck.State();
+		double lastTickY = Double.NaN;
+		/** Server tick of the newest velocity change sent to this player (knockback, explosion...). */
+		volatile int impulseTick = Integer.MIN_VALUE;
+		volatile long impulseNanos;
+		boolean impulsePending;
+		/** Latest raw rotation from a movement packet, and whether one arrived this client tick. */
+		float yaw;
+		float pitch;
+		final List<PendingAttack> pendingAttacks = new ArrayList<>();
 		volatile boolean singleplayerOwner;
 		volatile float msPerTick;
+	}
+
+	/** An attack waiting for its client tick to end, so the rotation the client used is known. */
+	record PendingAttack(List<Vec3> eyes, List<AABB> candidates, HitboxCheck.Rotation atAttack, double rayLength,
+			boolean synced) {
 	}
 
 	private PlayerData data(UUID player) {
@@ -141,7 +163,12 @@ public final class AntiCheat {
 	 */
 	public boolean onMovePacket(ServerPlayer player, ServerboundMovePlayerPacket packet) {
 		AcConfig cfg = config;
-		data(player.getUUID()).claimedOnGround = packet.isOnGround();
+		PlayerData pd = data(player.getUUID());
+		pd.claimedOnGround = packet.isOnGround();
+		if (packet.hasRotation()) {
+			pd.yaw = packet.getYRot(0);
+			pd.pitch = packet.getXRot(0);
+		}
 		if (!cfg.enabled() || !cfg.invalidMoveEnabled()) {
 			return false;
 		}
@@ -229,7 +256,10 @@ public final class AntiCheat {
 				return true;
 			}
 		}
-		return false;
+		if (evaluatePendingAttacks(player, d, cfg)) {
+			return true;
+		}
+		return cfg.flyEnabled() && evaluateFly(player, d, cfg);
 	}
 
 	/**
@@ -247,23 +277,39 @@ public final class AntiCheat {
 		if (cfg.multiTargetEnabled() && multi.isPresent() && handle(player, multi.get(), cfg, cfg.multiTargetKickVl())) {
 			return true;
 		}
+		Entity target = player.level().getEntity(entityId);
+		if (target == null || (!cfg.reachEnabled() && !cfg.hitboxEnabled())) {
+			return false;
+		}
+		TargetView view = targetView(player, target);
+		if (view == null) {
+			return false;
+		}
+		if (cfg.hitboxEnabled() && d.pendingAttacks.size() < 16) {
+			d.pendingAttacks.add(new PendingAttack(view.eyes(), view.candidates(),
+					new HitboxCheck.Rotation(player.getYRot(), player.getXRot()), view.maxReach() + 1.0, view.synced()));
+		}
 		if (cfg.reachEnabled()) {
-			Entity target = player.level().getEntity(entityId);
-			Optional<Flag> reach = target == null ? Optional.empty() : evaluateReach(player, target, cfg);
+			Optional<Flag> reach = ReachCheck.evaluate(view.eyes(), view.candidates(), view.maxReach(), cfg.reachTolerance(),
+					view.synced(), sync.rttMs(player.getUUID()));
 			return reach.isPresent() && handle(player, reach.get(), cfg, cfg.reachKickVl());
 		}
 		return false;
 	}
 
-	private Optional<Flag> evaluateReach(ServerPlayer player, Entity target, AcConfig cfg) {
+	/** Where the attacker's eye and the target may have been on the attacker's screen. */
+	record TargetView(List<Vec3> eyes, List<AABB> candidates, double maxReach, boolean synced) {
+	}
+
+	private TargetView targetView(ServerPlayer player, Entity target) {
 		ItemStack weapon = player.getMainHandItem();
 		if (weapon.has(DataComponents.PIERCING_WEAPON)) {
-			return Optional.empty(); // vanilla ignores attack packets for spears; they use STAB instead
+			return null; // vanilla ignores attack packets for spears; they use STAB instead
 		}
 		AttackRange range = player.getAttackRangeWith(weapon);
 		double maxReach = range.effectiveMaxRange(player) + range.hitboxMargin();
 		if (maxReach > EntityHistory.RADIUS - 1) {
-			return Optional.empty(); // beyond what the history covers; not judged
+			return null; // beyond what the history covers; not judged
 		}
 		UUID id = player.getUUID();
 		int now = player.level().getServer().getTickCount();
@@ -280,12 +326,113 @@ public final class AntiCheat {
 		for (AABB box : ReachCheck.sweep(boxes)) {
 			candidates.add(pick > 0 ? box.inflate(pick) : box);
 		}
+		return new TargetView(eyes(player), candidates, maxReach, synced);
+	}
+
+	private static List<Vec3> eyes(ServerPlayer player) {
 		Vec3 feet = player.position();
-		List<Vec3> eyes = List.of(
+		return List.of(
 				player.getEyePosition(),
 				feet.add(0, player.getDimensions(Pose.STANDING).eyeHeight(), 0),
 				feet.add(0, player.getDimensions(Pose.CROUCHING).eyeHeight(), 0));
-		return ReachCheck.evaluate(eyes, candidates, maxReach, cfg.reachTolerance(), synced, sync.rttMs(id));
+	}
+
+	private boolean evaluatePendingAttacks(ServerPlayer player, PlayerData d, AcConfig cfg) {
+		if (d.pendingAttacks.isEmpty()) {
+			return false;
+		}
+		List<PendingAttack> attacks = List.copyOf(d.pendingAttacks);
+		d.pendingAttacks.clear();
+		if (!cfg.hitboxEnabled()) {
+			return false;
+		}
+		HitboxCheck.Rotation latest = new HitboxCheck.Rotation(d.yaw, d.pitch);
+		for (PendingAttack attack : attacks) {
+			Optional<Flag> flag = HitboxCheck.evaluate(attack.eyes(), List.of(attack.atAttack(), latest), attack.candidates(),
+					attack.rayLength(), attack.synced(), sync.rttMs(player.getUUID()));
+			if (flag.isPresent() && handle(player, flag.get(), cfg, cfg.hitboxKickVl())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Server thread: the client started breaking a block, or used/placed against one.
+	 *
+	 * @return {@code true} if the player was kicked
+	 */
+	public boolean onBlockInteraction(ServerPlayer player, BlockPos pos, String action) {
+		AcConfig cfg = config;
+		if (!cfg.enabled() || !cfg.blockReachEnabled() || player.isSpectator()) {
+			return false;
+		}
+		Optional<Flag> flag = BlockReachCheck.evaluate(eyes(player), new AABB(pos), player.blockInteractionRange(),
+				cfg.blockReachTolerance(), action);
+		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.blockReachKickVl());
+	}
+
+	/** Any thread: the server sent this player a velocity change (knockback, explosion, wind charge...). */
+	public void onImpulseSent(ServerPlayer player) {
+		PlayerData d = players.get(player.getUUID());
+		if (d != null) {
+			d.impulseTick = player.level().getServer().getTickCount();
+			d.impulseNanos = System.nanoTime();
+			d.impulsePending = true;
+		}
+	}
+
+	private boolean evaluateFly(ServerPlayer player, PlayerData d, AcConfig cfg) {
+		double y = player.getY();
+		double dy = Double.isNaN(d.lastTickY) ? 0 : y - d.lastTickY;
+		d.lastTickY = y;
+		boolean untrusted = Double.isNaN(dy) || flyUntrusted(player, d, dy);
+		Optional<Flag> flag = FlyCheck.onClientTick(d.fly, dy, player.getGravity(), untrusted);
+		return flag.isPresent() && handle(player, flag.get(), cfg, cfg.flyKickVl());
+	}
+
+	/** Whether this tick's vertical movement cannot be predicted from the previous one. */
+	private boolean flyUntrusted(ServerPlayer player, PlayerData d, double dy) {
+		// A client that believes it stands on something (possibly a block it has not yet seen removed)
+		// legitimately does not fall; lying about it is movement.ground_spoof's job.
+		if (d.claimedOnGround || groundExempt(player) || player.getAbilities().mayfly && player.getAbilities().flying
+				|| player.hasEffect(MobEffects.SLOW_FALLING) || player.isInPowderSnow || touchesSlowingBlock(player)) {
+			return true;
+		}
+		if (d.impulsePending) {
+			OptionalInt ack = sync.lastAckTick(player.getUUID());
+			boolean applied = ack.isPresent() ? ack.getAsInt() >= d.impulseTick
+					: System.nanoTime() - d.impulseNanos > 2_000_000_000L;
+			if (applied) {
+				d.impulsePending = false;
+			}
+			return true; // this tick is the first one with the new velocity (or still before it)
+		}
+		// Ground, or a collision on the predicted path (landing), limits the movement: not predictable.
+		AABB box = player.getBoundingBox();
+		if (!player.level().noCollision(player, box.expandTowards(0, -0.05, 0))) {
+			return true;
+		}
+		OptionalDouble expected = FlyCheck.expectedDy(d.fly, player.getGravity());
+		if (expected.isPresent() && expected.getAsDouble() < 0) {
+			AABB before = box.move(0, -dy, 0);
+			return !player.level().noCollision(player, before.expandTowards(0, expected.getAsDouble() - 0.05, 0));
+		}
+		return false;
+	}
+
+	/** Cobwebs, berry bushes, honey, scaffolding and bubble columns change vertical movement. */
+	private static boolean touchesSlowingBlock(ServerPlayer player) {
+		AABB box = player.getBoundingBox().inflate(0.1);
+		for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(box.minX, box.minY, box.minZ),
+				BlockPos.containing(box.maxX, box.maxY, box.maxZ))) {
+			BlockState state = player.level().getBlockState(pos);
+			if (state.is(Blocks.COBWEB) || state.is(Blocks.SWEET_BERRY_BUSH) || state.is(Blocks.HONEY_BLOCK)
+					|| state.is(Blocks.SCAFFOLDING) || state.is(Blocks.BUBBLE_COLUMN) || state.is(Blocks.POWDER_SNOW)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean groundExempt(ServerPlayer player) {
@@ -386,8 +533,17 @@ public final class AntiCheat {
 		clearIfDisabled(previous.groundSpoofEnabled(), updated.groundSpoofEnabled(), GroundSpoofCheck.ID);
 		clearIfDisabled(previous.reachEnabled(), updated.reachEnabled(), ReachCheck.ID);
 		clearIfDisabled(previous.multiTargetEnabled(), updated.multiTargetEnabled(), MultiTargetCheck.ID);
+		clearIfDisabled(previous.flyEnabled(), updated.flyEnabled(), FlyCheck.ID);
+		clearIfDisabled(previous.hitboxEnabled(), updated.hitboxEnabled(), HitboxCheck.ID);
+		clearIfDisabled(previous.blockReachEnabled(), updated.blockReachEnabled(), BlockReachCheck.ID);
 		if (!updated.timerEnabled() || !updated.enabled()) {
 			players.values().forEach(d -> d.timer.reset());
+		}
+		if (!updated.flyEnabled() || !updated.enabled()) {
+			players.values().forEach(d -> {
+				d.fly.reset();
+				d.lastTickY = Double.NaN;
+			});
 		}
 		if (!previous.equals(updated)) {
 			log.info("Configuration updated (enabled={}, enforcement={}, log={})", updated.enabled(),

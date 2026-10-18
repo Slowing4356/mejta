@@ -107,6 +107,26 @@ public final class AcSettings {
 	public static final Setting<Double> MULTI_TARGET_KICK_VL = Setting.decimal("checks.combat.multi_target.kick_vl", 3.0, 1.0, 10_000.0)
 			.describedAs("Violation level at which enforcement kicks (each flag adds 1)");
 
+	// ---------------------------------------------------------------- check: movement.fly
+	public static final Setting<Boolean> FLY_ENABLED = Setting.bool("checks.movement.fly.enabled", true)
+			.describedAs("[Experimental] Flag hovering, flying up or falling slower than gravity allows");
+	public static final Setting<Double> FLY_KICK_VL = Setting.decimal("checks.movement.fly.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+
+	// ---------------------------------------------------------------- check: combat.hitbox
+	public static final Setting<Boolean> HITBOX_ENABLED = Setting.bool("checks.combat.hitbox.enabled", true)
+			.describedAs("[Experimental] Flag attacks on entities the player was not looking at (latency-compensated)");
+	public static final Setting<Double> HITBOX_KICK_VL = Setting.decimal("checks.combat.hitbox.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+
+	// ---------------------------------------------------------------- check: interaction.block_reach
+	public static final Setting<Boolean> BLOCK_REACH_ENABLED = Setting.bool("checks.interaction.block_reach.enabled", true)
+			.describedAs("[Experimental] Flag breaking or using blocks beyond the block interaction range");
+	public static final Setting<Double> BLOCK_REACH_KICK_VL = Setting.decimal("checks.interaction.block_reach.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5)");
+	public static final Setting<Double> BLOCK_REACH_TOLERANCE = Setting.decimal("checks.interaction.block_reach.tolerance", 0.1, 0.0, 3.0)
+			.describedAs("Extra blocks allowed beyond the block interaction range before any flag");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, LOG_LEVEL,
 					DECAY_PER_MINUTE,
@@ -118,7 +138,10 @@ public final class AcSettings {
 					TIMER_ENABLED, TIMER_KICK_VL, TIMER_MAX_AHEAD_MS,
 					GROUND_SPOOF_ENABLED, GROUND_SPOOF_KICK_VL,
 					REACH_ENABLED, REACH_KICK_VL, REACH_TOLERANCE,
-					MULTI_TARGET_ENABLED, MULTI_TARGET_KICK_VL)
+					MULTI_TARGET_ENABLED, MULTI_TARGET_KICK_VL,
+					FLY_ENABLED, FLY_KICK_VL,
+					HITBOX_ENABLED, HITBOX_KICK_VL,
+					BLOCK_REACH_ENABLED, BLOCK_REACH_KICK_VL, BLOCK_REACH_TOLERANCE)
 			.build();
 
 	private AcSettings() {

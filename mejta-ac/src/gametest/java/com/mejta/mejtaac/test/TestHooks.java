@@ -14,6 +14,8 @@ public final class TestHooks {
 	/** Server: the attacked IDs of every client tick that contained two or more attacks. */
 	public static final List<List<Integer>> ticksWithSeveralAttacks = new CopyOnWriteArrayList<>();
 	public static volatile int attacksReceived;
+	/** Server: block break starts and item uses on blocks received from clients. */
+	public static volatile int blockActionsReceived;
 	/** Server: largest eye-to-target distance at the moment an attack arrived (no compensation). */
 	public static volatile double maxUncompensatedDistance;
 

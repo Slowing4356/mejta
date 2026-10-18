@@ -9,6 +9,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 
@@ -52,6 +54,23 @@ public abstract class ServerGamePacketListenerImplMixin {
 	private void mejtaac$onClientTickEnd(ServerboundClientTickEndPacket packet, CallbackInfo ci) {
 		AntiCheat antiCheat = AntiCheat.get().orElse(null);
 		if (antiCheat != null && antiCheat.onClientTickEnd(player)) {
+			ci.cancel();
+		}
+	}
+
+	@Inject(method = "handlePlayerAction", cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = ENSURE_SAME_THREAD))
+	private void mejtaac$onPlayerAction(ServerboundPlayerActionPacket packet, CallbackInfo ci) {
+		AntiCheat antiCheat = AntiCheat.get().orElse(null);
+		if (antiCheat != null && packet.getAction() == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK
+				&& antiCheat.onBlockInteraction(player, packet.getPos(), "start_destroy")) {
+			ci.cancel();
+		}
+	}
+
+	@Inject(method = "handleUseItemOn", cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = ENSURE_SAME_THREAD))
+	private void mejtaac$onUseItemOn(ServerboundUseItemOnPacket packet, CallbackInfo ci) {
+		AntiCheat antiCheat = AntiCheat.get().orElse(null);
+		if (antiCheat != null && antiCheat.onBlockInteraction(player, packet.getHitResult().getBlockPos(), "use_on_block")) {
 			ci.cancel();
 		}
 	}

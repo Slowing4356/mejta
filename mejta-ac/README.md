@@ -4,14 +4,14 @@ MejtaAC (mod ID `mejtaac`) is a server-side anti-cheat addon for **MejtaCore**. 
 
 | | |
 |---|---|
-| Version | 0.2.0 (Stage 4a: protocol, timer, ground spoof, reach and multi-target checks) |
+| Version | 0.3.0 (Stage 4: protocol, timer, ground spoof, fly, reach, hitbox, multi-target and block-reach checks) |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | **MejtaCore 1.1.0 or newer, below 2.0.0** (API version 2) |
 | Third-party libraries | None |
 
 ## Installing
 
-Put `mejtacore-1.1.0.jar`, `mejtaac-0.2.0.jar` and Fabric API in the **server's** `mods/` folder. Players don't need any mods. In single-player, MejtaAC runs on the integrated server.
+Put `mejtacore-1.1.0.jar`, `mejtaac-0.3.0.jar` and Fabric API in the **server's** `mods/` folder. Players don't need any mods. In single-player, MejtaAC runs on the integrated server.
 
 MejtaAC starts in **DRY_RUN** mode: it detects, alerts and records, but never kicks. Review the alerts and records first, then set `enforcement.mode` to `ENFORCE` if you're happy with them.
 
@@ -92,6 +92,40 @@ This check flags attacks on targets farther away than the held weapon allows.
   - Up to 0.5 blocks over: MEDIUM, which alerts and records but never enforces by default.
   - More than 0.5 blocks over: HIGH.
 
+### `movement.fly` (experimental)
+
+This check flags vertical movement in the air that ignores gravity: hovering, flying upwards, or gliding (falling slower than gravity allows).
+
+- **How:** in the air, vanilla applies `vy = (vy − gravity) × 0.98` after every move, so each client tick's vertical movement can be predicted from the previous one. The check uses the player's gravity attribute, not a hard-coded value. Only moving *up* relative to the prediction counts, because ceilings, landing and other collisions only ever make the movement smaller.
+- **When the prediction is reset** (no flag possible):
+  - the client claims to be on the ground; false claims are `movement.ground_spoof`'s job, and this also covers a floor that disappeared before a lagging client noticed;
+  - real ground below, or a collision on the predicted path;
+  - water, lava, climbing, cobwebs, berry bushes, honey, scaffolding, bubble columns, powder snow;
+  - slow falling or levitation, elytra, riptide, vehicles, creative flight, unconfirmed teleports.
+- **Server velocity (knockback, explosions, wind charges):** while the server's change is in flight, the check is reset until the client confirms (tick sync) that it has applied it.
+- **Jumps and bounces:** the first airborne tick after a reset only establishes the starting velocity, so jumps and slime bounces never flag.
+- **Unloaded chunks:** a client whose chunk below isn't loaded falls at a constant 0.098 per tick by design; that exact pattern isn't counted.
+- **Latency:** only the sequence of client positions is used, and latency doesn't change it.
+- **Flags:** MEDIUM after the excess builds up (about 7 ticks of hovering); HIGH after 20 consecutive violating ticks. At most one flag every 10 ticks.
+
+### `combat.hitbox` (experimental)
+
+This check flags attacks on entities the player wasn't looking at, such as kill auras that don't send rotations.
+
+- **Why the timing matters:** the vanilla client attacks only what its crosshair ray hits. Within one client tick it picks the target, sends the attack, and only then sends that tick's movement packet with the rotation it used.
+- **How:** each attack is judged at the end of its client tick against two rotations, the one the server had when the attack arrived and the newest one from that tick. The target positions are the same latency-compensated boxes as `combat.reach`, including the weapon's hitbox margin.
+- **Flags:**
+  - The ray must hit a box grown by 0.1 blocks; otherwise MEDIUM.
+  - Missing even with 0.4 blocks of slack is HIGH, and only when the client's tick is confirmed.
+- **Not caught:** kill auras that send matching rotations pass this check by design. They are a target for later checks, such as aim analysis.
+
+### `interaction.block_reach` (experimental)
+
+This check flags starting to break, or using or placing against, a block beyond the player's block interaction range: 4.5 in survival, 5 in creative, or whatever the attribute says. Vanilla allows one extra block.
+
+- **How:** blocks don't move, so no compensation is needed. The action is sent before that tick's movement, so the server's current position matches the client's. Standing and crouching eye heights are both tried.
+- **Flags:** more than `tolerance` (0.1) over the range is MEDIUM; more than 0.5 over is HIGH.
+
 ### `combat.multi_target` (stable)
 
 This check flags attacks on two different entities within one client tick. The vanilla client resolves every queued attack click in a tick against the same crosshair target. The test suite verifies this with real rapid clicking. Spear hits on several entities use a different packet and aren't counted.
@@ -133,6 +167,13 @@ Changes apply immediately, including to checks that are already running. The exc
 | `checks.combat.reach.tolerance` | decimal | `0.1` | 0–3 | Extra blocks allowed beyond the weapon's range before any flag. |
 | `checks.combat.multi_target.enabled` | boolean | `true` | | Turns `combat.multi_target` on or off. |
 | `checks.combat.multi_target.kick_vl` | decimal | `3.0` | 1–10000 | VL at which enforcement kicks. |
+| `checks.movement.fly.enabled` | boolean | `true` | | Turns `movement.fly` on or off (experimental). |
+| `checks.movement.fly.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.combat.hitbox.enabled` | boolean | `true` | | Turns `combat.hitbox` on or off (experimental). |
+| `checks.combat.hitbox.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.interaction.block_reach.enabled` | boolean | `true` | | Turns `interaction.block_reach` on or off (experimental). |
+| `checks.interaction.block_reach.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1, MEDIUM flags 0.5). |
+| `checks.interaction.block_reach.tolerance` | decimal | `0.1` | 0–3 | Extra blocks allowed beyond the block interaction range before any flag. |
 
 Experimental checks say so in their setting description. They are new and have only been tested with the automated suite, not on a busy real server. Run them in `DRY_RUN` and review their flags before enforcing.
 
@@ -195,7 +236,7 @@ A MejtaDiscord mod would register a `NotificationProvider`. It would route the c
 
 ```bash
 cd ../core && ./gradlew publishToMavenLocal    # MejtaCore 1.1.0 into ~/.m2
-cd ../ac && ./gradlew build                    # build/libs/mejtaac-0.2.0.jar
+cd ../ac && ./gradlew build                    # build/libs/mejtaac-0.3.0.jar
 ./gradlew runClientGameTest                    # end-to-end tests
 ```
 
@@ -210,32 +251,41 @@ The game test (`src/gametest`) logs `[MejtaAcTest] PASS/FAIL` for each check:
 The suite `MejtaAcStage4GameTest` runs a real client on an in-process dedicated server as a non-op. The client goes through a test-only Netty handler that adds delay and jitter in both directions and can freeze the connection; it doesn't reorder packets, just as TCP doesn't. Netty already ships with Minecraft. For each profile the suite does three things:
 
 1. **Checks the latency measurement:** the RTT measured from pongs must match the simulated RTT.
-2. **Plays legitimately and requires zero flags from all four checks:**
+2. **Plays legitimately and requires zero flags from all seven checks:**
    - idling, walking and jumping, plus a 1.5 s freeze in the jitter profile;
    - hitting a target that moves **away** at 0.3 blocks/tick, with real crosshair attacks whenever the client sees it within 2.8 blocks;
    - four clicks queued in one tick, which also verifies the premise behind `multi_target`;
-   - the floor under the player being removed.
+   - the floor under the player being removed;
+   - breaking and placing blocks with real input;
+   - a server knockback launch, which the test asserts really lifted the player 4.9 blocks;
+   - an 11-block fall onto slime, which the test asserts produced 7–8 real bounces.
 3. **Sends crafted cheats and requires detection:**
    - attacks at 4.2 blocks (HIGH), 3.3 blocks (MEDIUM only) and 3.05 blocks (no flag);
+   - an attack while looking the other way (hitbox);
    - two targets attacked in one tick;
    - extra tick-end packets at 2×, 1.3× and 1.05× (the last must stay undetected);
-   - ground spoofing during a 40-block fall.
+   - ground spoofing during a 40-block fall;
+   - a real client forced to hover, fly up or glide (fly);
+   - block actions at 5.5 blocks (HIGH), 4.74 blocks (MEDIUM) and 3.54 blocks (no flag).
 
 The moving-target scenario is the key compensation test. The suite also records how far away the target was on the server at the moment each legitimate hit arrived. That is what a check without compensation would measure, and for profiles of 300 ms and above it must exceed 3.6 blocks.
 
-**Results** (2026-10-18; 97 checks passed, 0 failed; Stage 3 suite 68/68):
+**Results** (2026-10-18, MejtaAC 0.3.0; 190 checks passed, 0 failed; Stage 3 suite 68/68). Times are from the first cheat packet to the flag:
 
-| Profile | Measured RTT | Legitimate-play flags | Timer: time to detect | Ground spoof: time to detect | Reach (crafted hits) | Multi-target: time to detect |
-|---|---|---|---|---|---|---|
-| 0 ms | 0 ms | **0** (18 hits, up to 4.25 blocks uncompensated) | 2×: 1.45 s, 1.3×: 4.6 s, 1.05×: below tolerance | 0.40 s | 4.2: HIGH, 3.3: MEDIUM, 3.05: none | immediate |
-| 150 ms | 175 ms | **0** (18 hits, up to 5.15 blocks) | 2×: 1.50 s, 1.3×: 4.7 s, 1.05×: below tolerance | 0.70 s | same | 0.10 s |
-| 300 ms | 302 ms | **0** (12 hits, up to 5.75 blocks) | 2×: 1.60 s, 1.3×: 4.7 s, 1.05×: below tolerance | 1.00 s | same | 0.20 s |
-| 500 ms | 502 ms | **0** (11 hits, up to 6.35 blocks) | 2×: 1.65 s, 1.3×: 4.9 s, 1.05×: below tolerance | 1.35 s | same | 0.30 s |
-| 300 ms ±80 ms + 1.5 s freeze | 313 ms | **0** (11 hits, up to 6.35 blocks) | 2×: 1.60 s, 1.3×: 4.8 s, 1.05×: below tolerance | 1.05 s | same | 0.15 s |
+| Profile | Measured RTT | Legitimate-play flags | Timer (2× / 1.3× / 1.05×) | Ground spoof | Fly: first flag / HIGH | Reach (crafted) | Hitbox (crafted) | Multi-target | Block reach (crafted) |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 ms | 0 ms | **0** (18 hits, up to 4.25 blocks uncompensated) | 1.45 s / 4.6 s / below tolerance | 0.40 s | 0.40 s / 1.40 s | 4.2: HIGH, 3.3: MEDIUM, 3.05: none | HIGH, 0.05 s | immediate | 5.5: HIGH, 4.74: MEDIUM, 3.54: none |
+| 150 ms | 166 ms | **0** (11 hits, up to 5.15 blocks) | 1.50 s / 4.7 s / below tolerance | 0.65 s | 0.45 s / 1.45 s | same | HIGH, 0.10 s | 0.10 s | same |
+| 300 ms | 316 ms | **0** (12 hits, up to 5.75 blocks) | 1.60 s / 4.8 s / below tolerance | 1.00 s | 0.55 s / 1.55 s | same | HIGH, 0.20 s | 0.20 s | same |
+| 500 ms | 526 ms | **0** (11 hits, up to 6.65 blocks) | 1.70 s / 4.9 s / below tolerance | 1.40 s | 0.60–0.70 s / 1.65–1.70 s | same | HIGH, 0.25 s | 0.30 s | same |
+| 300 ms ±80 ms + 1.5 s freeze | 310 ms | **0** (12 hits, up to 5.75 blocks) | 1.60 s / 4.7 s / below tolerance | 1.00 s | 0.55 s / 1.55 s | same | HIGH, 0.20 s | 0.20 s | same |
+
+The fly column covers hover, ascend and glide, which were detected within 0.1 s of each other.
 
 What the results show:
-- **Compensation is needed at any latency.** At 0 ms, legitimate hits on a target moving away still arrive when the server-side target is up to 4.25 blocks away. This comes from vanilla's entity update interval and client interpolation alone, and network latency adds to it (6.35 blocks at 500 ms). None of these hits was flagged.
-- **Detection time grows with latency only where it must.** Ground spoof waits one extra round trip, and multi-target waits the network delay itself. Timer detection is almost independent of latency.
+- **Compensation is needed at any latency.** At 0 ms, legitimate hits on a target moving away still arrive when the server-side target is up to 4.25 blocks away. This comes from vanilla's entity update interval and client interpolation alone, and network latency adds to it (6.65 blocks at 500 ms). None of these hits was flagged by reach or hitbox.
+- **Server-applied velocity is handled.** Knockback and slime bounces produced no fly or ground-spoof flags. The fly check waits until the client confirms it has applied the server's velocity change.
+- **Detection time grows with latency only where it must.** Ground spoof waits one extra round trip; hitbox and multi-target wait the network delay itself. Fly and timer detection are almost independent of latency.
 - **The `multi_target` premise holds.** With four clicks queued in one tick, the real vanilla client sent all four attacks at the same entity, in every profile.
 - **The tests can't prove the absence of false positives** on real servers, with real players, terrain, mobs and other mods. That is why these checks are marked experimental and MejtaAC starts in `DRY_RUN`.
 
@@ -243,6 +293,11 @@ The suite writes this table to `build/run/clientGameTest/mejtaac-stage4-latency.
 
 ## Roadmap
 
-- **Stage 4b:** `combat.hitbox` (the look direction misses the target), `movement.gravity`, `movement.speed` (a horizontal speed limit with allowances, starting at MEDIUM), and interaction checks. They reuse the tick sync and position history.
+- **Next checks:**
+  - `movement.speed`, a horizontal speed limit. It needs allowances for sprint-jumping, ice, effects, enchantments, knockback and vehicles, so it will start at MEDIUM.
+  - Aim analysis for kill auras that do send rotations.
+  - Fast break, which is mining faster than the block's hardness allows. Vanilla already rejects breaks below 70 % progress.
+  - All of them reuse the tick sync and position history.
+- **Field testing:** run the experimental checks in `DRY_RUN` on a real server (see `../server`) and review their records.
 - **Stage 5:** checks for false positives under artificial latency, and per-world configuration if needed.
 - **MejtaCore candidates** (useful to every addon): `/mejtaadmin config get/set` for dedicated servers, persistent notification mutes, and an "experimental" flag on settings.

@@ -32,7 +32,14 @@ public record AcConfig(
 		double reachKickVl,
 		double reachTolerance,
 		boolean multiTargetEnabled,
-		double multiTargetKickVl) {
+		double multiTargetKickVl,
+		boolean flyEnabled,
+		double flyKickVl,
+		boolean hitboxEnabled,
+		double hitboxKickVl,
+		boolean blockReachEnabled,
+		double blockReachKickVl,
+		double blockReachTolerance) {
 
 	public static AcConfig from(ConfigHandle c) {
 		return new AcConfig(
@@ -58,12 +65,19 @@ public record AcConfig(
 				c.get(AcSettings.REACH_KICK_VL),
 				c.get(AcSettings.REACH_TOLERANCE),
 				c.get(AcSettings.MULTI_TARGET_ENABLED),
-				c.get(AcSettings.MULTI_TARGET_KICK_VL));
+				c.get(AcSettings.MULTI_TARGET_KICK_VL),
+				c.get(AcSettings.FLY_ENABLED),
+				c.get(AcSettings.FLY_KICK_VL),
+				c.get(AcSettings.HITBOX_ENABLED),
+				c.get(AcSettings.HITBOX_KICK_VL),
+				c.get(AcSettings.BLOCK_REACH_ENABLED),
+				c.get(AcSettings.BLOCK_REACH_KICK_VL),
+				c.get(AcSettings.BLOCK_REACH_TOLERANCE));
 	}
 
 	/** Whether any check needs per-tick client sync (pings and entity history). */
 	public boolean needsSync() {
-		return enabled && (reachEnabled || groundSpoofEnabled);
+		return enabled && (reachEnabled || groundSpoofEnabled || hitboxEnabled || flyEnabled);
 	}
 
 	public boolean logs(LogLevel level) {
