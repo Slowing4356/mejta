@@ -22,6 +22,13 @@ import net.minecraft.world.level.storage.ValueInput;
  * which only reads {@code playerdata/<uuid>.dat} of the current world and upgrades old data. The data
  * is loaded into a temporary player object that is never added to the world, and copied. Nothing is
  * ever written back: changes to offline players are queued instead (see {@code PendingChanges}).
+ *
+ * <p><b>Known limitation.</b> Creating the temporary {@code ServerPlayer} may make the game's player list
+ * open (and keep) a statistics and an advancements entry for that UUID, as it does for every player
+ * object. The sources this release was checked against do not show it either way, and the maps are not
+ * public, so nothing is removed here. If it happens, the cost is a little memory per inspected player
+ * until they join (the game then reuses the entry, read from the same files) or the server restarts;
+ * nothing is written to their files by viewing.
  */
 public final class OfflineSnapshot {
 	private final NameAndId profile;

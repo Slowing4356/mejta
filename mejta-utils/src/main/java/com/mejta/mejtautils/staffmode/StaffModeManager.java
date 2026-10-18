@@ -29,7 +29,9 @@ import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtautils.MejtaUtils;
 import com.mejta.mejtautils.UtilsPermissions;
 import com.mejta.mejtautils.UtilsSettings;
+import com.mejta.mejtautils.inspect.Inspect;
 import com.mejta.mejtautils.util.ItemJson;
+import com.mejta.mejtautils.util.PlayerSaves;
 import com.mejta.mejtautils.util.UtilsAudit;
 
 /**
@@ -37,11 +39,19 @@ import com.mejta.mejtautils.util.UtilsAudit;
  * player changes; each state change is written before it happens ({@link SessionState}). A crash at
  * any point is recovered on the next join, or, where it cannot be decided safely, nothing is changed
  * and the staff member is asked to confirm. Server thread only.
+ *
+ * <p>Leaving writes {@code RESTORING}, replaces the survival state, saves the player, then writes the
+ * {@code restored} marker. With the marker the session is only finished, never restored again: by then
+ * the live inventory is the real one (the player may have used or placed items since).
  */
 public final class StaffModeManager {
 	public static final String CHANNEL = MejtaUtils.ID + ".staffmode";
 	private static final String FOLDER = "staffmode";
 	private static final String HISTORY = "staffmode-history";
+	/** Session field: when the survival state was restored and saved. */
+	private static final String RESTORED = "restored";
+	/** Session field (in memory until the session is finished): the saved position was restored. */
+	private static final String POSITION_RESTORED = "position_restored";
 
 	public enum ExitResult {
 		DONE,
@@ -56,9 +66,22 @@ public final class StaffModeManager {
 	private final Map<UUID, JsonObject> sessions = new ConcurrentHashMap<>();
 	private final Map<UUID, List<String>> waitingForConfirmation = new ConcurrentHashMap<>();
 
+	/** Sessions are loaded by {@link #reset} when a server starts (the store's world scope is known then). */
 	public StaffModeManager(DataStore store, ConfigHandle config) {
 		this.store = store;
 		this.config = config;
+	}
+
+	/**
+	 * Forgets everything in memory and loads the sessions of the store's current scope. Called when a
+	 * server starts and stops, so an integrated server never sees another world's sessions.
+	 */
+	public void reset(boolean load) {
+		sessions.clear();
+		waitingForConfirmation.clear();
+		if (!load) {
+			return;
+		}
 		for (String key : store.keys(FOLDER)) {
 			store.read(key).ifPresent(json -> {
 				try {
@@ -106,6 +129,10 @@ public final class StaffModeManager {
 		return SessionState.valueOf(session.get("state").getAsString());
 	}
 
+	private static boolean isRestored(JsonObject session) {
+		return state(session) == SessionState.RESTORING && session.has(RESTORED);
+	}
+
 	private void write(UUID player, JsonObject session) throws IOException {
 		store.writeNow(key(player), session);
 		sessions.put(player, session);
@@ -123,6 +150,8 @@ public final class StaffModeManager {
 			player.sendSystemMessage(Component.literal("You cannot enter staff mode while frozen.").withStyle(ChatFormatting.RED));
 			return false;
 		}
+		// Staff mode replaces this inventory: nobody may keep editing it (each menu audits its changes on closing).
+		Inspect.closeEditMenusOn(player);
 		JsonObject snapshot;
 		try {
 			snapshot = StaffSnapshot.capture(player);
@@ -181,33 +210,34 @@ public final class StaffModeManager {
 		}
 		MinecraftServer server = player.level().getServer();
 		JsonObject snapshot = session.getAsJsonObject("snapshot");
-		boolean intact = StaffSnapshot.hash(snapshot).equals(session.get("hash").getAsString())
-				&& StaffSnapshot.itemsDecode(snapshot, server.registryAccess());
-		List<String> problems = RestoreCheck.problems(intact, StaffSnapshot.level(server, snapshot).isPresent(),
-				StaffSnapshot.sameGameVersion(snapshot));
+		// Already restored by an earlier attempt that failed later: only finish, never hand out the items again.
+		boolean restored = isRestored(session);
+		List<String> problems = List.of();
+		if (!restored) {
+			boolean intact = StaffSnapshot.hash(snapshot).equals(session.get("hash").getAsString())
+					&& StaffSnapshot.itemsDecode(snapshot, server.registryAccess());
+			problems = RestoreCheck.problems(intact, StaffSnapshot.level(server, snapshot).isPresent(), StaffSnapshot.sameGameVersion(snapshot));
+		}
 		if (!problems.isEmpty() && !confirmed) {
 			waitingForConfirmation.put(id, problems);
 			return ExitResult.NEEDS_CONFIRMATION;
 		}
 		Map<String, Object> details = new LinkedHashMap<>();
 		details.put("session", session.get("session").getAsString());
-		if (confirmed) {
+		if (restored) {
+			details.put("note", "survival state had already been restored; session finished only");
+		} else if (confirmed) {
 			details.put("confirmed_problems", String.join("; ", problems));
 			details.put("replaced_inventory", describeInventory(player));
 		}
 		try {
-			session.addProperty("state", SessionState.RESTORING.name());
-			write(id, session);
-			StaffSnapshot.restore(player, snapshot, server.overworld());
-			if (session.get("vanished_by_staffmode").getAsBoolean()) {
-				MejtaUtils.vanish().setVanished(player, false, actor);
-			}
-			server.getPlayerList().saveAll(); // the restored state is in the player's save before the session ends
-			finish(id, session, "restored");
+			completeRestore(player, session, actor, "restored");
 		} catch (IOException | RuntimeException e) {
 			MejtaUtils.log().error("Restoring the staff-mode state of {} failed", player.getGameProfile().name(), e);
-			player.sendSystemMessage(Component.literal("Restoring failed; your saved state is kept. Try /staffmode off again or ask an admin.")
-					.withStyle(ChatFormatting.RED));
+			player.sendSystemMessage(Component.literal(isRestored(session)
+					? "Your survival state is back, but staff mode could not be closed. Run /staffmode off again (nothing is restored twice) or ask an admin."
+					: "Restoring failed; your saved state is kept. Try /staffmode off again or ask an admin.").withStyle(ChatFormatting.RED));
+			details.put("restored", isRestored(session));
 			UtilsAudit.record("staffmode.exit", actor, id, player.getGameProfile().name(), AuditOutcome.FAILED, details, UtilsPermissions.STAFFMODE);
 			return ExitResult.FAILED;
 		}
@@ -215,6 +245,44 @@ public final class StaffModeManager {
 		player.sendSystemMessage(Component.literal("Staff mode off. Your survival state is back.").withStyle(ChatFormatting.AQUA));
 		UtilsAudit.record("staffmode.exit", actor, id, player.getGameProfile().name(), AuditOutcome.SUCCESS, details, UtilsPermissions.STAFFMODE);
 		return ExitResult.DONE;
+	}
+
+	/**
+	 * Restoration, each step written before the next: {@code RESTORING} on disk; the survival state back
+	 * and in the player's save; the {@code restored} marker on disk; the position; vanish off; the player
+	 * saved again; the session moved to the history. A session that already has the marker skips straight
+	 * to the position (if not yet done) and the rest. Call only once the player has joined.
+	 */
+	private void completeRestore(ServerPlayer player, JsonObject session, AuditActor actor, String outcome) throws IOException {
+		UUID id = player.getUUID();
+		MinecraftServer server = player.level().getServer();
+		JsonObject snapshot = session.getAsJsonObject("snapshot");
+		if (state(session) != SessionState.RESTORING) {
+			session.addProperty("state", SessionState.RESTORING.name());
+			write(id, session);
+		}
+		if (!session.has(RESTORED)) {
+			StaffSnapshot.restore(player, snapshot);
+			PlayerSaves.save(player); // the survival inventory is in the save before the marker says it is back
+			// Set before the write: if the write fails, retries in this run still see it and never restore twice.
+			session.addProperty(RESTORED, Instant.now().toString());
+			write(id, session);
+		}
+		if (!session.has(POSITION_RESTORED)) {
+			session.addProperty(POSITION_RESTORED, true); // tried once; a failure is reported, not repeated
+			try {
+				StaffSnapshot.restorePosition(player, snapshot, server.overworld());
+			} catch (RuntimeException e) {
+				MejtaUtils.log().error("Could not teleport {} back to their saved position", player.getGameProfile().name(), e);
+				player.sendSystemMessage(Component.literal("You could not be moved back to where you entered staff mode.")
+						.withStyle(ChatFormatting.YELLOW));
+			}
+		}
+		if (session.get("vanished_by_staffmode").getAsBoolean()) {
+			MejtaUtils.vanish().setVanished(player, false, actor);
+		}
+		PlayerSaves.save(player); // the restored state is in the player's save before the session ends
+		finish(id, session, outcome);
 	}
 
 	/** Moves the session to the history and forgets it. */
@@ -261,8 +329,15 @@ public final class StaffModeManager {
 		JsonObject snapshot = session.getAsJsonObject("snapshot");
 		boolean intact = StaffSnapshot.hash(snapshot).equals(session.get("hash").getAsString())
 				&& StaffSnapshot.itemsDecode(snapshot, server.registryAccess());
-		SessionState.JoinAction action = state(session).onJoin(intact, StaffSnapshot.inventoryMatches(player, snapshot), onlyTools(player));
+		SessionState.JoinAction action = state(session).onJoin(intact, StaffSnapshot.inventoryMatches(player, snapshot), onlyTools(player),
+				isRestored(session));
 		AuditActor system = AuditActor.system(MejtaUtils.ID);
+		if (action == SessionState.JoinAction.REPEAT_RESTORE || action == SessionState.JoinAction.FINISH_RESTORE) {
+			// One tick after the join: the restored position may be in another dimension, and changing it
+			// during login is not safe. Until then the session stays RESTORING (staff-mode rules apply).
+			MejtaCoreAPI.scheduler().runLater(1, () -> recoverRestoring(player, session, action));
+			return;
+		}
 		try {
 			switch (action) {
 				case RESUME -> {
@@ -276,17 +351,14 @@ public final class StaffModeManager {
 					player.sendSystemMessage(Component.literal("You are still in staff mode. /staffmode off restores your survival state.")
 							.withStyle(ChatFormatting.AQUA));
 				}
-				case REPEAT_RESTORE -> {
-					StaffSnapshot.restore(player, snapshot, server.overworld());
-					if (session.get("vanished_by_staffmode").getAsBoolean()) {
-						MejtaUtils.vanish().setVanished(player, false, system);
-					}
-					server.getPlayerList().saveAll();
-					finish(id, session, "restored after restart");
-					player.sendSystemMessage(Component.literal("Staff mode had been ending when the server stopped; your survival state is back.")
-							.withStyle(ChatFormatting.AQUA));
+				case REPEAT_RESTORE, FINISH_RESTORE -> {
+					// handled by recoverRestoring
 				}
 				case CANCEL_ENTRY -> {
+					// The inventory is the saved one already; the rest (XP, game mode, abilities...) may have been
+					// switched to staff mode's. Replacing with the snapshot changes no item and brings it back.
+					StaffSnapshot.restore(player, snapshot);
+					PlayerSaves.save(player);
 					finish(id, session, "cancelled: the server stopped before staff mode started");
 					if (session.get("vanished_by_staffmode").getAsBoolean() && MejtaUtils.vanish().isHidden(id)) {
 						MejtaUtils.vanish().setVanished(player, false, system);
@@ -318,6 +390,50 @@ public final class StaffModeManager {
 		UtilsAudit.record("staffmode.recover", system, id, player.getGameProfile().name(),
 				action == SessionState.JoinAction.ASK ? AuditOutcome.CONFLICT : AuditOutcome.SUCCESS,
 				Map.of("state", state(session).name(), "action", action.name()), UtilsPermissions.STAFFMODE);
+	}
+
+	/** A session left in {@code RESTORING}: restored (or, with the marker, only finished) one tick after the join. */
+	private void recoverRestoring(ServerPlayer player, JsonObject session, SessionState.JoinAction action) {
+		UUID id = player.getUUID();
+		if (player.hasDisconnected() || player.isRemoved() || player.level().getServer().getPlayerList().getPlayer(id) != player
+				|| sessions.get(id) != session) {
+			return; // left again (the next join retries), or the session changed meanwhile
+		}
+		AuditActor system = AuditActor.system(MejtaUtils.ID);
+		AuditOutcome outcome = AuditOutcome.SUCCESS;
+		try {
+			completeRestore(player, session, system, action == SessionState.JoinAction.FINISH_RESTORE
+					? "finished after restart (already restored)" : "restored after restart");
+			player.sendSystemMessage(Component.literal("Staff mode had been ending when the server stopped; your survival state is back.")
+					.withStyle(ChatFormatting.AQUA));
+		} catch (IOException | RuntimeException e) {
+			outcome = AuditOutcome.FAILED;
+			MejtaUtils.log().error("Staff-mode recovery of {} failed", player.getGameProfile().name(), e);
+			player.sendSystemMessage(Component.literal("Restoring your survival state failed; it is kept. Try /staffmode off or ask an admin.")
+					.withStyle(ChatFormatting.RED));
+		}
+		UtilsAudit.record("staffmode.recover", system, id, player.getGameProfile().name(), outcome,
+				Map.of("state", SessionState.RESTORING.name(), "action", action.name()), UtilsPermissions.STAFFMODE);
+	}
+
+	/**
+	 * A staff-mode player is about to die (from Fabric's {@code ALLOW_DEATH}, before any drop): the
+	 * staff-mode inventory (tools, items taken in creative) and XP are cleared, so nothing drops. The
+	 * survival state is safe in the snapshot. Only for an active session whose inventory is known to be the
+	 * staff-mode one; a session being restored holds the real inventory, which then drops as usual.
+	 */
+	public void onFatalDamage(ServerPlayer player) {
+		UUID id = player.getUUID();
+		JsonObject session = sessions.get(id);
+		if (session == null || state(session) != SessionState.ACTIVE || waitingForConfirmation.containsKey(id)) {
+			return;
+		}
+		for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+			player.getInventory().setItem(i, ItemStack.EMPTY);
+		}
+		player.experienceLevel = 0;
+		player.experienceProgress = 0.0f;
+		player.totalExperience = 0;
 	}
 
 	/** After respawning in staff mode (e.g. /kill), the tools are given again. */

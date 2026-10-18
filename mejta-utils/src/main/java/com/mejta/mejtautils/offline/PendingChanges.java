@@ -31,6 +31,7 @@ import com.mejta.mejtautils.UtilsPermissions;
 import com.mejta.mejtautils.UtilsSettings;
 import com.mejta.mejtautils.offline.PendingChange.SlotRef;
 import com.mejta.mejtautils.util.ItemJson;
+import com.mejta.mejtautils.util.PlayerSaves;
 import com.mejta.mejtautils.util.UtilsAudit;
 
 /**
@@ -43,7 +44,9 @@ import com.mejta.mejtautils.util.UtilsAudit;
  * <ul>
  * <li>staff member to queued change: take the item, save the players, then write the change;</li>
  * <li>change or claim to staff member: write the change first, then give the item and save the players;</li>
- * <li>change to the joining player: mark it {@code APPLYING}, apply, save the players, mark it {@code APPLIED}.
+ * <li>change to the joining player: mark it {@code APPLYING}, apply, save the player, mark it {@code APPLIED}.
+ * This runs once the player is in the player list (Fabric's {@code ServerPlayerEvents.JOIN}): earlier,
+ * saving the players would skip them while the change is already recorded as applied.
  * After a crash, {@link PendingChange#recover} tells from the live inventory which side of the change
  * the save is on.</li>
  * </ul>
@@ -112,7 +115,10 @@ public final class PendingChanges {
 
 	// ---------------------------------------------------------------- applying on join
 
-	/** Called on the server thread when {@code player} joins, after any offline menu of theirs was closed. */
+	/**
+	 * Called on the server thread when {@code player} has joined (they are in the player list, before their
+	 * first tick), after any offline menu of theirs was closed.
+	 */
 	public void onJoin(ServerPlayer player) {
 		Optional<PendingChange> found = get(player.getUUID());
 		if (found.isEmpty()) {
@@ -181,7 +187,9 @@ public final class PendingChanges {
 					: ItemJson.decode(registries, write.getValue()).orElseThrow(() -> new IllegalStateException("added item no longer decodes"));
 			container(player, write.getKey().container()).setItem(write.getKey().slot(), stack);
 		}
-		player.level().getServer().getPlayerList().saveAll();
+		// Their save holds the result before the change is recorded as applied. If it cannot be written,
+		// the change stays APPLYING and the next join tells from the inventory which side it is on.
+		PlayerSaves.save(player);
 		change.markApplied(plan.toClaims());
 		save(change);
 	}
@@ -242,7 +250,8 @@ public final class PendingChanges {
 	/**
 	 * Gives claim {@code index} of {@code change} to {@code staff}: written durably first, then given.
 	 *
-	 * @return {@code false} if it does not fit in their inventory (nothing changed then)
+	 * @return {@code false} if it does not fit in their inventory, does not decode, or the staff member is in
+	 *         staff mode (nothing changed then)
 	 */
 	public boolean claim(ServerPlayer staff, PendingChange change, int index) throws IOException {
 		HolderLookup.Provider registries = staff.level().getServer().registryAccess();
@@ -253,6 +262,13 @@ public final class PendingChanges {
 			return false;
 		}
 		ItemStack stack = decoded.get();
+		if (MejtaUtils.staffMode().isActive(staff.getUUID())) {
+			// The staff-mode inventory is replaced on exit: a claimed item would be destroyed.
+			staff.sendSystemMessage(Component.literal("Leave staff mode first: items claimed now would be lost when it ends."));
+			UtilsAudit.record("invsee.claim", MejtaCoreAPI.actor(staff), change.target(), change.targetName(), AuditOutcome.DENIED,
+					Map.of("reason", "in staff mode"), null);
+			return false;
+		}
 		if (staff.getInventory().getFreeSlot() < 0) {
 			return false;
 		}
@@ -313,6 +329,7 @@ public final class PendingChanges {
 		details.put("staff", change.staffName());
 		details.put("slots", change.ops().size());
 		details.put("state", change.state().name());
+		details.put("delete_removed", change.deleteRemoved());
 		details.put("message", message);
 		UtilsAudit.record("invsee.offline.apply", AuditActor.system(MejtaUtils.ID), change.target(), change.targetName(), outcome, details, null);
 		MejtaCoreAPI.notifications().publish(Notification.builder(MejtaUtils.ID, CHANNEL)

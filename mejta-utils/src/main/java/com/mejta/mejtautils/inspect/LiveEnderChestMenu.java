@@ -13,6 +13,7 @@ import net.minecraft.world.item.ItemStack;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.audit.AuditOutcome;
+import com.mejta.mejtautils.MejtaUtils;
 import com.mejta.mejtautils.UtilsPermissions;
 import com.mejta.mejtautils.util.ItemJson;
 import com.mejta.mejtautils.util.Targets;
@@ -49,8 +50,16 @@ public final class LiveEnderChestMenu extends InspectMenu {
 	}
 
 	@Override
+	public boolean isOn(ServerPlayer player) {
+		return player == target;
+	}
+
+	@Override
 	protected boolean stillAllowed() {
-		if (target.isRemoved() || target.hasDisconnected()) {
+		if (target.isRemoved() || target.hasDisconnected() || target.isDeadOrDying()) {
+			return false;
+		}
+		if (editable && MejtaUtils.staffMode().isActive(target.getUUID())) {
 			return false;
 		}
 		return MejtaCoreAPI.hasPermission(viewer, editable ? UtilsPermissions.ECSEE_EDIT : UtilsPermissions.ECSEE_VIEW)

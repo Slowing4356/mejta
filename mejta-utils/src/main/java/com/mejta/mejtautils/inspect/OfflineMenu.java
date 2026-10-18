@@ -103,6 +103,11 @@ public final class OfflineMenu extends InspectMenu {
 		}
 	}
 
+	/** Forgets every tracked menu (server start and stop). */
+	public static void forgetAll() {
+		OPEN.clear();
+	}
+
 	private UUID targetId() {
 		return snapshot.profile().id();
 	}
@@ -242,7 +247,8 @@ public final class OfflineMenu extends InspectMenu {
 				case 6 -> toggleDeleteRemoved();
 				case 7 -> {
 					close();
-					open(viewer, snapshot, view == View.INVENTORY ? View.ENDER_CHEST : View.INVENTORY, mayQueue);
+					// Through the command's checks: the other container needs its own permission, and the open is audited.
+					Inspect.openOfflineFromMenu(viewer, snapshot.profile(), view == View.INVENTORY ? View.ENDER_CHEST : View.INVENTORY, mayQueue);
 				}
 				case 8 -> close();
 				default -> {
@@ -343,11 +349,21 @@ public final class OfflineMenu extends InspectMenu {
 			return;
 		}
 		editableChange().ifPresent(change -> {
-			change.setDeleteRemoved(!change.deleteRemoved());
+			if (change.isEmpty()) {
+				// An empty change is not stored, so the choice would be lost.
+				notice = Component.literal("Queue a change first; then choose what happens to removed items.").withStyle(ChatFormatting.YELLOW);
+				return;
+			}
+			boolean delete = !change.deleteRemoved();
+			change.setDeleteRemoved(delete);
 			try {
 				MejtaUtils.pending().save(change);
+				UtilsAudit.record("invsee.offline.delete_removed", MejtaCoreAPI.actor(viewer), targetId(), snapshot.profile().name(),
+						AuditOutcome.SUCCESS, Map.of("delete_removed", delete), null);
 			} catch (IOException e) {
 				MejtaUtils.log().error("Could not save queued change", e);
+				change.setDeleteRemoved(!delete);
+				viewer.sendSystemMessage(Component.literal("Could not save the change; nothing was changed.").withStyle(ChatFormatting.RED));
 			}
 		});
 		refresh();

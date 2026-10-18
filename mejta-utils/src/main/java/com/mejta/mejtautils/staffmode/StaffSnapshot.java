@@ -130,12 +130,11 @@ public final class StaffSnapshot {
 	}
 
 	/**
-	 * Replaces the player's state with the snapshot. Replacing (never adding) makes it safe to repeat:
-	 * restoring twice gives the same result, so a crash during restoration cannot duplicate items.
-	 *
-	 * @param fallback level to use if the saved dimension is gone: the top block at the saved x and z
+	 * Replaces the player's state with the snapshot, except the position ({@link #restorePosition}).
+	 * Replacing (never adding) makes it safe to repeat: restoring twice gives the same result, so a crash
+	 * during restoration cannot duplicate items.
 	 */
-	public static void restore(ServerPlayer p, JsonObject snapshot, ServerLevel fallback) {
+	public static void restore(ServerPlayer p, JsonObject snapshot) {
 		MinecraftServer server = p.level().getServer();
 		HolderLookup.Provider registries = server.registryAccess();
 		Inventory inv = p.getInventory();
@@ -174,7 +173,17 @@ public final class StaffSnapshot {
 		p.getFoodData().setSaturation(snapshot.get("saturation").getAsFloat());
 		p.setAirSupply(snapshot.get("air").getAsInt());
 		p.setRemainingFireTicks(snapshot.get("fire").getAsInt());
+		p.inventoryMenu.sendAllDataToRemote();
+	}
 
+	/**
+	 * Teleports the player to the saved position. Not during login: a change of dimension there is
+	 * deferred until the player has joined.
+	 *
+	 * @param fallback level to use if the saved dimension is gone: the top block at the saved x and z
+	 */
+	public static void restorePosition(ServerPlayer p, JsonObject snapshot, ServerLevel fallback) {
+		MinecraftServer server = p.level().getServer();
 		JsonObject pos = snapshot.getAsJsonObject("position");
 		Optional<ServerLevel> level = level(server, snapshot);
 		if (level.isPresent()) {
@@ -186,10 +195,12 @@ public final class StaffSnapshot {
 			Vec3 top = new Vec3(x + 0.5, fallback.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z), z + 0.5);
 			p.teleport(new TeleportTransition(fallback, top, Vec3.ZERO, 0, 0, TeleportTransition.DO_NOTHING));
 		}
-		p.inventoryMenu.sendAllDataToRemote();
 	}
 
-	/** Puts the player into staff mode's state: empty inventory with the tools, the configured game mode, flight. */
+	/**
+	 * Puts the player into staff mode's state: empty inventory with the tools, no XP (so a death in staff
+	 * mode drops none; the snapshot restores it), the configured game mode, flight.
+	 */
 	public static void applyStaffState(ServerPlayer p, GameType mode, boolean flight) {
 		Inventory inv = p.getInventory();
 		for (int i = 0; i < inv.getContainerSize(); i++) {
@@ -199,6 +210,9 @@ public final class StaffSnapshot {
 		for (int i = 0; i < kit.size(); i++) {
 			inv.setItem(i, kit.get(i));
 		}
+		p.experienceLevel = 0;
+		p.experienceProgress = 0.0f;
+		p.totalExperience = 0;
 		p.removeAllEffects();
 		p.setGameMode(mode);
 		p.getAbilities().invulnerable = true;

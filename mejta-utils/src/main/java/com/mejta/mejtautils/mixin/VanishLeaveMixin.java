@@ -15,7 +15,11 @@ import net.minecraft.server.players.PlayerList;
 import com.mejta.mejtautils.MejtaUtils;
 import com.mejta.mejtautils.vanish.VanishHooks;
 
-/** Leak path: the leave message of a vanished player. */
+/**
+ * Leak path: the leave message of a vanished player. The vanish state is still the player's own here:
+ * {@code VanishManager.onLeave} (which may drop it when {@code vanish.persist_across_relog} is off) runs
+ * later, from Fabric's {@code ServerPlayerEvents.LEAVE} in {@code PlayerList.remove}.
+ */
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class VanishLeaveMixin {
 	@Shadow

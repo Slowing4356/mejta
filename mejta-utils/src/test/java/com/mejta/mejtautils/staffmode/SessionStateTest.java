@@ -34,6 +34,20 @@ class SessionStateTest {
 	}
 
 	@Test
+	void alreadyRestoredIsOnlyFinished() {
+		// The survival inventory is back and saved: restoring again would re-grant items used meanwhile.
+		assertEquals(JoinAction.FINISH_RESTORE, SessionState.RESTORING.onJoin(true, false, false, true));
+		assertEquals(JoinAction.FINISH_RESTORE, SessionState.RESTORING.onJoin(true, true, true, true));
+		// The snapshot is not used again, so its damage does not matter any more.
+		assertEquals(JoinAction.FINISH_RESTORE, SessionState.RESTORING.onJoin(false, false, false, true));
+		// Without the marker, nothing changes.
+		assertEquals(JoinAction.REPEAT_RESTORE, SessionState.RESTORING.onJoin(true, false, false, false));
+		// The marker only exists while restoring; elsewhere it is ignored.
+		assertEquals(JoinAction.RESUME, SessionState.ACTIVE.onJoin(true, false, true, true));
+		assertEquals(JoinAction.ASK, SessionState.ENTERING.onJoin(false, true, true, true));
+	}
+
+	@Test
 	void damagedSnapshotAlwaysAsks() {
 		for (SessionState state : SessionState.values()) {
 			assertEquals(JoinAction.ASK, state.onJoin(false, true, true), state.name());

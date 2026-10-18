@@ -74,6 +74,11 @@ public abstract class InspectMenu extends AbstractContainerMenu {
 		return editable;
 	}
 
+	/** Whether this menu shows {@code player}'s live containers. */
+	public boolean isOn(ServerPlayer player) {
+		return false;
+	}
+
 	@Override
 	public void clicked(int slotId, int button, ContainerInput input, Player who) {
 		if (closed || who != viewer) {

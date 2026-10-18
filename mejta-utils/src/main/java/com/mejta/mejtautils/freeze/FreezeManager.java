@@ -111,6 +111,18 @@ public final class FreezeManager {
 		this.store = store;
 		this.config = config;
 		this.log = MejtaCoreAPI.recordLog(MejtaUtils.ID, "freeze", RecordLogOptions.DEFAULT);
+	}
+
+	/**
+	 * Forgets everything in memory and, with {@code load}, reads the freezes of the store's current scope.
+	 * Called when a server starts and stops, so an integrated server never sees another world's freezes.
+	 */
+	public void reset(boolean load) {
+		frozen.clear();
+		blocked.clear();
+		if (!load) {
+			return;
+		}
 		for (String key : store.keys(FOLDER)) {
 			store.read(key).ifPresent(json -> {
 				try {

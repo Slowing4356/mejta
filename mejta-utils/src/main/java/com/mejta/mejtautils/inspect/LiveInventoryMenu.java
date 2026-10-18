@@ -18,6 +18,7 @@ import net.minecraft.world.item.Items;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.audit.AuditOutcome;
 import com.mejta.mejtacore.api.menu.MenuIcons;
+import com.mejta.mejtautils.MejtaUtils;
 import com.mejta.mejtautils.UtilsPermissions;
 import com.mejta.mejtautils.util.ItemJson;
 import com.mejta.mejtautils.util.UtilsAudit;
@@ -71,8 +72,12 @@ public final class LiveInventoryMenu extends InspectMenu {
 		refresh();
 	}
 
-	/** Opens the menu; the caller has checked permissions. */
-	public static void open(ServerPlayer viewer, ServerPlayer target, boolean edit) {
+	/**
+	 * Opens the menu; the caller has checked permissions. Your own inventory is always view-only: it is
+	 * also the viewer inventory below, so every slot would be shown (and could be moved) twice.
+	 */
+	public static void open(ServerPlayer viewer, ServerPlayer target, boolean requestedEdit) {
+		boolean edit = requestedEdit && viewer != target;
 		Component title = Component.literal((edit ? "Editing " : "Viewing ") + target.getGameProfile().name());
 		viewer.openMenu(new SimpleMenuProvider((id, inv, p) -> new LiveInventoryMenu(id, inv, viewer, target, edit), title));
 	}
@@ -83,8 +88,17 @@ public final class LiveInventoryMenu extends InspectMenu {
 	}
 
 	@Override
+	public boolean isOn(ServerPlayer player) {
+		return player == target;
+	}
+
+	@Override
 	protected boolean stillAllowed() {
-		if (target.isRemoved() || target.hasDisconnected()) {
+		if (target.isRemoved() || target.hasDisconnected() || target.isDeadOrDying()) {
+			return false;
+		}
+		// Staff mode replaces the target's inventory with its tools; their survival inventory is in the snapshot.
+		if (editable && MejtaUtils.staffMode().isActive(target.getUUID())) {
 			return false;
 		}
 		boolean may = MejtaCoreAPI.hasPermission(viewer, editable ? UtilsPermissions.INVSEE_EDIT : UtilsPermissions.INVSEE_VIEW);

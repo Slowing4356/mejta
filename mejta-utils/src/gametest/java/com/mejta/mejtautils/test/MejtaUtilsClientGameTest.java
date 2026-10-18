@@ -64,7 +64,8 @@ import com.mejta.mejtautils.vanish.VanishHooks;
 
 /**
  * End-to-end tests of MejtaUtils with a real client on a dedicated server: unauthorized commands,
- * inspection menus (view mode cannot change anything; edit mode moves items without duplicating them),
+ * inspection menus (view mode cannot change anything; edit mode moves items without duplicating them;
+ * your own inventory is view-only),
  * queued offline changes (applied once, conflicts refused, interrupted applications recovered), vanish
  * leak paths a single client can observe, freeze, and staff mode including recovery after a disconnect
  * in every session state. Every check logs {@code [MejtaUtilsTest] PASS/FAIL}.
@@ -169,6 +170,25 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
 		check("invsee edit: session audited with a per-slot diff", waitUntil(ctx, () -> recentAudit("invsee.edit") != null
 				&& recentAudit("invsee.edit").get("details").toString().contains("minecraft:diamond x4 -> empty")));
+
+		// Your own inventory in edit mode: forced to view (it would be shown, and movable, twice).
+		server.runOnServer(s -> {
+			player(s, me).getInventory().clearContent();
+			player(s, me).getInventory().setItem(0, new ItemStack(Items.EMERALD, 5));
+		});
+		clearChat(ctx);
+		chat(ctx, "/invsee " + name(ctx) + " edit");
+		check("invsee: own inventory in edit mode opens read-only", waitForScreen(ctx, "Viewing " + name(ctx))
+				&& chatContains(ctx, "can only be viewed"));
+		ctx.getInput().holdShift();
+		clickSlot(ctx, 27, 0);
+		ctx.getInput().releaseShift();
+		clickSlot(ctx, 27, 0);
+		ctx.waitTicks(5);
+		check("invsee self: shift-click and pick-up move nothing", server.computeOnServer(s ->
+				player(s, me).getInventory().countItem(Items.EMERALD) == 5 && player(s, me).containerMenu.getCarried().isEmpty()));
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		server.runOnServer(s -> player(s, me).getInventory().clearContent());
 
 		clearChat(ctx);
 		chat(ctx, "/ecsee " + name(ctx));
@@ -397,6 +417,10 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 				&& countTools(player(s, me)) == 3));
 		check("staff mode: vanished, adventure mode", server.computeOnServer(s -> MejtaUtils.vanish().isHidden(me)
 				&& player(s, me).gameMode.getGameModeForPlayer() == GameType.ADVENTURE));
+		clearChat(ctx);
+		chat(ctx, "/invsee claims");
+		check("staff mode: /invsee claims is refused (claimed items would be lost on exit)",
+				chatContains(ctx, "Leave staff mode before taking your claims") && ctx.computeOnClient(mc -> mc.screen == null));
 		ctx.runOnClient(mc -> mc.player.getInventory().setSelectedSlot(0));
 		ctx.waitTicks(3);
 		ctx.getInput().pressKey(options -> options.keyDrop);
@@ -424,8 +448,30 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		setSessionState(server, me, "RESTORING");
 		connection.close();
 		connection = reconnect(server);
-		check("staff recovery (restoring): restored on join", server.computeOnServer(s -> !MejtaUtils.staffMode().isActive(me)
-				&& sameInventory(player(s, me), before)));
+		check("staff recovery (restoring): restored after joining", waitUntil(ctx, () -> server.computeOnServer(s ->
+				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), before))));
+
+		// Restored, then interrupted before the session ended (the "restored" marker): only finished,
+		// nothing is handed out again, even though the player used an item since.
+		chat(ctx, "/staffmode");
+		waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)));
+		onServer(server, s -> {
+			ServerPlayer p = player(s, me);
+			DataStore store = MejtaUtils.store();
+			JsonObject session = store.read(DataStore.playerKey("staffmode", me)).orElseThrow();
+			StaffSnapshot.restore(p, session.getAsJsonObject("snapshot"));
+			p.getInventory().setItem(5, ItemStack.EMPTY); // the bread was eaten after the restoration
+			session.addProperty("state", "RESTORING");
+			session.addProperty("restored", Instant.now().toString());
+			store.writeNow(DataStore.playerKey("staffmode", me), session);
+			MejtaUtils.staffMode().reload(me);
+		});
+		connection.close();
+		connection = reconnect(server);
+		check("staff recovery (restored marker): finished without restoring again", waitUntil(ctx, () -> server.computeOnServer(s ->
+				!MejtaUtils.staffMode().isActive(me) && player(s, me).getInventory().getItem(5).isEmpty()
+						&& player(s, me).getInventory().getItem(0).is(Items.DIAMOND_SWORD))));
+		server.runOnServer(s -> player(s, me).getInventory().setItem(5, new ItemStack(Items.BREAD, 12)));
 
 		// Interrupted while ENTERING, before anything changed: the session is dropped, nothing lost.
 		onServer(server, s -> {
@@ -441,7 +487,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 			session.addProperty("vanished_by_staffmode", false);
 			session.add("snapshot", snapshot);
 			session.addProperty("hash", StaffSnapshot.hash(snapshot));
-			MejtaCoreAPI.dataStore(MejtaUtils.ID).writeNow(DataStore.playerKey("staffmode", me), session);
+			MejtaUtils.store().writeNow(DataStore.playerKey("staffmode", me), session);
 			MejtaUtils.staffMode().reload(me);
 		});
 		connection.close();
@@ -484,7 +530,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	private static void setSessionState(TestDedicatedServerContext server, UUID me, String state) {
 		onServer(server, s -> {
-			DataStore store = MejtaCoreAPI.dataStore(MejtaUtils.ID);
+			DataStore store = MejtaUtils.store();
 			JsonObject session = store.read(DataStore.playerKey("staffmode", me)).orElseThrow();
 			session.addProperty("state", state);
 			store.writeNow(DataStore.playerKey("staffmode", me), session);

@@ -2,6 +2,7 @@ package com.mejta.mejtautils.vanish;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -42,7 +43,8 @@ import com.mejta.mejtautils.util.UtilsAudit;
  * every Mejta addon that shows players respects vanish.
  *
  * <p>All methods run on the server thread; the state map is concurrent only because packet sending
- * can happen on network threads.
+ * can happen on network threads. Only players who have joined are cached (until they leave); a lookup
+ * for anyone else (an offline UUID from another addon, a player still logging in) reads the store.
  */
 public final class VanishManager implements VisibilityProvider {
 	private static final String FOLDER = "vanish";
@@ -51,31 +53,48 @@ public final class VanishManager implements VisibilityProvider {
 	private final DataStore store;
 	private final ConfigHandle config;
 	private final Map<UUID, VanishState> states = new ConcurrentHashMap<>();
+	/** Players between their join and their leave: the only ones whose state is cached. */
+	private final Set<UUID> online = ConcurrentHashMap.newKeySet();
 
 	public VanishManager(DataStore store, ConfigHandle config) {
 		this.store = store;
 		this.config = config;
 	}
 
-	public VanishState state(UUID player) {
-		return states.computeIfAbsent(player, id -> store.read(DataStore.playerKey(FOLDER, id))
-				.map(json -> VanishState.fromJson(json, config))
-				.orElseGet(() -> VanishState.defaults(config)));
+	/** Forgets every cached state (server start and stop: the store's world scope may change). */
+	public void reset() {
+		online.clear();
+		states.clear();
 	}
 
-	public void save(UUID player) {
-		store.write(DataStore.playerKey(FOLDER, player), state(player).toJson());
+	/**
+	 * The player's state. Changes to it must be saved with {@link #save(UUID, VanishState)}: for a player who
+	 * is not online it is a fresh copy read from the store.
+	 */
+	public VanishState state(UUID player) {
+		VanishState cached = states.get(player);
+		if (cached != null) {
+			return cached;
+		}
+		VanishState loaded = store.read(DataStore.playerKey(FOLDER, player))
+				.map(json -> VanishState.fromJson(json, config))
+				.orElseGet(() -> VanishState.defaults(config));
+		if (!online.contains(player)) {
+			return loaded;
+		}
+		VanishState raced = states.putIfAbsent(player, loaded);
+		return raced != null ? raced : loaded;
+	}
+
+	public void save(UUID player, VanishState state) {
+		store.write(DataStore.playerKey(FOLDER, player), state.toJson());
 	}
 
 	// ---------------------------------------------------------------- visibility (asked by mixins)
 
 	@Override
 	public boolean isHidden(UUID player) {
-		VanishState s = states.get(player);
-		if (s == null) {
-			s = state(player);
-		}
-		return s.vanished;
+		return state(player).vanished;
 	}
 
 	public boolean isVanished(Entity entity) {
@@ -122,7 +141,7 @@ public final class VanishManager implements VisibilityProvider {
 		if (!vanish) {
 			s.fakeOffline = false;
 		}
-		save(player.getUUID());
+		save(player.getUUID(), s);
 		if (vanish) {
 			s.hadFlight = player.getAbilities().mayfly;
 			applyEffects(player, s);
@@ -170,7 +189,7 @@ public final class VanishManager implements VisibilityProvider {
 		}
 		player.getAbilities().setFlyingSpeed((float) (VANILLA_FLY_SPEED * s.flightSpeed));
 		player.onUpdateAbilities();
-		save(player.getUUID());
+		save(player.getUUID(), s);
 	}
 
 	private void removeEffects(ServerPlayer player, VanishState s) {
@@ -190,7 +209,7 @@ public final class VanishManager implements VisibilityProvider {
 	/** Re-applies settings that changed while vanished (from /vanish settings). */
 	public void settingsChanged(ServerPlayer player) {
 		VanishState s = state(player.getUUID());
-		save(player.getUUID());
+		save(player.getUUID(), s);
 		if (!s.vanished) {
 			return;
 		}
@@ -218,6 +237,7 @@ public final class VanishManager implements VisibilityProvider {
 
 	/** On join (server thread, after the player is placed): keep or drop the saved vanish state. */
 	public void onJoin(ServerPlayer player) {
+		online.add(player.getUUID());
 		VanishState s = state(player.getUUID());
 		if (!s.vanished) {
 			return;
@@ -230,17 +250,23 @@ public final class VanishManager implements VisibilityProvider {
 		player.sendSystemMessage(Component.literal("You joined vanished.").withStyle(ChatFormatting.GREEN));
 	}
 
-	/** On leave: without persistence, the next join is visible again. */
+	/**
+	 * On leave (Fabric's {@code ServerPlayerEvents.LEAVE}: after the leave message was sent or hidden, and
+	 * after MejtaCore's presence saw the player as hidden). Without persistence, the next join is visible
+	 * again. The cached state is dropped.
+	 */
 	public void onLeave(ServerPlayer player) {
+		UUID id = player.getUUID();
 		if (!config.get(UtilsSettings.VANISH_PERSIST)) {
-			VanishState s = state(player.getUUID());
+			VanishState s = state(id);
 			if (s.vanished) {
 				s.vanished = false;
 				s.fakeOffline = false;
-				save(player.getUUID());
+				save(id, s);
 			}
 		}
-		states.remove(player.getUUID());
+		online.remove(id);
+		states.remove(id);
 	}
 
 	/** Pretends {@code player} left: vanishes them, shows the vanilla leave message and tells MejtaCore's presence listeners. */
@@ -248,7 +274,7 @@ public final class VanishManager implements VisibilityProvider {
 		setVanished(player, true, actor);
 		VanishState s = state(player.getUUID());
 		s.fakeOffline = true;
-		save(player.getUUID());
+		save(player.getUUID(), s);
 		broadcastToNonStaff(player, Component.translatable("multiplayer.player.left", player.getDisplayName()).withStyle(ChatFormatting.YELLOW));
 		MejtaCoreAPI.presence().announce(player.getUUID(), player.getGameProfile().name(), PresenceListener.Kind.LEAVE);
 		UtilsAudit.record("vanish.fakequit", actor, player.getUUID(), player.getGameProfile().name(), AuditOutcome.SUCCESS, Map.of(),

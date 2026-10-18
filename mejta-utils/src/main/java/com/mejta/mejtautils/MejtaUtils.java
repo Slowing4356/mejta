@@ -1,6 +1,7 @@
 package com.mejta.mejtautils;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -9,8 +10,10 @@ import com.google.gson.JsonObject;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
@@ -21,15 +24,16 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.level.storage.LevelResource;
 
 import com.mejta.mejtacore.api.AddonRegistrar;
 import com.mejta.mejtacore.api.MejtaAddon;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.addon.AddonDefinition;
 import com.mejta.mejtacore.api.config.ConfigHandle;
-import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtautils.freeze.FreezeCommands;
 import com.mejta.mejtautils.freeze.FreezeHooks;
 import com.mejta.mejtautils.freeze.FreezeManager;
@@ -40,6 +44,7 @@ import com.mejta.mejtautils.offline.PendingChanges;
 import com.mejta.mejtautils.staffmode.StaffModeCommands;
 import com.mejta.mejtautils.staffmode.StaffModeManager;
 import com.mejta.mejtautils.staffmode.StaffTools;
+import com.mejta.mejtautils.util.ScopedDataStore;
 import com.mejta.mejtautils.util.Targets;
 import com.mejta.mejtautils.vanish.VanishCommands;
 import com.mejta.mejtautils.vanish.VanishManager;
@@ -53,6 +58,7 @@ public final class MejtaUtils implements MejtaAddon {
 
 	private static volatile ConfigHandle config;
 	private static volatile Logger log;
+	private static volatile ScopedDataStore store;
 	private static volatile PendingChanges pending;
 	private static volatile VanishManager vanish;
 	private static volatile FreezeManager freeze;
@@ -71,7 +77,7 @@ public final class MejtaUtils implements MejtaAddon {
 				.onInitialize(ctx -> {
 					config = ctx.config().orElseThrow();
 					log = ctx.logger();
-					DataStore store = MejtaCoreAPI.dataStore(ID);
+					store = new ScopedDataStore(MejtaCoreAPI.dataStore(ID));
 					pending = new PendingChanges(store);
 					vanish = new VanishManager(store, config);
 					freeze = new FreezeManager(store, config);
@@ -84,16 +90,22 @@ public final class MejtaUtils implements MejtaAddon {
 					StaffModeCommands.register();
 					MejtaCoreAPI.registerServerCommands(ID, MejtaUtils::adminCommands);
 					registerEvents();
-					log.info("MejtaUtils initialized ({} frozen, {} staff-mode session(s) to recover)",
-							freeze.all().size(), staffMode.sessions().size());
+					log.info("MejtaUtils initialized");
 				})
 				.build());
 	}
 
 	private static void registerEvents() {
 		FreezeHooks.register();
-		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-			ServerPlayer player = handler.player;
+		ServerLifecycleEvents.SERVER_STARTING.register(MejtaUtils::serverStarting);
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			resetState(false);
+			store.unscope();
+		});
+		// Fabric's player JOIN fires at the end of placing the player: they are in the player list (so
+		// saving the players includes them) and in the world, before their first tick. The connection
+		// JOIN event comes earlier, before the player is in the list.
+		ServerPlayerEvents.JOIN.register(player -> {
 			// Order matters: queued offline changes act on the saved inventory, then staff mode may replace it.
 			OfflineMenu.closeAllFor(player.getUUID());
 			pending.onJoin(player);
@@ -101,9 +113,16 @@ public final class MejtaUtils implements MejtaAddon {
 			vanish.onJoin(player);
 			freeze.onJoin(player);
 		});
-		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-			freeze.onLeave(handler.player);
-			vanish.onLeave(handler.player);
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> freeze.onLeave(handler.player));
+		// After the leave message (which the leave mixin hides for vanished players) and after the
+		// connection's DISCONNECT, where MejtaCore's presence still sees the player as hidden.
+		ServerPlayerEvents.LEAVE.register(player -> vanish.onLeave(player));
+		// Before any drop: a death in staff mode drops nothing (the survival state is in the snapshot).
+		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
+			if (entity instanceof ServerPlayer player) {
+				staffMode.onFatalDamage(player);
+			}
+			return true;
 		});
 		ServerTickEvents.END_SERVER_TICK.register(server -> freeze.tick(server));
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> StaffTools.discardIfTool(entity));
@@ -115,6 +134,32 @@ public final class MejtaUtils implements MejtaAddon {
 				player instanceof ServerPlayer sp ? StaffTools.useInAir(sp, hand) : InteractionResult.PASS);
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hit) ->
 				player instanceof ServerPlayer sp ? StaffTools.useOnEntity(sp, hand, entity) : InteractionResult.PASS);
+	}
+
+	/**
+	 * A dedicated server uses the data store's keys as they are. An integrated server (singleplayer, LAN)
+	 * may open several worlds in one game session, and the data store is shared by all of them, so its
+	 * keys are put under the world's own folder ({@code worlds/<world id>/}). Every cache is reloaded.
+	 */
+	private static void serverStarting(MinecraftServer server) {
+		if (server.isDedicatedServer()) {
+			store.unscope();
+		} else {
+			Path players = server.getWorldPath(LevelResource.PLAYER_DATA_DIR).toAbsolutePath().normalize();
+			Path world = players.getParent() != null ? players.getParent() : players;
+			Path folder = world.getFileName();
+			store.scopeToWorld(ScopedDataStore.worldId(folder != null ? folder.toString() : "world", world.toString()));
+		}
+		resetState(true);
+		log.info("MejtaUtils data scope '{}': {} frozen, {} staff-mode session(s) to recover",
+				store.scope().isEmpty() ? "server" : store.scope(), freeze.all().size(), staffMode.sessions().size());
+	}
+
+	private static void resetState(boolean load) {
+		OfflineMenu.forgetAll();
+		vanish.reset();
+		freeze.reset(load);
+		staffMode.reset(load);
 	}
 
 	// ---------------------------------------------------------------- /mejtaadmin mejtautils
@@ -185,6 +230,11 @@ public final class MejtaUtils implements MejtaAddon {
 
 	public static Logger log() {
 		return log;
+	}
+
+	/** MejtaUtils' data store, limited to the current world on an integrated server. */
+	public static ScopedDataStore store() {
+		return store;
 	}
 
 	public static PendingChanges pending() {

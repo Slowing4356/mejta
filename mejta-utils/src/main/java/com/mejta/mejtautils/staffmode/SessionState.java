@@ -6,8 +6,12 @@ package com.mejta.mejtautils.staffmode;
  * explicitly confirmed by a person.
  *
  * <pre>
- * INACTIVE --enter--> ENTERING --tools given--> ACTIVE --exit--> RESTORING --saved--> INACTIVE
+ * INACTIVE --enter--> ENTERING --tools given--> ACTIVE --exit--> RESTORING --restored, saved--> RESTORING + "restored" --> INACTIVE
  * </pre>
+ *
+ * <p>The {@code restored} marker is written (durably) once the survival inventory is back and in the
+ * player's save. From then on the live inventory is the player's real one, and restoring again would
+ * hand out items the player may have used or placed meanwhile; the session is only finished.
  */
 public enum SessionState {
 	/** The survival snapshot is on disk; the player may or may not have been changed yet. */
@@ -23,6 +27,8 @@ public enum SessionState {
 		RESUME,
 		/** Replace the player's state with the snapshot again (idempotent). */
 		REPEAT_RESTORE,
+		/** The survival state was already restored: finish the session without restoring again. */
+		FINISH_RESTORE,
 		/** Nothing was changed yet: forget the session. */
 		CANCEL_ENTRY,
 		/** It cannot be decided safely: change nothing and ask for confirmation. */
@@ -35,6 +41,16 @@ public enum SessionState {
 	 * @param onlyStaffTools      the player's current inventory holds nothing but this session's staff tools
 	 */
 	public JoinAction onJoin(boolean snapshotIntact, boolean inventoryIsSnapshot, boolean onlyStaffTools) {
+		return onJoin(snapshotIntact, inventoryIsSnapshot, onlyStaffTools, false);
+	}
+
+	/**
+	 * @param restored the session carries the "restored" marker (only meaningful in {@link #RESTORING})
+	 */
+	public JoinAction onJoin(boolean snapshotIntact, boolean inventoryIsSnapshot, boolean onlyStaffTools, boolean restored) {
+		if (this == RESTORING && restored) {
+			return JoinAction.FINISH_RESTORE; // the snapshot is not used again, so its state does not matter
+		}
 		if (!snapshotIntact) {
 			return JoinAction.ASK;
 		}
