@@ -184,7 +184,7 @@ public final class StaffModeManager {
 			MejtaUtils.vanish().setVanished(player, true, actor);
 		}
 		GameType mode = config.get(UtilsSettings.STAFF_GAMEMODE) == UtilsSettings.StaffGameMode.CREATIVE ? GameType.CREATIVE : GameType.ADVENTURE;
-		StaffSnapshot.applyStaffState(player, mode, config.get(UtilsSettings.STAFF_FLIGHT));
+		applyStaffState(player, mode);
 		session.addProperty("state", SessionState.ACTIVE.name());
 		try {
 			write(id, session);
@@ -347,7 +347,7 @@ public final class StaffModeManager {
 						MejtaUtils.vanish().setVanished(player, true, system);
 					}
 					GameType mode = config.get(UtilsSettings.STAFF_GAMEMODE) == UtilsSettings.StaffGameMode.CREATIVE ? GameType.CREATIVE : GameType.ADVENTURE;
-					StaffSnapshot.applyStaffState(player, mode, config.get(UtilsSettings.STAFF_FLIGHT));
+					applyStaffState(player, mode);
 					player.sendSystemMessage(Component.literal("You are still in staff mode. /staffmode off restores your survival state.")
 							.withStyle(ChatFormatting.AQUA));
 				}
@@ -440,7 +440,7 @@ public final class StaffModeManager {
 	public void onRespawn(ServerPlayer player) {
 		if (isActive(player.getUUID())) {
 			GameType mode = config.get(UtilsSettings.STAFF_GAMEMODE) == UtilsSettings.StaffGameMode.CREATIVE ? GameType.CREATIVE : GameType.ADVENTURE;
-			StaffSnapshot.applyStaffState(player, mode, config.get(UtilsSettings.STAFF_FLIGHT));
+			applyStaffState(player, mode);
 		}
 	}
 
@@ -463,5 +463,16 @@ public final class StaffModeManager {
 			}
 		}
 		return out.isEmpty() ? "only staff tools" : out.toString();
+	}
+
+	/**
+	 * Staff kit, game mode and abilities. Clearing effects also drops vanish's night vision and flight speed,
+	 * so a vanished player gets them back.
+	 */
+	private void applyStaffState(ServerPlayer player, GameType mode) {
+		StaffSnapshot.applyStaffState(player, mode, config.get(UtilsSettings.STAFF_FLIGHT));
+		if (MejtaUtils.vanish().isHidden(player.getUUID())) {
+			MejtaUtils.vanish().settingsChanged(player);
+		}
 	}
 }

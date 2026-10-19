@@ -2,7 +2,7 @@
 
 ## 1.1.0
 
-Requires MejtaCore 1.3.0 or newer (API version 4). Every new setting is off or experimental; with the defaults, existing checks behave exactly as in 1.0.0.
+Requires MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4). Built and tested against MejtaCore 1.4.0, which is recommended. Every new setting is off or experimental. With the defaults, existing checks behave as in 1.0.0, apart from the `movement.speed` fix below.
 
 - **Mitigation (experimental, off by default):** with `enforcement.mitigation` set to `ON`, every flag at `enforcement.min_confidence` or above undoes the action behind it, in `DRY_RUN` as in `ENFORCE`, independently of violation levels and kicks:
   - `movement.fly`, `movement.speed`, `movement.jump` and `movement.elytra`: the player is set back to the last safe position with vanilla's own position correction. Never into a block, at most every 0.25 s, never while a teleport is unconfirmed.

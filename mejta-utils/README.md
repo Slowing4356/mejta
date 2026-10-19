@@ -1,282 +1,217 @@
 # MejtaUtils
 
-MejtaUtils (mod ID `mejtautils`) is a server-side admin addon for **MejtaCore**. It provides inventory and ender-chest inspection (online and offline), a player status panel, vanish, freeze and staff mode.
+MejtaUtils (mod ID `mejtautils`) is a set of server-side staff tools for **MejtaCore**:
+- `/invsee` and `/ecsee`: look at (and optionally edit) a player's inventory or ender chest, online or offline;
+- `/status`: a live panel with a player's health, food, XP, effects and game mode;
+- `/vanish`: hide from players and the server list;
+- `/freeze`: hold a player in place while staff talk to them;
+- `/staffmode`: a safe staff kit that saves and restores your survival state.
 
-It uses MejtaCore for everything shared:
-- commands;
-- settings;
-- permissions;
-- the data store;
-- the audit log;
-- notifications;
-- server menus;
-- presence.
+Players need no client mod. Every menu is a plain chest, and all checks run on the server. Permissions, settings, the audit log, notifications and data storage all go through MejtaCore.
 
 | | |
 |---|---|
-| Version | 1.0.0 (first release; the game test is not green yet, see [Status](#status)) |
-| Minecraft | 26.1.2, Fabric Loader 0.19.5, Fabric API 0.155.3+26.1.2, Java 25 |
-| Requires | **MejtaCore 1.3.0 or newer, below 2.0.0** (API version 4) |
-| Third-party libraries | None |
-
-## Status
-
-MejtaUtils is compiled in CI against Minecraft 26.1.2, Fabric API 0.155.3+26.1.2 and MejtaCore 1.4.0, so every Minecraft and Fabric name it uses exists. Its 21 JUnit tests pass: offline changes, the staff-mode state machine, the freeze command filter and the per-world data scope.
-
-The client game test ([Building and testing](#building-and-testing)) also runs in CI. A real client joins a dedicated server and the game test reaches all of its checks, so the mixins applied at startup. The latest runs found:
-- Frozen players could still run commands typed in chat. Fixed (see the changelog); the freeze checks now pass.
-- 4 staff-recovery checks failed after a reconnect, although the restored inventory was exactly right: same items, counts and components. The test client and server share one JVM, and each client join rebuilds the shield's default `blocks_attacks` component as a new object that compares by identity, so `ItemStack.matches` against a stack taken before the reconnect always fails. The test now compares item, count and component patch. On a real server the client runs in its own process and this cannot happen.
-
-Still not checked at runtime:
-- **Advancement announcements of vanished players.** The hook targets the lambda `lambda$award$0` and is optional (`require = 0`). If the name differs in 26.1.2, the hook is skipped and announcements are not hidden; no test checks them.
-- **`PermissionLevel` order.** MejtaCore's offline permission check (used for `mejtautils.protected` on offline targets) assumes the constants are declared from `ALL` to `OWNERS`. The game test does not cover protected offline players.
-- **Single-client limits.** The tab list, and what other players see of a vanished player, need a second client; the game test has one.
+| Version | 1.0.0 |
+| Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
+| Requires | MejtaCore 1.4.0 (any version from 1.3.0 up to, not including, 2.0.0 is accepted) |
+| Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.3.0.jar`, `mejtautils-1.0.0.jar` and Fabric API in the **server's** `mods/` folder.
-2. Players need nothing: every menu is a plain chest, and all checks run on the server.
+1. Put `mejtacore-1.4.0.jar`, `mejtautils-1.0.0.jar` and Fabric API in the server's `mods/` folder.
+2. Start the server. The settings file `config/mejta/mejtautils.json` is created on first start.
 
 ## Commands
 
-All commands are top-level commands registered through MejtaCore. Each is also available as `/mejtaadmin mejtautils <command>`, in case another mod owns the name. You can switch off chosen names with `commands.disabled` in `mejtacore.json`.
+Each command is also available as `/mejtaadmin mejtautils <command>`, in case another mod already uses the name. You can turn off a top-level name with MejtaCore's `commands.disabled` setting in `mejtacore.json`.
 
-| Command | Permission (default level) | What it does |
+| Command | Permission | What it does |
 |---|---|---|
-| `/invsee <player> [view\|edit]` | `invsee.view` (1); `edit`: `invsee.edit` (2) | The player's inventory. Online players are shown live; offline players from their save. Your own inventory always opens view-only. |
-| `/invsee <player> edit` (offline) | `invsee.offline_edit` (3) + `invsee.offline.edit` setting | Queue changes for an offline player (experimental) |
-| `/invsee claims` | `invsee.offline` (1), plus `invsee.view` for `/invsee` itself | Items waiting for you from applied or cancelled offline changes. Refused in staff mode. |
-| `/ecsee <player> [view\|edit]` | `ecsee.view` (1); `edit`: `ecsee.edit` (2) | The player's ender chest (27 slots) |
-| `/status <player>` | `status.view` (1) | Health, hunger, XP, effects and game mode. Clear effects (`status.effects`, 2) and change game mode (`status.gamemode`, 2), both with confirmation. |
-| `/vanish [on\|off]`, `/vanish settings` | `vanish` (1) | Vanish, and personal vanish settings |
-| `/vanish fakequit`, `/vanish fakejoin` | `vanish.fake` (3) + `vanish.fake_presence.enabled` | A pretend leave or join message (vanilla's own), also sent to MejtaCore presence listeners such as a Discord addon |
-| `/freeze <player> [reason]`, `/unfreeze <player>` | `freeze` (1) | Freeze or unfreeze; offline players are frozen when they join |
-| `/freeze list`, `/freeze info <player>` | `freeze.info` (1) | Frozen players, and what each one tried while frozen |
-| `/staffmode [on\|off]` | `staffmode` (1) | Staff mode |
-| `/staffmode restore confirm [player]` | `staffmode` (1); for others `staffmode.restore` (3) | Restore a saved state that could not be restored automatically |
-| `/mejtaadmin mejtautils pending` | `invsee.offline` (1) | Queued offline changes |
-| `/mejtaadmin mejtautils pending cancel <player>` | `invsee.offline_edit` (3) | Cancel an open change; added items go back to the staff member |
-| `/mejtaadmin mejtautils pending discard <player>` | `admin` (3) | Delete a change record in any state, without moving items (after checking the player by hand) |
-| `/mejtaadmin mejtautils sessions` | `staffmode.restore` (3) | Unfinished staff-mode sessions |
+| `/invsee <player> [view\|edit]` | `invsee.view`; `edit` needs `invsee.edit` | Open the player's inventory. Online players are shown live. Your own inventory always opens view-only. |
+| `/invsee <offline player> [view\|edit]` | `invsee.view` + `invsee.offline`; `edit` needs `invsee.offline_edit` and the `invsee.offline.edit` setting | View the saved inventory, or queue changes (experimental). See [Offline inventories](#offline-inventories). |
+| `/invsee claims` | `invsee.view` + `invsee.offline` | Items waiting for you from offline changes. Refused in staff mode. |
+| `/ecsee <player> [view\|edit]` | `ecsee.view`; `edit` needs `ecsee.edit` | Open the player's ender chest (online or offline). |
+| `/status <player>` | `status.view` | Live status panel (online players only). Clearing effects needs `status.effects`; changing game mode needs `status.gamemode`. Both ask for confirmation. |
+| `/vanish [on\|off]` | `vanish` | Toggle vanish. |
+| `/vanish settings` | `vanish` | Your own vanish settings (pickup, mob targeting, night vision, flight speed, silent containers). |
+| `/vanish fakequit`, `/vanish fakejoin` | `vanish.fake` + the `vanish.fake_presence.enabled` setting | Send a fake leave or join message. |
+| `/freeze <player> [reason]` | `freeze` | Freeze a player. An offline player is frozen when they join. |
+| `/unfreeze <player>` | `freeze` | Unfreeze a player, online or offline. |
+| `/freeze list`, `/freeze info <player>` | `freeze` + `freeze.info` | Frozen players, and what each one tried to do while frozen. |
+| `/staffmode [on\|off]` | `staffmode` | Toggle staff mode. |
+| `/staffmode restore confirm [player]` | `staffmode`; another player needs `staffmode.restore` | Restore a saved survival state that was not restored automatically. |
+| `/mejtaadmin mejtautils pending` | `invsee.offline` | List queued offline changes. |
+| `/mejtaadmin mejtautils pending cancel <player>` | `invsee.offline_edit` | Cancel an open change. Items you added wait in your `/invsee claims`. |
+| `/mejtaadmin mejtautils pending discard <player>` | `admin` | Delete a change record in any state, without moving items. Check the player by hand first. |
+| `/mejtaadmin mejtautils sessions` | `staffmode.restore` | List unfinished staff-mode sessions. |
 
-More nodes:
+## Permissions
 
-| Node | Default level | Effect |
+All nodes start with `mejtautils.`. Change their levels in `config/mejta/mejtacore.permissions.json`. Every action re-checks its permission when it happens, not only when the command is typed, and an open edit menu closes if the permission is removed.
+
+| Node | Default level | Allows |
 |---|---|---|
+| `mejtautils.invsee.view` | 1 (moderators) | View online inventories |
+| `mejtautils.invsee.edit` | 2 (gamemasters) | Edit online inventories |
+| `mejtautils.invsee.offline` | 1 | View offline inventories, `/invsee claims`, `pending`, receive `mejtautils.invsee` alerts |
+| `mejtautils.invsee.offline_edit` | 3 (admins) | Queue offline changes; `pending cancel` |
+| `mejtautils.ecsee.view` | 1 | View ender chests |
+| `mejtautils.ecsee.edit` | 2 | Edit online ender chests |
+| `mejtautils.status.view` | 1 | Open the status panel |
+| `mejtautils.status.effects` | 2 | Clear effects from the panel |
+| `mejtautils.status.gamemode` | 2 | Change game mode from the panel |
+| `mejtautils.vanish` | 1 | `/vanish` and `/vanish settings` |
 | `mejtautils.vanish.see` | 1 | See vanished staff |
-| `mejtautils.freeze.exempt` | 4 | Cannot be frozen |
-| `mejtautils.staffmode.teleport` | 1 | Use the random-player compass |
-| `mejtautils.protected` | 4 | Can only be inspected, edited or frozen by others who also have it |
+| `mejtautils.vanish.fake` | 3 | `/vanish fakequit` and `fakejoin` |
+| `mejtautils.freeze` | 1 | Freeze and unfreeze |
+| `mejtautils.freeze.info` | 1 | `/freeze list`, `/freeze info`, freeze alerts |
+| `mejtautils.freeze.exempt` | 4 (owners) | Cannot be frozen |
+| `mejtautils.staffmode` | 1 | `/staffmode` and its tools |
+| `mejtautils.staffmode.teleport` | 1 | The random-player compass |
+| `mejtautils.staffmode.restore` | 3 | Confirm a restore for another player; `sessions`; staff-mode alerts |
+| `mejtautils.protected` | 4 | Can only be inspected, edited or frozen by others who also have this node |
+| `mejtautils.admin` | 3 | `pending discard` |
 
-All nodes are named `mejtautils.<…>`. Change their levels in `config/mejta/mejtacore.permissions.json`.
+## Settings
 
-Every action re-checks its permission when it happens, not only when the command is typed. An open edit menu closes when the permission goes away.
+Stored in `config/mejta/mejtautils.json`. Change them in the file, in MejtaCore's settings menu, or with `/mejtaadmin config set mejtautils <key> <value>`.
 
-## Settings (`config/mejta/mejtautils.json`)
-
-| Key | Default | |
+| Key | Default | Meaning |
 |---|---|---|
-| `invsee.refresh_ticks` | 10 | Info row and status panel refresh |
-| `invsee.offline.enabled` | true | View offline players (read-only) |
-| `invsee.offline.edit` | **false** | **Experimental.** Queue offline changes; read [Offline inventories](#offline-inventories) first |
-| `invsee.offline.backups` | 5 | Inventory backups per player before a queued change is applied |
-| `vanish.default.item_pickup` | false | Defaults for new staff; each staff member can change their own in `/vanish settings` |
-| `vanish.default.mob_targeting` | false | |
-| `vanish.default.night_vision` | true | |
-| `vanish.default.flight_speed` | 1.0 (1 to 4) | |
-| `vanish.default.silent_containers` | true | |
-| `vanish.persist_across_relog` | true | Rejoin vanished, with no join message. When off, a vanished player still leaves without a leave message; they rejoin visible. |
-| `vanish.hide_from_server_list` | true | Player count and names in the multiplayer list |
-| `vanish.fake_presence.enabled` | false | Allows `/vanish fakequit`/`fakejoin` |
-| `vanish.block_game_events` | true | **Experimental.** Sculk sensors, shriekers and the Warden ignore vanished staff |
-| `vanish.filter_sounds` | true | **Experimental.** Hide sounds, block-break cracks and particles caused by vanished staff |
-| `freeze.block_movement`, `freeze.block_item_drop`, `freeze.block_block_break`, `freeze.block_block_place`, `freeze.block_interact`, `freeze.block_attack`, `freeze.block_commands` | true | What a frozen player may not do |
-| `freeze.allowed_commands` | `msg,tell,w,r` | Commands still allowed while frozen; chat is always allowed |
-| `freeze.invulnerable` | false | Protect frozen players from damage, hunger and fire |
+| `invsee.refresh_ticks` | `10` (1–200) | How often the info row and status panel refresh, in ticks |
+| `invsee.offline.enabled` | `true` | Allow viewing offline players (read-only) |
+| `invsee.offline.edit` | `false` | **Experimental.** Allow queueing changes for offline players. Read [Offline inventories](#offline-inventories) first. |
+| `invsee.offline.backups` | `5` (1–20) | Inventory backups kept per player before a queued change is applied |
+| `vanish.default.item_pickup` | `false` | Default for new staff: pick up items and XP while vanished |
+| `vanish.default.mob_targeting` | `false` | Default for new staff: mobs may target you |
+| `vanish.default.night_vision` | `true` | Default for new staff: night vision while vanished |
+| `vanish.default.flight_speed` | `1.0` (1–4) | Default for new staff: flight speed multiplier |
+| `vanish.default.silent_containers` | `true` | Default for new staff: open containers without animation or sound |
+| `vanish.persist_across_relog` | `true` | Rejoin vanished, with no join message. When off, you still leave silently but rejoin visible. |
+| `vanish.hide_from_server_list` | `true` | Leave vanished staff out of the server list count and names |
+| `vanish.fake_presence.enabled` | `false` | Allow `/vanish fakequit` and `fakejoin` |
+| `vanish.block_game_events` | `true` | **Experimental.** Sculk sensors, shriekers and the Warden ignore vanished staff |
+| `vanish.filter_sounds` | `true` | **Experimental.** Hide sounds and block-break particles caused by vanished staff |
+| `freeze.block_movement` | `true` | Frozen players cannot move (they can still look around) |
+| `freeze.block_item_drop` | `true` | Frozen players cannot drop items |
+| `freeze.block_block_break` | `true` | Frozen players cannot break blocks |
+| `freeze.block_block_place` | `true` | Frozen players cannot place blocks or use items on blocks |
+| `freeze.block_interact` | `true` | Frozen players cannot use items or interact with entities |
+| `freeze.block_attack` | `true` | Frozen players cannot attack |
+| `freeze.block_commands` | `true` | Frozen players can only use `freeze.allowed_commands` |
+| `freeze.allowed_commands` | `msg,tell,w,r` | Commands still allowed while frozen. Chat is always allowed. |
+| `freeze.invulnerable` | `false` | Protect frozen players from damage and hunger |
 | `freeze.indicator` | `BOSS_BAR` | `BOSS_BAR`, `ACTION_BAR` or `BOTH` |
-| `freeze.message` | "You have been frozen by staff…" | |
+| `freeze.message` | `You have been frozen by staff. Please wait; staff will contact you in chat.` | Text of the indicator |
 | `freeze.on_logout` | `NOTIFY_STAFF` | `NONE` or `NOTIFY_STAFF`. There is no punishment option. |
 | `staffmode.gamemode` | `ADVENTURE` | `ADVENTURE` or `CREATIVE` |
-| `staffmode.flight`, `staffmode.vanish` | true | |
-| `staffmode.tools.compass`, `staffmode.tools.inspect_wand`, `staffmode.tools.freeze_rod` | true | |
-| `staffmode.session_history` | 10 | Finished sessions kept per staff member |
+| `staffmode.flight` | `true` | Allow flight in staff mode |
+| `staffmode.vanish` | `true` | Vanish when entering staff mode |
+| `staffmode.tools.compass` | `true` | Give the random-player compass |
+| `staffmode.tools.inspect_wand` | `true` | Give the inspection wand |
+| `staffmode.tools.freeze_rod` | `true` | Give the freeze rod |
+| `staffmode.session_history` | `10` (1–100) | Finished staff-mode sessions kept per staff member |
 
 ## Inventory inspection
 
-**Online players.** The menu is bound to the player's own inventory object, not a copy, so nothing can be duplicated. Two staff members and the player all act on one container on the server thread.
+Online players are shown live: the menu works on the player's real inventory, not a copy, so nothing can be duplicated.
 
-| Row | Content |
-|---|---|
-| 1 to 3 | Main inventory |
-| 4 | Hotbar |
-| 5 | Helmet, chestplate, leggings, boots, offhand, and the 2×2 crafting grid |
-| 6 | Info: player, health, food, XP, effects, mode, status panel, ender chest, close |
+- **Layout:** rows 1–3 main inventory, row 4 hotbar, row 5 armour, offhand and the 2×2 crafting grid, row 6 info (health, food, XP, effects, game mode, buttons for the status panel and ender chest).
+- **View mode:** nothing can be moved, whatever click or key is used.
+- **Edit mode:** behaves like a chest. The crafting grid is always view-only.
+- **Closing:** the menu closes when the player logs out, dies or respawns. Edit menus also close when the player enters staff mode.
+- **Staff mode:** while you are in staff mode, every inspection menu is view-only. Players in staff mode cannot have their inventory or ender chest edited.
+- **Audit:** each open, edit session and refusal is written to MejtaCore's audit log.
 
-- **View mode:** no slot can be changed. Vanilla's click handling is never called for it, so pick-up, shift-click, number keys, drag, double-click and drop all do nothing. The client view is re-sent after every click.
-- **Edit mode:** behaves like a chest. Your own inventory is always view-only (the menu shows it a second time below, so a slot could be moved onto itself).
-- **Crafting grid:** always view-only. The game returns those items to the inventory whenever the player closes their own inventory screen.
-- **Closing:** the menu closes as soon as the player logs out, dies or respawns. Edit menus (inventory and ender chest) also close when the player enters staff mode; ender-chest edit of a staff-mode player is refused.
-- **Audit:** each edit session is audited as a list of changed slots.
-
-**In staff mode** every inspection menu is view-only, and `/invsee claims` is refused. Items moved into a staff-mode inventory would be destroyed when staff mode ends.
-
-**Status panel and the "top-right bar".** A server cannot add a permanent element to an unmodded client's screen. The vanilla client draws the top-right effect icons only for its own player. So the status panel is a live-refreshing menu. A permanent overlay would need a client-side mod. The server-side alternatives are a boss bar, the action bar or a scoreboard sidebar, each with its own drawbacks (see `INTEGRATION-DESIGN.md`, 3.6).
+The status panel is a refreshing chest menu. A server cannot add a permanent on-screen overlay to an unmodded client.
 
 ## Offline inventories
 
-**Viewing** reads the player's save through the game's own player-data storage. That storage only reads `playerdata/<uuid>.dat` of the current world, and upgrades old data. The player is chosen with Minecraft's player argument; player input is never used as a file path. The save is never written.
+**Viewing** reads the player's save from the current world (`playerdata/<uuid>.dat`) through the game's own loader. The file is never written. Viewing loads the save into a temporary player; the game may keep that player's statistics and advancements in memory until they join or the server restarts.
 
-**Queued changes (experimental, off by default).** Limitations, by design:
+**Queued changes** (experimental, off by default) work like this:
+1. **Never written directly.** MejtaUtils never writes another player's save. A change is stored as a pending change and applied when the player next joins, before their first tick.
+2. **Checked first.** Each queued slot records the item it was made against. If the save changed in the meantime (a restored backup, an NBT editor, another server on the same world), the change is not applied. Your added items come back to you, and the player keeps everything.
+3. **No duplication.** An added item leaves your inventory at once and is held in the change. A removed item stays with the player until the change is applied, then goes to your `/invsee claims` (or is deleted, if you chose that).
+4. **One editor.** Only the staff member who started a change can edit it.
+5. **Backups.** Before a change is applied, the player's inventory and ender chest are backed up (`invsee.offline.backups` per player).
+6. **Crashes.** Each step is ordered so a crash can never duplicate an item. At worst, a crash at the wrong moment loses the one stack being moved, and the audit log records it. A change interrupted while applying is resolved on the next join: if the result is already there it is marked done, if the original is there it is applied, and otherwise nothing changes and staff are alerted. Use `pending discard` after checking such a player by hand.
+7. **Staff-mode players.** Their real inventory is in the staff-mode save, so offline changes to them are refused.
 
-1. **Deferred.** MejtaUtils never writes another player's save file. A change is stored as a *pending change* (`mejta-data/mejtautils/store/pending/<uuid>.json`) and applied when the player next joins: once they are in the player list (Fabric's player `JOIN` event), before their first tick.
-2. **Checked.** Each queued slot records the exact item it was made against. If the save changed in between (a backup was restored, an external NBT editor, a second server on the same world), the change is **not applied**. The items you added come back to you; the player keeps everything.
-3. **No duplication by construction.**
-   - **Removing:** a removed item stays in the player's save until the change is applied. Only then does it go to `/invsee claims` (or is deleted, if you chose that).
-   - **Adding:** an added item leaves your inventory immediately and is held in the change. If the change is refused, you get it back.
-4. **One editor per player.** Only the staff member who started a change can edit it.
-5. **Crash windows.** Each transfer is ordered so that a crash between two steps can never duplicate an item:
-   - giving to a change: take the item, save the players, then write the change;
-   - taking from a change or a claim: write first, then give the item and save;
-   - applying: mark it `APPLYING`, apply, save the player, then mark it applied. If the save cannot be written (the player is not in the player list), it stays `APPLYING` and is resolved on the next join as below.
-
-   A crash in the milliseconds between two steps can lose (never duplicate) the one stack being moved. Its audit entry records it. A crash while `APPLYING` is resolved on the next join from the live inventory:
-   - **after state found:** recorded as applied;
-   - **before state found:** applied now;
-   - **neither:** nothing is changed, and staff are alerted.
-6. **Outside processes.** NBT editors or a second server can't be locked out by a mod. Point 2 detects them; it can't prevent them.
-7. **Crafting grid.** Always empty offline; the game returns those items on logout.
-8. **Staff-mode players.** Their real inventory is in the staff-mode save, not their player file. Offline changes to them are refused.
-9. **Backups.** Before a change is applied, the player's inventory and ender chest are saved (`backups/<uuid>`, last `invsee.offline.backups`).
-10. **Audited choices.** Each queued removal, addition and undo, the "removed items: deleted / go to your claims" switch, and the outcome of applying (with `delete_removed`) are audit entries. Switching between the saved inventory and ender chest in the menu goes through the same permission checks and audit as the commands.
-
-**Known limitation (viewing).** The save is loaded into a temporary player object. The game may keep a statistics and an advancements entry for that player in memory until they join or the server restarts (the sources checked don't show it either way, and the game's maps are not public). Nothing is written to their files by viewing.
+A mod cannot lock out outside tools such as NBT editors. Point 2 detects their changes but cannot prevent them.
 
 ## Vanish
 
-How it works:
-- **Entity tracking.** Vanished players and their projectiles are hidden from the game's entity tracker for players without `vanish.see`. On toggling, the tracker is made to re-check at once.
-- **Tab list.** Player-info packets are filtered per recipient at a single choke point. That covers joins, the latency and game-mode updates the server sends regularly, and display names.
-- **Other addons.** Vanish state is MejtaCore's visibility provider, so other Mejta addons (for example a Discord chat relay) respect it.
+Vanished staff are hidden from players without `mejtautils.vanish.see`. Other Mejta addons (such as MejtaDiscord) also respect vanish through MejtaCore.
 
-**Leak paths and status.** "Covered" means a mixin handles it, using a target confirmed against the 26.1.2 Vanish mod. "Tested" means the gametest checks it from a real client.
+**Hidden:** the player entity and their projectiles; the tab list; the server list count and sample; join, leave and death messages; advancement announcements; command arguments, `/list` and name suggestions; sleeping counts; mob targeting, pushing and the Warden; pressure plates, tripwires, farmland, turtle eggs, redstone ore and big dripleaf; item, XP and arrow pickup (per setting); phantoms and raids; container animation, sound and redstone (silent containers); the locator bar; sculk and vibrations (experimental); sounds and block-break particles (experimental, partial: sounds without a source entity cannot be tied to the player).
 
-| Path | Status |
-|---|---|
-| Entity visible to other players | Covered, tested (tracker decision) |
-| Tab list | Covered; **not testable with one client** |
-| Server list count and sample | Covered, tested (count) |
-| Join and leave messages | Covered, tested (join). Staff with `vanish.see` get a `[vanished]` copy. The vanish state is changed on leave only after the leave message (Fabric's player `LEAVE` event). |
-| Command arguments (`/msg`, `/tp`…), `/list`, server-side name suggestions | Covered, tested (selector filter) |
-| Death messages, advancement announcements | Covered. The advancement hook uses the lambda name `lambda$award$0`; if a game update renames it, it is skipped and logged. |
-| Sleeping | Covered (counted like spectators) |
-| Mob targeting and aggro, pushing | Covered, tested (husk) |
-| Warden | Covered |
-| Sculk sensors, shriekers, vibrations | Covered (`vanish.block_game_events`, experimental) |
-| Pressure plates, tripwire, big dripleaf | Covered, tested (plate) |
-| Farmland, turtle eggs | Covered, tested (farmland) |
-| Redstone ore, sculk step | Covered |
-| Item, XP and arrow pickup | Covered, tested |
-| Projectiles hitting the player | Covered |
-| Sounds and block-break particles caused by the player | Covered (`vanish.filter_sounds`, experimental). Sounds the game plays without a source entity can't be tied to the player: **partially covered**. |
-| Block-break cracks | Covered |
-| Phantoms, raids from Bad Omen | Covered |
-| Containers (animation, sound, redstone, opener count) | Covered (silent containers) |
-| Locator bar | Covered |
-| Natural mob spawning and chunk loading near the player | **Not covered.** Fixing it would break staff work. |
-| Riding a visible vehicle | **Not covered.** Dismount first. |
-| Maps carried by the vanished player | **Not covered** |
-| Pets following, trial spawners, advancement progress | **Not covered** |
-| Command feedback shown to other operators | Not hidden (they are staff) |
-| The player's own chat, attacks and door use | Reveal them, by design |
-| Other mods' player lists | Not covered |
+Staff with `vanish.see` get a `[vanished]` copy of hidden join and leave messages.
+
+**Not hidden:** natural mob spawning and chunk loading near you; riding a vehicle (dismount first); maps you carry; pets following you; trial spawners; advancement progress; other mods' player lists. Your own chat, attacks and door use reveal you, by design.
+
+`/vanish fakequit` and `fakejoin` send vanilla's own leave and join messages, and are passed to MejtaCore presence listeners such as MejtaDiscord's chat relay.
 
 ## Freeze
 
-**What it does:**
-- **Movement:** frozen players are held in place. They hover, because flight is granted while frozen, so they can't fall into constant corrections. They can still look around, chat and open their own inventory.
-- **Blocked interactions:** breaking, placing, using items and blocks, attacking, dropping (the drop key, throwing from a screen, creative drops) and commands outside `freeze.allowed_commands`, each as configured.
-- **Never:** the screen is never taken over with an unclosable menu.
-- **Indicator:** a boss bar and/or action bar message. A title is shown when frozen.
-- **Persistence:** freezes are stored, so they survive disconnects and restarts and are re-applied on join.
-- **Unfreezing:** `/unfreeze` works for offline players too.
-
-**Logging out while frozen** sends staff a notification (`mejtautils.freeze`) that says plainly it is **not proof of cheating**. MejtaUtils never punishes anyone. If a punishment addon is added later, it can listen to that notification and apply your own policy.
-
-**Diagnostics** go to `mejta-data/mejtautils/freeze.jsonl` (staff only):
-- start and stop;
-- disconnects and reconnects, with ping;
-- blocked-action counts, summarised by `/freeze info`.
-
-No chat content or IP addresses are recorded.
+- **Movement:** frozen players are held in place and hover (flight is granted while frozen). They can still look around, chat and open their own inventory.
+- **Blocked actions:** breaking, placing, using items and blocks, attacking, dropping items, and commands not in `freeze.allowed_commands`, each as configured. The screen is never locked with a menu.
+- **Indicator:** a boss bar and/or action bar message, plus a title when frozen.
+- **Persistence:** freezes survive logouts and restarts, and are re-applied on join.
+- **Logging out while frozen** notifies staff on `mejtautils.freeze`. The message says plainly that this is not proof of cheating. MejtaUtils never punishes anyone.
+- **Diagnostics:** start, stop, disconnects, reconnects with ping, and blocked-action counts are logged to `mejta-data/mejtautils/freeze.jsonl`. `/freeze info` summarises them. No chat content or IP addresses are recorded.
 
 ## Staff mode
 
-1. **Entering.** The survival state is captured and written to disk, synchronously and fsync'd, **before** anything changes. The state is: inventory with every item component, position and dimension, XP, health, food, air, fire, effects, game mode and abilities. If that write fails, staff mode is refused.
-2. **In staff mode.**
-   - The inventory is replaced by the tools.
-   - The player is vanished (setting) and invulnerable, in adventure (or creative) mode, with flight.
-   - Every real container is view-only, and picking up or dropping items is blocked. Items gained in creative are discarded when staff mode ends.
-   - XP is zero (the snapshot keeps the real XP). Dying in staff mode drops nothing: the staff-mode inventory (tools and anything taken in creative) and XP are cleared just before the death, and the tools come back on respawn.
-   - Edit menus other staff have open on this player are closed (and audited) when staff mode starts.
-3. **Leaving.** The session is marked `RESTORING` on disk, then the inventory is **replaced** (never added to) from the snapshot and the player is saved. Then a `restored` marker is written to the session, before anything that can still fail (teleport back, vanish off, saving, moving the session to the history). With the marker the survival state is never restored again: a retried `/staffmode off` only finishes the session, so items used or placed in between are not handed out twice.
+1. **Entering.** Your survival state is written to disk before anything changes: inventory, position and dimension, XP, health, food, air, fire, effects, game mode and abilities. If that write fails, staff mode is refused.
+2. **While on.** Your inventory holds only the staff tools. Effects are cleared (vanish's night vision and flight speed are re-applied if you are vanished). You are invulnerable, in adventure (or creative) mode, with flight, and vanished if `staffmode.vanish` is on. Containers are view-only, and item pickup and drops are blocked. XP is zero, and dying drops nothing; the tools come back on respawn.
+3. **Leaving.** Your inventory is replaced (never added to) from the saved state, and everything else is restored. A retried `/staffmode off` never hands items out twice. Items gained in creative are discarded.
 
-**Recovery after a crash or disconnect:**
+**Recovery after a crash or disconnect** happens on your next join:
 
 | Saved state | On the next join |
 |---|---|
-| `ACTIVE` | Staff mode continues |
-| `RESTORING` | The replacement is repeated one tick after the join (so a teleport to another dimension never happens during login), then the player is saved and the session ends |
-| `RESTORING` with the `restored` marker | The session is only finished; nothing is restored again |
-| `ENTERING`, inventory unchanged | The session is dropped; XP, game mode and abilities are reset from the snapshot (no item changes) |
-| `ENTERING`, inventory only tools | Staff mode continues |
-| Anything else, or a damaged snapshot | **Nothing changes**; the staff member is asked to run `/staffmode restore confirm` |
+| Staff mode was active | Staff mode continues |
+| Restoring had started | The restore is finished one tick after the join |
+| Restore already done | The session is only closed; nothing is restored again |
+| Entering, inventory not yet changed | The session is dropped; XP, game mode and abilities are reset |
+| Entering, inventory already replaced by tools | Staff mode continues |
+| Anything unclear, or a damaged save | Nothing changes. You are asked to run `/staffmode restore confirm`. |
 
-`/staffmode restore confirm` is also required when the saved dimension is gone or the game version changed. The replaced inventory is recorded in the audit log.
+`/staffmode restore confirm` is also needed when the saved dimension is gone or the game version changed. Holders of `mejtautils.staffmode.restore` are alerted on `mejtautils.staffmode`. The replaced inventory is recorded in the audit log.
 
-**Tools** carry a custom-data marker:
+**Tools:**
 
 | Tool | Use |
 |---|---|
-| Compass | Teleport to a random player who isn't staff |
+| Compass | Teleport to a random player who is not staff (needs `staffmode.teleport`) |
 | Inspection wand | Right-click a player for `/invsee`; shift-right-click for `/status` |
-| Freeze rod | Two right-clicks within 3 s to freeze or unfreeze |
+| Freeze rod | Right-click a player twice within 3 seconds to freeze or unfreeze |
 
-Tools cannot be dropped or stored. Any tool found outside an active staff mode, in an inventory on join or as an item in the world, is deleted.
+Tools cannot be dropped or stored. A tool found outside an active staff mode is deleted.
 
-## Data on integrated servers (singleplayer, LAN)
+## Data, audit and notifications
 
-MejtaCore keeps addon data in `<game dir>/mejta-data`, which every world opened by one game installation shares. A dedicated server runs one world and uses the keys as they are (`mejta-data/mejtautils/store/<key>.json`, unchanged from earlier releases, no migration).
-
-On an integrated server, MejtaUtils puts every key under the world: `mejta-data/mejtautils/store/worlds/<id>/…`, where `<id>` is a short hash of the world folder's path plus the folder name. Staff-mode sessions, freezes, vanish state, queued offline changes, claims and backups therefore stay with their world. All in-memory state is reloaded when a server starts and cleared when it stops. Moving or renaming a world folder gives it a new id (the old data stays in its folder). The freeze diagnostics log (`freeze.jsonl`) is still shared.
-
-## Audit and notifications
-
-Every sensitive action, and every refusal, is an entry in MejtaCore's audit log: actor, target, action, time, outcome and details (`/mejtaadmin audit recent`). Each entry is also published on `mejtautils.audit`.
-
-Alerts that need attention are published on:
-- `mejtautils.freeze` (logout or rejoin while frozen);
-- `mejtautils.invsee` (an offline change was applied, refused or interrupted);
-- `mejtautils.staffmode` (a recovery needs confirmation).
+- **Data** is kept in `mejta-data/mejtautils/`. On a singleplayer or LAN world it is kept per world (under `store/worlds/<id>/`), so state does not carry over between worlds. Moving or renaming a world folder starts fresh.
+- **Audit:** every sensitive action and every refusal is a MejtaCore audit entry (`/mejtaadmin audit recent`), also published on `mejtautils.audit`.
+- **Alerts:** `mejtautils.freeze` (logout or rejoin while frozen), `mejtautils.invsee` (an offline change was applied, refused or interrupted) and `mejtautils.staffmode` (a recovery needs confirmation). MejtaDiscord can route these to Discord.
 
 Nothing published contains IP addresses, chat content or secrets.
 
 ## Building and testing
 
 ```bash
-cd ../mejta-core && ./gradlew build publishToMavenLocal     # MejtaCore 1.3.0
-cd ../mejta-utils && ./gradlew build                        # compiles, runs the unit tests
-./gradlew runClientGameTest                                 # end-to-end tests
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.4.0 first
+cd ../mejta-utils && ./gradlew build             # compile and run unit tests
+./gradlew runClientGameTest                      # client game test
 ```
 
-The gametest starts a dedicated server, connects a real non-operator client and checks:
+- **Unit tests** cover offline-change logic, the staff-mode state machine, the freeze command filter and per-world data scoping.
+- **The client game test** starts a dedicated server and joins it with a real, non-operator client. It checks that commands are hidden without permission; that view mode moves nothing and edit mode moves items exactly once; offline changes and their crash recovery; the vanish paths it can see with one client; freeze; and staff-mode restoration and recovery in every session state.
 
-| Area | What is checked |
-|---|---|
-| Unauthorized use | Every command is unavailable without permission |
-| Inspection | View mode moves nothing, under any click type; edit mode moves a stack exactly once; the crafting grid stays view-only; your own inventory opens view-only; the ender chest and status panel open; edit sessions and opens are audited |
-| Offline changes | Applied once, not twice; a changed save is refused with the item returned; each of the three interrupted-apply recoveries |
-| Vanish | The paths in the table marked "tested" |
-| Freeze | Walking, the drop key, a blocked and an allowed command, the logout notification, freeze kept after rejoin, unfreeze |
-| Staff mode | Exact restoration; recovery after a disconnect in each session state, including after the `restored` marker; the confirmation path; tool removal; `/invsee claims` refused |
+## Limitations
 
-Every check logs `[MejtaUtilsTest] PASS/FAIL`.
+- What other players see of a vanished player (including the tab list) is not covered by the automated test, which uses one client.
+- Advancement announcements are hidden through an optional hook. If a game update breaks it, the hook is skipped and announcements are shown.
+- Queued offline changes are experimental and off by default.
+- The status panel is a menu, not an on-screen overlay.

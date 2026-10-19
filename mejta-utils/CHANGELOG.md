@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-First release.
+First release. Requires MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4); built and tested against MejtaCore 1.4.0.
 
 - `/invsee` and `/ecsee` for online and offline players, view-only or with editing. Every change is audited.
   - **Offline:** edits are queued and applied when the player next joins. This is experimental and off by default.
@@ -22,6 +22,7 @@ Fixes from the release review, before the first release:
   - A retried exit can't hand items back twice.
   - The player's XP is set to zero on entry (and restored on exit), and nothing drops if they die in staff mode.
   - Claiming items in staff mode is refused.
+  - Staff mode no longer drops vanish's night vision and flight speed: it clears effects, then re-applies vanish's.
 - **Vanish:** the leave message no longer leaks when `vanish.persist_across_relog` is false.
 - **Freeze:** commands typed in chat were not filtered, only commands run by other code. Every command a frozen player runs is now checked against `freeze.allowed_commands`.
 - **Single-player and LAN:** state is kept per world, so it no longer carries over between worlds.

@@ -67,7 +67,7 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
  * {@link LatencySimulator} at several network profiles. For each profile it checks that legitimate
  * play produces <b>zero</b> flags (idle, walking, jumping, a network freeze, attacking a target that
  * moves away from the player, rapid clicking, the floor disappearing) and measures how quickly
- * crafted cheats are detected. Results are logged and written to {@code mejtaac-stage4-latency.txt}.
+ * crafted cheats are detected. Results are logged and written to {@code mejtaac-stage4-latency.md}.
  */
 public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 	private static final Logger LOG = LoggerFactory.getLogger("MejtaAcTest");

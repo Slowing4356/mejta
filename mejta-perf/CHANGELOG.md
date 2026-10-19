@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-First release.
+First release. Requires MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4); built and tested against MejtaCore 1.4.0.
 
 - **Tick monitor:**
   - TPS over 5 s, 1, 5 and 15 minutes.
