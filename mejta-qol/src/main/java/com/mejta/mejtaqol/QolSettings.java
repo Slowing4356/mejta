@@ -18,8 +18,6 @@ public final class QolSettings {
 			.describedAs("Moving during the wait cancels the teleport (looking around is allowed)");
 	public static final Setting<Boolean> CANCEL_ON_DAMAGE = Setting.bool("teleport.cancel_on_damage", true)
 			.describedAs("Taking damage during the wait cancels the teleport");
-	public static final Setting<Integer> COMBAT_SECONDS = Setting.integer("teleport.combat_seconds", 10, 0, 300)
-			.describedAs("After hitting or being hit by a player, teleport commands are refused for this many seconds. 0 = off");
 	public static final Setting<Boolean> CROSS_DIMENSION = Setting.bool("teleport.cross_dimension", true)
 			.describedAs("Allow teleports into another dimension (homes, warps, /tpa, /back, /spawn)");
 
@@ -112,9 +110,7 @@ public final class QolSettings {
 
 	// ---------------------------------------------------------------- AFK
 	public static final Setting<Boolean> AFK_ENABLED = Setting.bool("afk.enabled", true)
-			.describedAs("/afk, and marking idle players as AFK");
-	public static final Setting<Integer> AFK_AUTO_MINUTES = Setting.integer("afk.auto_minutes", 5, 0, 120)
-			.describedAs("Minutes without moving, looking around, chatting or interacting before a player is marked AFK. 0 = only /afk");
+			.describedAs("/afk, the AFK broadcast, the [AFK] tag and the idle kick. Who is AFK (also after idling, see afk.auto_minutes in mejtacore.json) is decided by MejtaCore");
 	public static final Setting<Boolean> AFK_BROADCAST = Setting.bool("afk.broadcast", true)
 			.describedAs("Tell everyone when a player goes AFK or comes back (never for vanished players)");
 	public static final Setting<Boolean> AFK_TAB_LIST = Setting.bool("afk.tab_list", true)
@@ -139,8 +135,16 @@ public final class QolSettings {
 	public static final Setting<Boolean> DEATH_COORDINATES = Setting.bool("death.coordinates", true)
 			.describedAs("Tell a player privately where they died");
 
-	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
-			.add(WARMUP_SECONDS, CANCEL_ON_MOVE, CANCEL_ON_DAMAGE, COMBAT_SECONDS, CROSS_DIMENSION,
+	/**
+	 * Version 2 (1.1.0): the combat lock and automatic AFK moved to MejtaCore ({@code combat.tag_seconds} and
+	 * {@code afk.auto_minutes} in mejtacore.json), so their old keys are removed here.
+	 */
+	public static final ConfigSpec SPEC = ConfigSpec.builder(2)
+			.migration(1, data -> {
+				data.remove("teleport.combat_seconds");
+				data.remove("afk.auto_minutes");
+			})
+			.add(WARMUP_SECONDS, CANCEL_ON_MOVE, CANCEL_ON_DAMAGE, CROSS_DIMENSION,
 					TPA_ENABLED, TPAHERE_ENABLED, TPA_TIMEOUT, TPA_COOLDOWN,
 					HOMES_ENABLED, HOMES_MAX, HOMES_MAX_EXTRA, HOMES_COOLDOWN, HOMES_BLOCKED_DIMENSIONS, HOMES_MENU,
 					BACK_ENABLED, BACK_ON_DEATH, BACK_COOLDOWN,
@@ -149,7 +153,7 @@ public final class QolSettings {
 					RTP_ENABLED, RTP_MIN_RADIUS, RTP_MAX_RADIUS, RTP_CENTER, RTP_DIMENSIONS, RTP_ATTEMPTS, RTP_COOLDOWN,
 					ENDERCHEST_ENABLED, WORKBENCH_ENABLED, ANVIL_ENABLED, STONECUTTER_ENABLED, GRINDSTONE_ENABLED, SMITHING_ENABLED,
 					LOOM_ENABLED, CARTOGRAPHY_ENABLED, TRASH_ENABLED,
-					AFK_ENABLED, AFK_AUTO_MINUTES, AFK_BROADCAST, AFK_TAB_LIST, AFK_KICK_MINUTES, AFK_KICK_MESSAGE,
+					AFK_ENABLED, AFK_BROADCAST, AFK_TAB_LIST, AFK_KICK_MINUTES, AFK_KICK_MESSAGE,
 					REPLY_ENABLED, MOTD_ENABLED, MOTD_TEXT, FIRST_JOIN_TEXT, DEATH_COORDINATES)
 			.build();
 

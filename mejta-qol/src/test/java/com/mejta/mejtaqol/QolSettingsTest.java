@@ -21,7 +21,7 @@ class QolSettingsTest {
 			assertFalse(s.description().isBlank(), s.key());
 			assertFalse(s.isSecret(), s.key());
 		}
-		assertEquals(51, keys.size(), "a setting was added or removed: update the README's settings table");
+		assertEquals(49, keys.size(), "a setting was added or removed: update the README's settings table");
 	}
 
 	@Test

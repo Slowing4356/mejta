@@ -17,6 +17,7 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.config.SettingType;
 import com.mejta.mejtacore.config.ConfigEditing;
+import com.mejta.mejtacore.config.SettingGroups;
 import com.mejta.mejtacore.config.SettingSteps;
 import com.mejta.mejtacore.config.SettingText;
 import com.mejta.mejtacore.network.RemoteConfigs;
@@ -26,11 +27,21 @@ public final class ConfigMenus {
 	private ConfigMenus() {
 	}
 
-	/** One entry per setting, plus a "reset all" entry. */
+	/**
+	 * One entry per setting, plus a "reset all" entry. A large config shows one entry per group instead
+	 * ({@link SettingGroups}), each opening that group's settings.
+	 */
 	public static List<MenuEntry> settingsEntries(ConfigHandle handle) {
 		List<MenuEntry> entries = new ArrayList<>();
-		for (Setting<?> setting : handle.spec().settings()) {
-			entries.add(settingEntry(handle, setting));
+		java.util.Map<String, List<Setting<?>>> groups = SettingGroups.of(handle.spec().settings());
+		if (SettingGroups.grouped(handle.spec().settings().size(), groups.size())) {
+			for (java.util.Map.Entry<String, List<Setting<?>>> group : groups.entrySet()) {
+				entries.add(groupEntry(handle, group.getKey(), group.getValue()));
+			}
+		} else {
+			for (Setting<?> setting : handle.spec().settings()) {
+				entries.add(settingEntry(handle, setting));
+			}
 		}
 		if (entries.isEmpty()) {
 			entries.add(MenuEntry.builder("empty")
@@ -65,6 +76,36 @@ public final class ConfigMenus {
 				})
 				.build());
 		return entries;
+	}
+
+	private static MenuEntry groupEntry(ConfigHandle handle, String group, List<Setting<?>> settings) {
+		String name = SettingGroups.displayName(group);
+		return MenuEntry.builder("group_" + group)
+				.icon(() -> new ItemStack(SettingGroups.icon(group)))
+				.title(Component.literal(name).withStyle(ChatFormatting.AQUA))
+				.dynamicDescription(() -> {
+					List<Component> lines = new ArrayList<>();
+					long changed = settings.stream()
+							.filter(s -> !SettingText.isSensitive(s) && !java.util.Objects.equals(handle.get(s), s.defaultValue())).count();
+					lines.add(Component.literal(settings.size() + " setting(s)" + (changed > 0 ? ", " + changed + " changed" : ""))
+							.withStyle(ChatFormatting.GRAY));
+					for (int i = 0; i < settings.size() && i < 8; i++) {
+						lines.add(Component.literal("  " + settings.get(i).displayName()).withStyle(ChatFormatting.DARK_GRAY));
+					}
+					if (settings.size() > 8) {
+						lines.add(Component.literal("  ...").withStyle(ChatFormatting.DARK_GRAY));
+					}
+					lines.add(hint("Click to open"));
+					return lines;
+				})
+				.onClick(ctx -> ctx.openPage(Component.literal(name), () -> {
+					List<MenuEntry> page = new ArrayList<>();
+					for (Setting<?> setting : settings) {
+						page.add(settingEntry(handle, setting));
+					}
+					return page;
+				}))
+				.build();
 	}
 
 	@SuppressWarnings("unchecked")

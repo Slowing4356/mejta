@@ -4,7 +4,6 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -15,25 +14,23 @@ import net.minecraft.server.level.ServerPlayer;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.config.ConfigHandle;
+import com.mejta.mejtacore.api.status.PlayerStatusService;
 import com.mejta.mejtaqol.MejtaQoL;
 import com.mejta.mejtaqol.QolPermissions;
 import com.mejta.mejtaqol.QolSettings;
 import com.mejta.mejtaqol.util.Cmds;
+import com.mejta.mejtaqol.util.Durations;
+import com.mejta.mejtaqol.util.Msg;
 import com.mejta.mejtaqol.util.Players;
 import com.mejta.mejtaqol.util.Templates;
 
 /**
- * AFK status: {@code /afk}, automatic AFK after idling, the optional kick, the broadcast and the
- * {@code [AFK]} tag in the player list. A player counts as active when they look around, walk (being
- * carried by a vehicle or water does not count), chat or interact. Server thread only.
+ * QoL's side of AFK: {@code /afk}, the optional kick, the broadcast and the {@code [AFK]} tag in the
+ * player list. Who is AFK is MejtaCore's status ({@code MejtaCoreAPI.status()}): it notices idling and
+ * activity for every addon. Server thread only.
  */
 public final class AfkManager {
-	private record Pose(double x, double y, double z, float yaw, float pitch) {
-	}
-
 	private final ConfigHandle config;
-	private final AfkClock clock = new AfkClock();
-	private final Map<UUID, Pose> poses = new ConcurrentHashMap<>();
 
 	public AfkManager(ConfigHandle config) {
 		this.config = config;
@@ -43,10 +40,16 @@ public final class AfkManager {
 		MejtaCoreAPI.registerRootCommand(MejtaQoL.ID, "afk", (root, ctx) -> root
 				.requires(Cmds.available(QolSettings.AFK_ENABLED, QolPermissions.AFK))
 				.executes(c -> MejtaQoL.afk().toggle(c.getSource().getPlayerOrException()) ? 1 : 0));
+		MejtaCoreAPI.status().addAfkListener((player, afk, cause) -> {
+			AfkManager manager = MejtaQoL.afkOrNull();
+			if (manager != null) {
+				manager.changed(player, afk);
+			}
+		});
 	}
 
 	public boolean isAfk(UUID player) {
-		return config.get(QolSettings.AFK_ENABLED) && clock.isAfk(player);
+		return config.get(QolSettings.AFK_ENABLED) && MejtaCoreAPI.status().isAfk(player);
 	}
 
 	/** The name shown in the player list while AFK, or {@code null} to leave it unchanged. */
@@ -58,76 +61,44 @@ public final class AfkManager {
 		return base.append(Component.literal(" [AFK]").withStyle(ChatFormatting.GRAY));
 	}
 
-	/** {@code /afk}: returns whether the player is now AFK. */
+	/**
+	 * {@code /afk}: toggles. Going AFK is refused in combat, so it cannot be used to escape a fight.
+	 * Returns whether the player is now AFK.
+	 */
 	public boolean toggle(ServerPlayer player) {
-		AfkClock.Change change = clock.toggle(player.getUUID(), System.currentTimeMillis());
-		poses.put(player.getUUID(), pose(player));
-		changed(player, change);
-		return change == AfkClock.Change.BECAME_AFK;
+		PlayerStatusService status = MejtaCoreAPI.status();
+		if (status.isAfk(player.getUUID())) {
+			status.setAfk(player, false);
+			return false;
+		}
+		long combat = status.combatRemainingMillis(player.getUUID());
+		if (combat > 0) {
+			player.sendSystemMessage(Msg.error("You are in combat. You can go AFK in " + Durations.format(combat) + "."));
+			return false;
+		}
+		status.setAfk(player, true);
+		return true;
 	}
 
-	/** The player chatted or interacted. */
-	public void activity(ServerPlayer player) {
-		AfkClock.Change change = clock.active(player.getUUID(), System.currentTimeMillis());
-		if (change != AfkClock.Change.NONE) {
-			changed(player, change);
+	/** Once a second: kicks players idle longer than {@code afk.kick_minutes}. */
+	public void tick(MinecraftServer server) {
+		int kick = config.get(QolSettings.AFK_KICK_MINUTES);
+		if (!config.get(QolSettings.AFK_ENABLED) || kick <= 0) {
+			return;
+		}
+		for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
+			if (MejtaCoreAPI.status().idleMillis(player.getUUID()) >= kick * 60_000L
+					&& !MejtaCoreAPI.hasPermission(player, QolPermissions.AFK_KICK_EXEMPT)) {
+				player.connection.disconnect(Component.literal(Templates.render(config.get(QolSettings.AFK_KICK_MESSAGE), Map.of())));
+			}
 		}
 	}
 
-	public void onJoin(ServerPlayer player) {
-		clock.join(player.getUUID(), System.currentTimeMillis());
-		poses.put(player.getUUID(), pose(player));
-	}
-
-	public void onLeave(UUID player) {
-		clock.leave(player);
-		poses.remove(player);
-	}
-
-	/** Once a second: compares each player's pose with the last one, then applies the idle rules. */
-	public void tick(MinecraftServer server) {
+	/** MejtaCore reported an AFK change: tell players and update the list name. */
+	void changed(ServerPlayer player, boolean afk) {
 		if (!config.get(QolSettings.AFK_ENABLED)) {
 			return;
 		}
-		long now = System.currentTimeMillis();
-		int auto = config.get(QolSettings.AFK_AUTO_MINUTES);
-		int kick = config.get(QolSettings.AFK_KICK_MINUTES);
-		for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
-			Pose before = poses.get(player.getUUID());
-			Pose current = pose(player);
-			poses.put(player.getUUID(), current);
-			if (before != null && moved(player, before, current)) {
-				activity(player);
-				continue;
-			}
-			AfkClock.Change change = clock.check(player.getUUID(), now, auto, kick,
-					MejtaCoreAPI.hasPermission(player, QolPermissions.AFK_KICK_EXEMPT));
-			if (change == AfkClock.Change.KICK) {
-				player.connection.disconnect(Component.literal(Templates.render(config.get(QolSettings.AFK_KICK_MESSAGE), Map.of())));
-			} else if (change != AfkClock.Change.NONE) {
-				changed(player, change);
-			}
-		}
-	}
-
-	private static Pose pose(ServerPlayer p) {
-		return new Pose(p.getX(), p.getY(), p.getZ(), p.getYRot(), p.getXRot());
-	}
-
-	private static boolean moved(ServerPlayer player, Pose a, Pose b) {
-		if (Math.abs(a.yaw() - b.yaw()) > 1 || Math.abs(a.pitch() - b.pitch()) > 1) {
-			return true;
-		}
-		if (player.isPassenger() || player.isInWater()) {
-			return false;
-		}
-		double dx = a.x() - b.x();
-		double dz = a.z() - b.z();
-		return dx * dx + dz * dz > 0.01;
-	}
-
-	private void changed(ServerPlayer player, AfkClock.Change change) {
-		boolean afk = change == AfkClock.Change.BECAME_AFK;
 		MinecraftServer server = player.level().getServer();
 		boolean hidden = MejtaCoreAPI.presence().isHidden(player.getUUID());
 		if (config.get(QolSettings.AFK_BROADCAST) && !hidden) {
@@ -155,12 +126,7 @@ public final class AfkManager {
 		}
 	}
 
-	public int afkCount() {
-		return (int) poses.keySet().stream().filter(clock::isAfk).count();
-	}
-
-	public void reset() {
-		clock.clear();
-		poses.clear();
+	public int afkCount(MinecraftServer server) {
+		return (int) server.getPlayerList().getPlayers().stream().filter(p -> MejtaCoreAPI.status().isAfk(p.getUUID())).count();
 	}
 }

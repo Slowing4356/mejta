@@ -32,9 +32,16 @@ public final class CoreSettings {
 			.describedAs("Top-level addon commands not to register, comma-separated (e.g. \"vanish, freeze\"). "
 					+ "They stay available as /mejtaadmin <addon> <command>. Takes effect after /reload or a restart.");
 
+	/** @since 1.5.0 */
+	public static final Setting<Integer> AFK_AUTO_MINUTES = Setting.integer("afk.auto_minutes", 5, 0, 120)
+			.describedAs("A player idle this many minutes becomes AFK, for every addon that uses AFK status. 0 = never automatically");
+	/** @since 1.5.0 */
+	public static final Setting<Integer> COMBAT_TAG_SECONDS = Setting.integer("combat.tag_seconds", 10, 0, 300)
+			.describedAs("After hurting or being hurt by a player, both are in combat this many seconds (addons refuse teleports, AFK protection and the like). 0 = off");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(DEBUG_LOGGING, SHOW_ADDON_IDS, MENU_SOUND, MENU_ROWS, IN_GAME_NOTIFICATIONS, NOTIFICATIONS_FILE_LOG,
-					DISABLED_COMMANDS)
+					DISABLED_COMMANDS, AFK_AUTO_MINUTES, COMBAT_TAG_SECONDS)
 			.build();
 
 	private CoreSettings() {

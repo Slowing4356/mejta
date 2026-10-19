@@ -8,6 +8,7 @@ import java.util.UUID;
 import com.mojang.authlib.GameProfile;
 
 import net.fabricmc.fabric.api.entity.FakePlayer;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -22,6 +23,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
+import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtaqol.MejtaQoL;
@@ -63,6 +65,7 @@ public class MejtaQolGameTest {
 			warps(helper, a, b);
 			teleportRequests(helper, a, b);
 			afkTag(helper, a);
+			combatLock(helper, level, a, b);
 			replies(helper, a, b);
 			randomTeleportScan(helper, level);
 			portableCraftingReturnsItems(helper, level, a);
@@ -151,6 +154,21 @@ public class MejtaQolGameTest {
 		helper.assertTrue(!MejtaQoL.afk().toggle(a), Component.literal("/afk off"));
 		Component after = a.getTabListDisplayName();
 		helper.assertTrue(after == null || !after.getString().contains("[AFK]"), Component.literal("tag removed: " + after));
+	}
+
+	/** A PvP hit puts both players in combat (MejtaCore): teleports and /afk are refused until it ends. */
+	private static void combatLock(GameTestHelper helper, ServerLevel level, ServerPlayer a, ServerPlayer b) {
+		ServerLivingEntityEvents.AFTER_DAMAGE.invoker().afterDamage(b, level.damageSources().playerAttack(a), 2, 2, false);
+		helper.assertTrue(MejtaCoreAPI.status().inCombat(A_ID) && MejtaCoreAPI.status().inCombat(B_ID),
+				Component.literal("a PvP hit puts both players in combat"));
+		helper.assertTrue(MejtaQoL.teleports().refusal(a, Features.HOME).map(m -> m.getString().contains("combat")).orElse(false),
+				Component.literal("teleports are refused in combat"));
+		helper.assertTrue(!MejtaQoL.afk().toggle(b) && !MejtaCoreAPI.status().isAfk(B_ID), Component.literal("/afk is refused in combat"));
+		ServerLivingEntityEvents.AFTER_DEATH.invoker().afterDeath(a, level.damageSources().generic());
+		ServerLivingEntityEvents.AFTER_DEATH.invoker().afterDeath(b, level.damageSources().generic());
+		helper.assertTrue(!MejtaCoreAPI.status().inCombat(A_ID) && !MejtaCoreAPI.status().inCombat(B_ID)
+				&& MejtaQoL.teleports().refusal(a, Features.HOME).map(m -> !m.getString().contains("combat")).orElse(true),
+				Component.literal("death ends combat"));
 	}
 
 	private static void replies(GameTestHelper helper, ServerPlayer a, ServerPlayer b) {

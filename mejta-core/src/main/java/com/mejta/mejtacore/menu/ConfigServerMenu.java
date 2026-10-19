@@ -2,6 +2,7 @@ package com.mejta.mejtacore.menu;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -22,6 +23,7 @@ import com.mejta.mejtacore.api.menu.MenuIcons;
 import com.mejta.mejtacore.api.menu.ServerMenu;
 import com.mejta.mejtacore.config.ConfigEditing;
 import com.mejta.mejtacore.config.ConfigNames;
+import com.mejta.mejtacore.config.SettingGroups;
 import com.mejta.mejtacore.config.SettingSteps;
 import com.mejta.mejtacore.config.SettingText;
 import com.mejta.mejtacore.network.ServerConfigSync;
@@ -35,6 +37,9 @@ import com.mejta.mejtacore.permissions.PermissionRegistry;
  * permission check, validation with the addon's rules, save, audit entry and notification. The menu
  * re-checks the permission on every click and refresh ({@code validWhile}) and redraws when values change.
  * Secret settings are shown as {@code (set)}/{@code (not set)} and cannot be changed here.
+ *
+ * <p>A config with many settings opens on its groups first: settings are grouped by the part of their
+ * key before the first dot ({@code homes.max} is in "Homes"), keys without a dot are in "General".
  */
 public final class ConfigServerMenu {
 	static final int ROWS = 6;
@@ -114,11 +119,22 @@ public final class ConfigServerMenu {
 			player.sendSystemMessage(session.status);
 			return false;
 		}
-		List<Setting<?>> settings = handle.spec().settings();
+		Map<String, List<Setting<?>>> groups = SettingGroups.of(handle.spec().settings());
+		if (SettingGroups.grouped(handle.spec().settings().size(), groups.size())) {
+			return openGroups(player, session, handle, page, groups);
+		}
+		return openSettings(player, session, handle, null, handle.spec().settings(), page);
+	}
+
+	/** The settings of one config, or of one group of it ({@code group} not null). */
+	private static boolean openSettings(ServerPlayer player, Session session, ConfigHandle handle, String group,
+			List<Setting<?>> settings, int page) {
+		String configId = handle.id();
 		int pages = pageCount(settings.size());
 		int current = Math.clamp(page, 0, pages - 1);
 		String name = ConfigNames.displayName(handle);
-		ServerMenu.Builder menu = ServerMenu.builder(Component.literal(shorten(name, 24) + " settings"), ROWS);
+		String title = group == null ? shorten(name, 24) + " settings" : shorten(name, 16) + ": " + shorten(SettingGroups.displayName(group), 18);
+		ServerMenu.Builder menu = ServerMenu.builder(Component.literal(title), ROWS);
 		int start = current * PER_PAGE;
 		for (int i = 0; i < PER_PAGE && start + i < settings.size(); i++) {
 			Setting<?> setting = settings.get(start + i);
@@ -128,12 +144,62 @@ public final class ConfigServerMenu {
 			menu.icon(22, () -> MenuIcons.of(Items.PAPER, Component.literal("No settings").withStyle(ChatFormatting.GRAY)));
 		}
 		navigation(menu, session, current, pages,
-				p -> openConfig(p, session, configId, current - 1), p -> openConfig(p, session, configId, current + 1),
-				p -> openList(p, session, 0));
+				p -> reopenSettings(p, session, configId, group, current - 1), p -> reopenSettings(p, session, configId, group, current + 1),
+				group == null ? p -> openList(p, session, 0) : p -> openConfig(p, session, configId, 0),
+				group == null ? "All configs" : "All groups of " + shorten(name, 24));
 		// Re-checked on every click and refresh: a revoked permission (or a lost permissions-file grant) closes it.
 		return menu.validWhile(p -> ServerConfigSync.editable(p.permissions(), configId).isPresent())
 				.refreshEvery(10)
 				.open(player);
+	}
+
+	private static boolean reopenSettings(ServerPlayer player, Session session, String configId, String group, int page) {
+		ConfigHandle handle = ServerConfigSync.editable(player.permissions(), configId).orElse(null);
+		if (handle == null) {
+			return openConfig(player, session, configId, 0);
+		}
+		List<Setting<?>> settings = group == null ? handle.spec().settings() : SettingGroups.of(handle.spec().settings()).getOrDefault(group, List.of());
+		return openSettings(player, session, handle, group, settings, page);
+	}
+
+	// ---------------------------------------------------------------- groups
+
+	private static boolean openGroups(ServerPlayer player, Session session, ConfigHandle handle, int page,
+			Map<String, List<Setting<?>>> groups) {
+		String configId = handle.id();
+		List<String> names = new ArrayList<>(groups.keySet());
+		int pages = pageCount(names.size());
+		int current = Math.clamp(page, 0, pages - 1);
+		ServerMenu.Builder menu = ServerMenu.builder(Component.literal(shorten(ConfigNames.displayName(handle), 24) + " settings"), ROWS);
+		int start = current * PER_PAGE;
+		for (int i = 0; i < PER_PAGE && start + i < names.size(); i++) {
+			String group = names.get(start + i);
+			menu.button(i, () -> groupIcon(handle, group), click -> reopenSettings(click.player(), session, configId, group, 0));
+		}
+		navigation(menu, session, current, pages,
+				p -> openConfig(p, session, configId, current - 1), p -> openConfig(p, session, configId, current + 1),
+				p -> openList(p, session, 0), "All configs");
+		return menu.validWhile(p -> ServerConfigSync.editable(p.permissions(), configId).isPresent())
+				.refreshEvery(20)
+				.open(player);
+	}
+
+	private static ItemStack groupIcon(ConfigHandle handle, String group) {
+		List<Setting<?>> settings = SettingGroups.of(handle.spec().settings()).getOrDefault(group, List.of());
+		long changed = settings.stream().filter(s -> !SettingText.isSensitive(s) && !java.util.Objects.equals(handle.get(s), s.defaultValue())).count();
+		List<Component> lore = new ArrayList<>();
+		lore.add(MenuIcons.line(settings.size() + " setting(s)" + (changed > 0 ? ", " + changed + " changed" : "")));
+		int shown = 0;
+		for (Setting<?> setting : settings) {
+			if (shown++ == 8) {
+				lore.add(Component.literal("  ...").withStyle(ChatFormatting.DARK_GRAY));
+				break;
+			}
+			lore.add(Component.literal("  " + setting.displayName()).withStyle(ChatFormatting.DARK_GRAY));
+		}
+		lore.add(Component.empty());
+		lore.add(hint("Click to open"));
+		return MenuIcons.of(SettingGroups.icon(group), Component.literal(SettingGroups.displayName(group)).withStyle(ChatFormatting.AQUA), lore);
 	}
 
 	static ItemStack settingIcon(ConfigHandle handle, Setting<?> setting) {
@@ -294,9 +360,14 @@ public final class ConfigServerMenu {
 
 	private static void navigation(ServerMenu.Builder menu, Session session, int page, int pages, Opener previous, Opener next,
 			Opener back) {
+		navigation(menu, session, page, pages, previous, next, back, "All configs");
+	}
+
+	private static void navigation(ServerMenu.Builder menu, Session session, int page, int pages, Opener previous, Opener next,
+			Opener back, String backTo) {
 		if (back != null) {
 			menu.button(SLOT_BACK, () -> MenuIcons.of(Items.ARROW, Component.literal("Back").withStyle(ChatFormatting.YELLOW),
-					MenuIcons.line("All configs")), click -> back.open(click.player()));
+					MenuIcons.line(backTo)), click -> back.open(click.player()));
 		}
 		if (page > 0) {
 			menu.button(SLOT_PREVIOUS, () -> MenuIcons.of(Items.SPECTRAL_ARROW, Component.literal("Previous Page").withStyle(ChatFormatting.YELLOW)),
