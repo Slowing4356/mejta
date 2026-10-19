@@ -30,7 +30,7 @@ public final class QolSettings {
 			.describedAs("/tpahere: ask another player to come to you");
 	public static final Setting<Integer> TPA_TIMEOUT = Setting.integer("tpa.timeout_seconds", 60, 10, 600)
 			.describedAs("Seconds before an unanswered teleport request expires");
-	public static final Setting<Integer> TPA_COOLDOWN = Setting.integer("tpa.cooldown_seconds", 10, 0, 3600)
+	public static final Setting<Integer> TPA_COOLDOWN = Setting.integer("tpa.cooldown_seconds", 3, 0, 3600)
 			.describedAs("Seconds between two teleport requests from the same player");
 
 	// ---------------------------------------------------------------- homes
@@ -40,7 +40,7 @@ public final class QolSettings {
 			.describedAs("Homes a player may have");
 	public static final Setting<Integer> HOMES_MAX_EXTRA = Setting.integer("homes.max_extra", 10, 0, 100)
 			.describedAs("Homes a player with mejtaqol.homes.extra may have");
-	public static final Setting<Integer> HOMES_COOLDOWN = Setting.integer("homes.cooldown_seconds", 5, 0, 3600)
+	public static final Setting<Integer> HOMES_COOLDOWN = Setting.integer("homes.cooldown_seconds", 3, 0, 3600)
 			.describedAs("Seconds between two /home teleports");
 	public static final Setting<String> HOMES_BLOCKED_DIMENSIONS = Setting.string("homes.blocked_dimensions", "")
 			.validatedBy(Names::isDimensionList)

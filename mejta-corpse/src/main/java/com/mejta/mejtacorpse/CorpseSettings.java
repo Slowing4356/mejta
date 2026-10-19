@@ -28,6 +28,8 @@ public final class CorpseSettings {
 			.describedAs("The corpse wears the dead player's skin (off: the default skin)");
 	public static final Setting<Boolean> SHOW_NAME = Setting.bool("display.show_name", true)
 			.describedAs("Show \"<player>'s corpse\" above the corpse");
+	public static final Setting<Boolean> SHOW_ARMOR = Setting.bool("display.show_armor", true)
+			.describedAs("The corpse wears the armour it holds, so you can see it (a display copy; taking it from the menu removes it)");
 	public static final Setting<Boolean> DEATH_MESSAGE = Setting.bool("notify.death_message", true)
 			.describedAs("Tell a player where their corpse is when they die");
 	public static final Setting<Boolean> AUDIT_LOOTING = Setting.bool("audit.looting", true)
@@ -35,7 +37,7 @@ public final class CorpseSettings {
 
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, PUBLIC_AFTER_MINUTES, OWNER_REMOTE_OPEN, MAX_DISTANCE, EXPIRE_MINUTES, EXPIRE_ACTION, SHOW_SKIN, SHOW_NAME,
-					DEATH_MESSAGE, AUDIT_LOOTING)
+					SHOW_ARMOR, DEATH_MESSAGE, AUDIT_LOOTING)
 			.build();
 
 	private CorpseSettings() {

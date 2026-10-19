@@ -1,5 +1,9 @@
 # MejtaQoL changelog
 
+## 1.0.1
+
+- **Cooldowns:** `/tpa` and `/home` now share the same default cooldown of 3 seconds (`tpa.cooldown_seconds` was 10, `homes.cooldown_seconds` was 5). Both already used the same combat lock (`teleport.combat_seconds`, 10 seconds after PvP) and the same wait. Existing settings files keep their values.
+
 ## 1.0.0
 
 First release. Requires MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4); built and tested against MejtaCore 1.4.0.

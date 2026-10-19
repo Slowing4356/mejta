@@ -90,6 +90,8 @@ public final class CorpseMenu extends AbstractContainerMenu {
 			addTaken(before - corpse.itemCount());
 			if (corpse.broken()) {
 				sendAllDataToRemote();
+			} else if (corpse.itemCount() != before) {
+				MejtaCorpse.manager().itemsChanged(corpse);
 			}
 		}
 	}
@@ -139,6 +141,9 @@ public final class CorpseMenu extends AbstractContainerMenu {
 		}
 		corpse.saveOrBreak();
 		addTaken(moved);
+		if (!corpse.broken() && moved > 0) {
+			MejtaCorpse.manager().itemsChanged(corpse);
+		}
 		sendAllDataToRemote();
 		return moved;
 	}

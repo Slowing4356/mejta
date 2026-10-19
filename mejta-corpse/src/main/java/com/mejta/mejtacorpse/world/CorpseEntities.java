@@ -10,6 +10,7 @@ import com.mojang.authlib.properties.PropertyMap;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
@@ -23,27 +24,37 @@ import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.storage.TagValueInput;
 
 import com.mejta.mejtacorpse.data.CorpseRecord;
+import com.mejta.mejtacorpse.util.ItemJson;
 
 /**
  * The two entities that show a corpse, both vanilla so players need no mod:
  * <ul>
- * <li>a <b>mannequin</b> lying down (the sleeping pose) with the owner's skin and a name tag;</li>
+ * <li>a <b>mannequin</b> lying down (the sleeping pose) with the owner's skin, a name tag and, if enabled,
+ *     a display copy of the armour in the corpse;</li>
  * <li>an invisible <b>interaction</b> entity over the body, because a lying mannequin's own hitbox is
  *     tiny. It receives the clicks.</li>
  * </ul>
  * MejtaCorpse knows them by UUID (stored with the corpse). They also carry the tags {@code mejtacorpse}
- * and {@code mejtacorpse.<id>} for commands. They hold no items: if one is killed or removed, the corpse
- * is unchanged and the entities are put back.
+ * and {@code mejtacorpse.<id>} for commands. The armour the mannequin wears is a copy for display: the
+ * corpse's record keeps the real items, a mannequin never drops its equipment (vanilla), clicks on it
+ * open the menu, and dispensers cannot equip it. If an entity is killed or removed, the corpse is
+ * unchanged and the entities are put back.
  */
 public final class CorpseEntities {
 	public static final String TAG = "mejtacorpse";
 	public static final String TAG_PREFIX = "mejtacorpse.";
 	static final float HITBOX_WIDTH = 2.0f;
 	static final float HITBOX_HEIGHT = 0.6f;
+	/** The armour slots the body shows, with the inventory slot each comes from. */
+	private static final EquipmentSlot[] ARMOR = {EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD};
+	private static final int FIRST_ARMOR_SLOT = 36;
 
 	private CorpseEntities() {
 	}
@@ -80,7 +91,8 @@ public final class CorpseEntities {
 	 * Spawns both entities (loading the chunk if needed) and returns the corpse with their UUIDs, or empty
 	 * if the dimension is gone or the game refused to create them.
 	 */
-	public static Optional<CorpseRecord> spawn(MinecraftServer server, CorpseRecord corpse, boolean playerSkin, boolean showName) {
+	public static Optional<CorpseRecord> spawn(MinecraftServer server, CorpseRecord corpse, boolean playerSkin, boolean showName,
+			boolean showArmor) {
 		Optional<ServerLevel> found = level(server, corpse);
 		if (found.isEmpty()) {
 			return Optional.empty();
@@ -115,6 +127,9 @@ public final class CorpseEntities {
 		mannequin.setNoGravity(noGravity);
 		mannequin.setInvulnerable(true);
 		mannequin.setSilent(true);
+		if (mannequin instanceof LivingEntity living) {
+			dress(living, corpse, server.registryAccess(), showArmor);
+		}
 		if (showName) {
 			mannequin.setCustomName(Component.literal(corpse.ownerName() + "'s corpse").withStyle(ChatFormatting.GRAY));
 			mannequin.setCustomNameVisible(true);
@@ -133,6 +148,22 @@ public final class CorpseEntities {
 			return Optional.empty();
 		}
 		return Optional.of(corpse.withEntities(mannequin.getUUID(), hitbox.getUUID()));
+	}
+
+	/**
+	 * Makes the body wear a copy of each armour piece the corpse holds, or nothing if {@code show} is off.
+	 * Only slots that differ are changed.
+	 */
+	public static void dress(LivingEntity body, CorpseRecord corpse, HolderLookup.Provider registries, boolean show) {
+		for (int i = 0; i < ARMOR.length; i++) {
+			ItemStack wanted = ItemStack.EMPTY;
+			if (show && corpse.items().containsKey(FIRST_ARMOR_SLOT + i)) {
+				wanted = ItemJson.decode(registries, corpse.items().get(FIRST_ARMOR_SLOT + i)).map(s -> s.copyWithCount(1)).orElse(ItemStack.EMPTY);
+			}
+			if (!ItemStack.matches(body.getItemBySlot(ARMOR[i]), wanted)) {
+				body.setItemSlot(ARMOR[i], wanted);
+			}
+		}
 	}
 
 	private static Entity load(ServerLevel level, CompoundTag tag) {
