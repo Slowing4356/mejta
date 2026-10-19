@@ -602,8 +602,19 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 				String wanted = expected.get(i).isEmpty() ? "empty" : ItemJson.encode(r, expected.get(i)).toString();
 				LOG.error("[MejtaUtilsTest] slot {} is {}, expected {}", i, was, wanted);
 				if (was.equals(wanted)) {
-					// Same patch, so the item's default components differ: show them all.
-					LOG.error("[MejtaUtilsTest] slot {} components {}, expected {}", i, actual.getComponents(), expected.get(i).getComponents());
+					// Same saved form, yet not equal: name the component whose equals() differs, and the patches.
+					ItemStack want = expected.get(i);
+					LOG.error("[MejtaUtilsTest] slot {} patch {}, expected {}", i, actual.getComponentsPatch(), want.getComponentsPatch());
+					for (net.minecraft.core.component.TypedDataComponent<?> c : actual.getComponents()) {
+						Object other = want.getComponents().get(c.type());
+						if (!java.util.Objects.equals(c.value(), other)) {
+							LOG.error("[MejtaUtilsTest] slot {} component {} differs: {} ({}@{}) vs {} ({}@{})", i, c.type(), c.value(),
+									c.value().getClass().getName(), System.identityHashCode(c.value()), other,
+									other == null ? "-" : other.getClass().getName(), System.identityHashCode(other));
+						}
+					}
+					LOG.error("[MejtaUtilsTest] slot {} same item {}, same count {}, components equal {}", i, actual.getItem() == want.getItem(),
+							actual.getCount() == want.getCount(), actual.getComponents().equals(want.getComponents()));
 				}
 				return false;
 			}

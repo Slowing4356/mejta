@@ -97,6 +97,11 @@ public final class AntiCheat {
 	private static final long RECORD_INTERVAL_MS = 1_000;
 	/** Client ticks after leaving a vehicle in which movement is not predicted (dismount placement). */
 	private static final int PASSENGER_GRACE_TICKS = 10;
+	/**
+	 * Client ticks after an elytra glide in which horizontal speed is not predicted: the client can keep
+	 * gliding (decay 0.99) for a tick or two after the server already sees it on the ground.
+	 */
+	private static final int GLIDE_GRACE_TICKS = 5;
 	/** Client ticks after mounting a boat before its movement is predicted. */
 	private static final int MOUNT_GRACE_TICKS = 3;
 	/** How long a lost jump boost is still allowed, on top of twice the recent round trip. */
@@ -225,6 +230,8 @@ public final class AntiCheat {
 		volatile float msPerTick;
 		/** Client ticks since the player last rode a vehicle (large when never). */
 		int ticksSincePassenger = Integer.MAX_VALUE / 2;
+		/** Client ticks since the player last glided with an elytra (large when never). */
+		int ticksSinceGliding = Integer.MAX_VALUE / 2;
 		final JumpCheck.State jump = new JumpCheck.State();
 		/** Ground (server-side or claimed) at the end of the last client tick. */
 		boolean jumpGroundBefore = true;
@@ -484,6 +491,7 @@ public final class AntiCheat {
 		}
 		boolean impulse = impulseUntrusted(player, d);
 		d.ticksSincePassenger = player.isPassenger() ? 0 : Math.min(d.ticksSincePassenger + 1, Integer.MAX_VALUE / 2);
+		d.ticksSinceGliding = player.isFallFlying() ? 0 : Math.min(d.ticksSinceGliding + 1, Integer.MAX_VALUE / 2);
 		double y = player.getY();
 		double dy = Double.isNaN(d.lastTickY) ? 0 : y - d.lastTickY;
 		d.lastTickY = y;
@@ -824,7 +832,8 @@ public final class AntiCheat {
 		d.groundOneAgo = groundNow;
 		d.frictionTwoAgo = d.frictionOneAgo;
 		d.frictionOneAgo = friction[1];
-		boolean untrusted = impulse || d.ticksSincePassenger < PASSENGER_GRACE_TICKS || groundExempt(player);
+		boolean untrusted = impulse || d.ticksSincePassenger < PASSENGER_GRACE_TICKS || d.ticksSinceGliding < GLIDE_GRACE_TICKS
+				|| groundExempt(player);
 		Optional<Flag> flag = SpeedCheck.onClientTick(d.speed, moved, decay, accel, tookOff, untrusted);
 		return flag.isPresent() && handleMovement(player, d, flag.get(), cfg, cfg.speedKickVl());
 	}

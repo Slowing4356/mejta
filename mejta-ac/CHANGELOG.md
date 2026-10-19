@@ -13,6 +13,7 @@ Requires MejtaCore 1.3.0 or newer (API version 4). Every new setting is off or e
 - **2 new checks (14 in total), both experimental and MEDIUM at most:**
   - `movement.elytra`: elytra flight that ignores glide physics without a firework boost (elytra fly, glide speed, boosting without a rocket). `movement.fly` and `movement.speed` still don't judge gliding players.
   - `vehicle.horse`: horses, donkeys, mules, skeleton and zombie horses and camels that move faster or jump higher than their own speed and jump-strength attributes allow, or hover and fly.
+- **Fix:** `movement.speed` no longer judges the 5 client ticks after an elytra glide. The client can keep gliding for a tick or two after the server already sees it on the ground, which flagged legitimate landings.
 - **Tests:** unit tests for mitigation decisions, glide physics (including 30 random legitimate flights) and mount physics. A new latency suite, `MejtaAcStage6GameTest`, covers legitimate gliding with real input and fireworks, legitimate horse and camel riding, the new cheats, and every mitigation. The Stage 4 and Stage 5 legitimate-play scenarios now also require zero `movement.elytra` and `vehicle.horse` flags.
 - **Internal:** the block-action hooks pass the packet's block-change sequence and clicked face to MejtaAC, so a cancelled action can be resynchronised like vanilla's own refusals.
 

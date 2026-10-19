@@ -404,6 +404,8 @@ public final class MejtaAcStage6GameTest implements FabricClientGameTest {
 			if (jumpEvery > 0 && i % jumpEvery == 0 && i > 0) {
 				ctx.getInput().holdKeyFor(options -> options.keyJump, 10); // a full jump bar, released after 10 ticks
 				i += 10;
+				// holdKeyFor waits those 10 ticks: measure per tick again from here, not across the whole hold.
+				last = ctx.computeOnClient(mc -> mc.player.getVehicle() == null ? Vec3.ZERO : mc.player.getVehicle().position());
 			}
 			ctx.waitTick();
 			Vec3 now = ctx.computeOnClient(mc -> mc.player.getVehicle() == null ? Vec3.ZERO : mc.player.getVehicle().position());
