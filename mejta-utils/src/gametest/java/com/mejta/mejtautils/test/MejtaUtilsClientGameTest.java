@@ -421,6 +421,8 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 				&& player(s, me).gameMode.getGameModeForPlayer() == GameType.ADVENTURE));
 		clearChat(ctx);
 		chat(ctx, "/invsee claims");
+		check("staff mode: vanish's night vision kept (staff mode clears other effects)", server.computeOnServer(s ->
+				!MejtaUtils.vanish().state(me).nightVision || player(s, me).hasEffect(net.minecraft.world.effect.MobEffects.NIGHT_VISION)));
 		check("staff mode: /invsee claims is refused (claimed items would be lost on exit)",
 				chatContains(ctx, "Leave staff mode before taking your claims") && ctx.computeOnClient(mc -> mc.screen == null));
 		ctx.runOnClient(mc -> mc.player.getInventory().setSelectedSlot(0));
