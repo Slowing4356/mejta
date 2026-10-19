@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtacorpse",
+	"version": "${version}",
+	"name": "MejtaCorpse",
+	"description": "Server-side corpses for MejtaCore: a dying player's items stay in a corpse that wears their skin, opened like a chest. Built so items can never be duplicated.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.mejtacorpse.MejtaCorpse"
+		]
+	},
+	"mixins": [
+		"mejtacorpse.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.3.0 <2.0.0"
+	}
+}

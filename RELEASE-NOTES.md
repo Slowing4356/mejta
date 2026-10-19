@@ -1,6 +1,6 @@
 # Mejta v2026.10.2
 
-All six Mejta mods for **Minecraft Java 26.1.2** (Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25). New in this release: **MejtaQoL**. The other mods are unchanged since v2026.10.1.
+All seven Mejta mods for **Minecraft Java 26.1.2** (Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25). New in this release: **MejtaQoL** and **MejtaCorpse**. The other mods are unchanged since v2026.10.1.
 
 | Mod | Version | What it does | Install on |
 |---|---|---|---|
@@ -9,6 +9,7 @@ All six Mejta mods for **Minecraft Java 26.1.2** (Fabric Loader 0.19.5 or newer,
 | **MejtaUtils** | 1.0.0 | Staff tools: `/invsee` and `/ecsee` (also offline players), `/status`, `/vanish`, `/freeze`, `/staffmode`. | Server |
 | **MejtaDiscord** | 1.0.0 | Anti-cheat alerts and Minecraft chat to Discord webhooks; (experimental) Discord chat to Minecraft. | Server |
 | **MejtaPerf** | 1.0.0 | TPS/MSPT monitor, lag alerts, a sampling profiler and saved reports (`/mperf`). | Server |
+| **MejtaCorpse** | 1.0.0 (new) | Corpses that keep a dead player's items in a chest menu, wearing their skin. Built so items can never be duplicated. | Server |
 | **MejtaQoL** | 1.0.0 (new) | Player commands: `/tpa`, homes, warps, `/spawn`, `/back`, `/rtp`, `/ec`, portable workstations, `/trash`, AFK and `/r`. | Server |
 
 Every addon needs **MejtaCore** (1.4.0 recommended; 1.3.0 or newer, below 2.0.0, is accepted) and **Fabric API**. Addons never depend on each other: install only what you want. Vanilla clients can join.
@@ -31,11 +32,23 @@ Every addon needs **MejtaCore** (1.4.0 recommended; 1.3.0 or newer, below 2.0.0,
 - **Customisable:** every feature has its own on/off setting (switched-off commands disappear from players' command lists) and its own permission node, and limits, cooldowns, waits and messages are settings. Player commands are open to everyone by default; raise a node's level to make it staff-only.
 - `/qol` shows each player the commands they can use.
 
+## New: MejtaCorpse 1.0.0
+
+- **Corpses:** when a player dies, their items go into a corpse where they died: a vanilla mannequin lying down in their skin, named "<player>'s corpse". Players need no mod.
+- **Menu:** right-clicking opens a chest menu laid out like the inventory screen. **Take all** gives the owner every item back in its old slot, armour included.
+- **Access:** only the owner (and staff) by default. A setting can make corpses public after a delay, and an optional expiry drops or deletes the items.
+- **No duplication:**
+  - At death, the corpse is written to disk before the items leave the inventory, and the player is saved before the corpse can be opened.
+  - Every item taken from a corpse is removed on disk before the player gets it.
+  - A stop during a death is resolved at the owner's next join.
+  - A failed disk write moves nothing.
+- **Commands:** `/corpse` lists your corpses. Staff can list, open and teleport to anyone's.
+
 ## Tested
 
-The release workflow builds every jar from the tagged commit and runs the unit tests. MejtaQoL's headless server game test runs in every CI build. The client game tests for the other mods were run before v2026.10.1, and those mods have not changed since.
+The release workflow builds every jar from the tagged commit and runs the unit tests. MejtaQoL's and MejtaCorpse's headless server game tests run in every CI build. MejtaCorpse's test checks, after every kind of click, after a failed disk write and after an interrupted death, that each item exists exactly once. The client game tests for the other mods were run before v2026.10.1, and those mods have not changed since.
 
-Not covered by automated tests: MejtaQoL's chest menus, the timed teleport wait, the AFK broadcast and kick, and `/rtp` end to end (its README lists them); delivery to real Discord; and real hack clients.
+Not covered by automated tests: MejtaQoL's chest menus, the timed teleport wait, the AFK broadcast and kick, and `/rtp` end to end; right-clicking a corpse with a real client and its look (each README lists them); delivery to real Discord; and real hack clients.
 
 ## Known limitations
 
