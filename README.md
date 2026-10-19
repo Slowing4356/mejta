@@ -9,6 +9,7 @@ Server-side Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.19.5+, Fa
 | [MejtaUtils](mejta-utils/README.md) | 1.0.0 | Staff tools: `/invsee`, `/ecsee`, `/status`, `/vanish`, `/freeze`, `/staffmode`. |
 | [MejtaDiscord](mejta-discord/README.md) | 1.0.0 | Anti-cheat alerts and chat to Discord webhooks; (experimental) Discord chat to Minecraft. |
 | [MejtaPerf](mejta-perf/README.md) | 1.0.0 | TPS/MSPT monitor, lag alerts, a sampling profiler and reports (`/mperf`). |
+| [MejtaQoL](mejta-qol/README.md) | 1.0.0 | Player commands: `/tpa`, homes, warps, `/spawn`, `/back`, `/rtp`, `/ec`, portable workstations, `/trash`, AFK and `/r`. Every feature can be switched off. |
 
 Download the jars from [Releases](https://github.com/Slowing4356/mejta/releases). Put MejtaCore, Fabric API and the addons you want in the server's `mods/` folder; settings appear in `config/mejta/`. Each mod's README lists its commands, permissions and settings, and its `CHANGELOG.md` what changed.
 
@@ -23,7 +24,7 @@ cd ../mejta-ac && ./gradlew build   # jar in build/libs/
 
 ## CI and releases
 
-- **CI** (`.github/workflows/ci.yml`) builds every project and runs the unit tests on pushes to `main` and on pull requests.
+- **CI** (`.github/workflows/ci.yml`) builds every project and runs the unit tests on pushes to `main` and on pull requests. MejtaQoL's headless server game test runs there too.
 - **Client game tests** (a real client joins a dedicated server under a virtual display) take up to 40 minutes, so they run on demand: **Actions > CI > Run workflow**, then pick `all` or one project. Run them before a release.
 - **Releases** (`.github/workflows/release.yml`): pushing a tag such as `v2026.10.1` builds and tests the mods again and publishes a GitHub release with their jars, `SHA256SUMS.txt` and [`RELEASE-NOTES.md`](RELEASE-NOTES.md). An existing release for the tag is updated instead.
 
@@ -35,5 +36,4 @@ cd ../mejta-ac && ./gradlew build   # jar in build/libs/
 
 ## Planned
 
-- **MejtaQoL:** player commands such as `/tpa` and homes.
 - **MejtaCorpse:** corpses that keep a dead player's items.
