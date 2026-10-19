@@ -30,11 +30,13 @@ loom {
 fabricApi {
 	// Server game tests: a headless dedicated server loads MejtaCorpse and drives corpses with fake players.
 	// Run with `gradlew runGameTest` (about a minute; no display needed).
+	// Client game test: a real client dies, right-clicks its corpse and takes the items, saving screenshots.
+	// Run with `gradlew runClientGameTest` (needs a display, such as xvfb-run).
 	configureTests {
 		createSourceSet = true
 		modId = "mejtacorpse_test"
 		enableGameTests = true
-		enableClientGameTests = false
+		enableClientGameTests = true
 		eula = true
 	}
 }

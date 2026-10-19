@@ -112,6 +112,7 @@ A crash can therefore lose the items of an unfinished click (as a crash in vanil
 cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.4.0 first
 cd ../mejta-corpse && ./gradlew build            # compile and run unit tests
 ./gradlew runGameTest                            # headless server game test
+xvfb-run ./gradlew runClientGameTest             # real client on a dedicated server (needs a display)
 ```
 
 - **Unit tests** cover:
@@ -128,7 +129,14 @@ cd ../mejta-corpse && ./gradlew build            # compile and run unit tests
   - an unfinished death is resolved correctly at join, both ways;
   - a real death of a player who cannot be saved falls back to vanilla drops, each item dropped once.
 
-Not covered automatically: right-clicking a corpse with a real client, and the look of the corpse. Check these by hand.
+- **The client game test** runs a real client on a dedicated server, with a real player and no fake players:
+  - the player dies; chat names the corpse's place, no items drop and the inventory is empty after respawning;
+  - hitting the corpse does nothing, and right-clicking it opens the menu;
+  - a real shift-click takes a stack once, and a picked-up stack cannot be put back;
+  - Take all puts the armour back on and the shield in the offhand, gives every item exactly once and closes the menu;
+  - the empty corpse is removed.
+
+  It saves screenshots of the corpse from three sides, the menu and its tooltips in `build/run/clientGameTest/screenshots/`. The test player is offline, so the corpse shows a default skin there; on an online-mode server it shows the player's own skin.
 
 ## Limitations
 
