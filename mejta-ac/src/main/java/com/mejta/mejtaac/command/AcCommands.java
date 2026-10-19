@@ -67,6 +67,7 @@ public final class AcCommands {
 		source.sendSystemMessage(Component.literal("MejtaAC status").withStyle(ChatFormatting.GOLD));
 		line(source, "Enabled", String.valueOf(cfg.enabled()));
 		line(source, "Enforcement", cfg.enforcementMode() + " (min confidence " + cfg.enforcementMinConfidence() + ")");
+		line(source, "Mitigation", cfg.mitigation() + (cfg.mitigates() ? " (active)" : ""));
 		line(source, "Alerts", cfg.alertsEnabled() + " (min VL " + cfg.alertsMinVl() + ", cooldown " + cfg.alertsCooldownSeconds() + "s)");
 		line(source, "Kick notifications", String.valueOf(cfg.alertsEnforcement()));
 		line(source, "Log level", cfg.logLevel().name());
@@ -83,6 +84,9 @@ public final class AcCommands {
 		line(source, "Check interaction.fast_break", cfg.fastBreakEnabled() + " (kick VL " + cfg.fastBreakKickVl() + ")");
 		line(source, "Check movement.jump", cfg.jumpEnabled() + " (kick VL " + cfg.jumpKickVl() + ")");
 		line(source, "Check vehicle.boat_fly", cfg.boatFlyEnabled() + " (kick VL " + cfg.boatFlyKickVl() + ")");
+		line(source, "Check movement.elytra", cfg.elytraEnabled() + " (kick VL " + cfg.elytraKickVl() + ", tolerance " + cfg.elytraTolerance() + ")");
+		line(source, "Check vehicle.horse", cfg.horseEnabled() + " (kick VL " + cfg.horseKickVl() + ", speed tolerance "
+				+ cfg.horseSpeedTolerance() + ")");
 		line(source, "Players with violations", String.valueOf(ac.violations().trackedPlayers()));
 		return 1;
 	}

@@ -9,7 +9,8 @@
 		"fabric-client-gametest": [
 			"com.mejta.mejtaac.test.MejtaAcClientGameTest",
 			"com.mejta.mejtaac.test.MejtaAcStage4GameTest",
-			"com.mejta.mejtaac.test.MejtaAcStage5GameTest"
+			"com.mejta.mejtaac.test.MejtaAcStage5GameTest",
+			"com.mejta.mejtaac.test.MejtaAcStage6GameTest"
 		]
 	},
 	"depends": {

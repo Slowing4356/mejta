@@ -20,7 +20,8 @@ import com.mejta.mejtacore.api.notify.Severity;
  * <li>{@code mejtaac.enforcement}: a player was kicked, or would have been in DRY_RUN</li>
  * </ul>
  * Transmitted fields: player name and UUID, check, reason, violation level, measurements, ping,
- * world and action. No IP addresses or other personal data.
+ * world, action and, when the action behind a flag was undone, the mitigation. No IP addresses or other
+ * personal data.
  */
 public final class AlertPublisher {
 	public static final String CHANNEL_ALERT = "mejtaac.alert";
@@ -34,10 +35,11 @@ public final class AlertPublisher {
 
 	public void alert(Detection d) {
 		String more = d.suppressed() > 0 ? " (+" + d.suppressed() + " similar)" : "";
+		String mitigated = d.mitigated() ? " [mitigated: " + d.mitigation() + "]" : "";
 		MejtaCoreAPI.notifications().publish(fields(Notification.builder(addonId, CHANNEL_ALERT), d)
 				.severity(Severity.WARNING)
 				.title(d.playerName() + " failed " + d.flag().checkId())
-				.message(d.flag().reason() + " " + measurements(d.flag().measurements()) + " VL " + format(d.violationLevel()) + more)
+				.message(d.flag().reason() + " " + measurements(d.flag().measurements()) + " VL " + format(d.violationLevel()) + more + mitigated)
 				.inGameAudience(AcPermissions.ALERTS)
 				.build());
 	}
@@ -68,6 +70,9 @@ public final class AlertPublisher {
 				.field("ping_ms", d.pingMs())
 				.field("world", d.world())
 				.field("action", d.action());
+		if (d.mitigated()) {
+			b.field("mitigation", d.mitigation());
+		}
 		d.flag().measurements().forEach(b::field);
 		return b;
 	}

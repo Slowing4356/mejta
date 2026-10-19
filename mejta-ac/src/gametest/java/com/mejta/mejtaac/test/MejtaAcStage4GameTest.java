@@ -48,12 +48,14 @@ import com.mejta.mejtaac.check.combat.MultiTargetCheck;
 import com.mejta.mejtaac.check.combat.ReachCheck;
 import com.mejta.mejtaac.check.interaction.BlockReachCheck;
 import com.mejta.mejtaac.check.interaction.FastBreakCheck;
+import com.mejta.mejtaac.check.movement.ElytraCheck;
 import com.mejta.mejtaac.check.movement.FlyCheck;
 import com.mejta.mejtaac.check.movement.GroundSpoofCheck;
 import com.mejta.mejtaac.check.movement.JumpCheck;
 import com.mejta.mejtaac.check.movement.SpeedCheck;
 import com.mejta.mejtaac.check.movement.TimerCheck;
 import com.mejta.mejtaac.check.vehicle.BoatFlyCheck;
+import com.mejta.mejtaac.check.vehicle.HorseCheck;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 
@@ -412,7 +414,7 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 		boolean mined = mineDirt(ctx, server, arena);
 		List<FlagEvent> legit = flagsSince(legitStart);
 		for (String checkId : List.of(TimerCheck.ID, GroundSpoofCheck.ID, FlyCheck.ID, SpeedCheck.ID, ReachCheck.ID, HitboxCheck.ID,
-				MultiTargetCheck.ID, BlockReachCheck.ID, FastBreakCheck.ID, JumpCheck.ID, BoatFlyCheck.ID)) {
+				MultiTargetCheck.ID, BlockReachCheck.ID, FastBreakCheck.ID, JumpCheck.ID, BoatFlyCheck.ID, ElytraCheck.ID, HorseCheck.ID)) {
 			long count = legit.stream().filter(f -> f.check().equals(checkId)).count();
 			check(p.name() + ": legitimate play, no " + checkId + " flags (" + count + ")", count == 0);
 		}

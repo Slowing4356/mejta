@@ -14,7 +14,8 @@ import com.mejta.mejtacore.api.storage.RecordLogOptions;
 /**
  * Persistent records in {@code mejta-data/mejtaac/}, through MejtaCore's size-bounded record logs:
  * <ul>
- * <li>{@code violations.jsonl}: flags (rate-limited per player and check)</li>
+ * <li>{@code violations.jsonl}: flags (rate-limited per player and check), with {@code mitigation} when
+ * the action behind the flag was undone</li>
  * <li>{@code enforcement.jsonl}: audit trail of kicks and dry-run "would kick" decisions</li>
  * </ul>
  */
@@ -49,6 +50,9 @@ public final class AcRecords {
 		record.addProperty("ping_ms", d.pingMs());
 		record.addProperty("world", d.world());
 		record.addProperty("suppressed", d.suppressed());
+		if (d.mitigated()) {
+			record.addProperty("mitigation", d.mitigation());
+		}
 		violations.append(record);
 	}
 

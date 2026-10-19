@@ -29,12 +29,14 @@ import com.mejta.mejtaac.AcSettings;
 import com.mejta.mejtaac.AntiCheat;
 import com.mejta.mejtaac.MejtaAC;
 import com.mejta.mejtaac.check.Confidence;
+import com.mejta.mejtaac.check.movement.ElytraCheck;
 import com.mejta.mejtaac.check.movement.FlyCheck;
 import com.mejta.mejtaac.check.movement.GroundSpoofCheck;
 import com.mejta.mejtaac.check.movement.JumpCheck;
 import com.mejta.mejtaac.check.movement.SpeedCheck;
 import com.mejta.mejtaac.check.movement.TimerCheck;
 import com.mejta.mejtaac.check.vehicle.BoatFlyCheck;
+import com.mejta.mejtaac.check.vehicle.HorseCheck;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 
@@ -69,7 +71,7 @@ public final class MejtaAcStage5GameTest implements FabricClientGameTest {
 			new Profile("300 ms +-80 jitter + 1.5 s freezes", 300, 80, true));
 
 	private static final List<String> MOVEMENT_CHECKS = List.of(JumpCheck.ID, BoatFlyCheck.ID, FlyCheck.ID, SpeedCheck.ID,
-			GroundSpoofCheck.ID, TimerCheck.ID);
+			GroundSpoofCheck.ID, TimerCheck.ID, ElytraCheck.ID, HorseCheck.ID);
 
 	private record FlagEvent(long nanos, String check, String reason, Confidence confidence, String measurements) {
 	}

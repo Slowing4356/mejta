@@ -1,5 +1,21 @@
 # MejtaAC changelog
 
+## 1.1.0
+
+Requires MejtaCore 1.3.0 or newer (API version 4). Every new setting is off or experimental; with the defaults, existing checks behave exactly as in 1.0.0.
+
+- **Mitigation (experimental, off by default):** with `enforcement.mitigation` set to `ON`, every flag at `enforcement.min_confidence` or above undoes the action behind it, in `DRY_RUN` as in `ENFORCE`, independently of violation levels and kicks:
+  - `movement.fly`, `movement.speed`, `movement.jump` and `movement.elytra`: the player is set back to the last safe position with vanilla's own position correction. Never into a block, at most every 0.25 s, never while a teleport is unconfirmed.
+  - `combat.reach` and `combat.multi_target`: the attack is cancelled before vanilla processes it.
+  - `combat.hitbox` (judged after vanilla has processed the hit): the player's next attacks are cancelled for 10 client ticks.
+  - `interaction.block_reach` and `interaction.fast_break`: the block action is cancelled, and the client is resynchronised (sequence acknowledged, real block states sent).
+  - Records, alerts and log lines say what was mitigated (`"mitigation": "setback"`, `cancel_attack`, `block_attacks` or `cancel_action`). `/mejtaadmin mejtaac status` shows the setting.
+- **2 new checks (14 in total), both experimental and MEDIUM at most:**
+  - `movement.elytra`: elytra flight that ignores glide physics without a firework boost (elytra fly, glide speed, boosting without a rocket). `movement.fly` and `movement.speed` still don't judge gliding players.
+  - `vehicle.horse`: horses, donkeys, mules, skeleton and zombie horses and camels that move faster or jump higher than their own speed and jump-strength attributes allow, or hover and fly.
+- **Tests:** unit tests for mitigation decisions, glide physics (including 30 random legitimate flights) and mount physics. A new latency suite, `MejtaAcStage6GameTest`, covers legitimate gliding with real input and fireworks, legitimate horse and camel riding, the new cheats, and every mitigation. The Stage 4 and Stage 5 legitimate-play scenarios now also require zero `movement.elytra` and `vehicle.horse` flags.
+- **Internal:** the block-action hooks pass the packet's block-change sequence and clicked face to MejtaAC, so a cancelled action can be resynchronised like vanilla's own refusals.
+
 ## 1.0.0
 
 First release. Requires MejtaCore 1.3.0 or newer (API version 4).

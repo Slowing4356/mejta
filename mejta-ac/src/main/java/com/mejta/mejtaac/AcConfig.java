@@ -2,7 +2,9 @@ package com.mejta.mejtaac;
 
 import com.mejta.mejtaac.AcSettings.EnforcementMode;
 import com.mejta.mejtaac.AcSettings.LogLevel;
+import com.mejta.mejtaac.AcSettings.MitigationMode;
 import com.mejta.mejtaac.check.Confidence;
+import com.mejta.mejtaac.enforce.EnforcementPolicy;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 
 /**
@@ -48,7 +50,14 @@ public record AcConfig(
 		boolean jumpEnabled,
 		double jumpKickVl,
 		boolean boatFlyEnabled,
-		double boatFlyKickVl) {
+		double boatFlyKickVl,
+		MitigationMode mitigation,
+		boolean elytraEnabled,
+		double elytraKickVl,
+		double elytraTolerance,
+		boolean horseEnabled,
+		double horseKickVl,
+		double horseSpeedTolerance) {
 
 	public static AcConfig from(ConfigHandle c) {
 		return new AcConfig(
@@ -90,13 +99,25 @@ public record AcConfig(
 				c.get(AcSettings.JUMP_ENABLED),
 				c.get(AcSettings.JUMP_KICK_VL),
 				c.get(AcSettings.BOAT_FLY_ENABLED),
-				c.get(AcSettings.BOAT_FLY_KICK_VL));
+				c.get(AcSettings.BOAT_FLY_KICK_VL),
+				c.get(AcSettings.ENFORCEMENT_MITIGATION),
+				c.get(AcSettings.ELYTRA_ENABLED),
+				c.get(AcSettings.ELYTRA_KICK_VL),
+				c.get(AcSettings.ELYTRA_TOLERANCE),
+				c.get(AcSettings.HORSE_ENABLED),
+				c.get(AcSettings.HORSE_KICK_VL),
+				c.get(AcSettings.HORSE_SPEED_TOLERANCE));
 	}
 
 	/** Whether any check needs per-tick client sync (pings and entity history). */
 	public boolean needsSync() {
 		return enabled && (reachEnabled || groundSpoofEnabled || hitboxEnabled || flyEnabled || speedEnabled || jumpEnabled
-				|| boatFlyEnabled);
+				|| boatFlyEnabled || elytraEnabled || horseEnabled);
+	}
+
+	/** Whether confident flags undo the offending action (see {@link EnforcementPolicy#mitigates}). */
+	public boolean mitigates() {
+		return enabled && EnforcementPolicy.mitigationActive(enforcementMode, mitigation);
 	}
 
 	public boolean logs(LogLevel level) {

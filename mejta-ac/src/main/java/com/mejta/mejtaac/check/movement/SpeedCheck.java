@@ -47,6 +47,11 @@ public final class SpeedCheck {
 			violatingTicks = 0;
 			buffer = Math.max(0, buffer - 0.05);
 		}
+
+		/** Whether an excess is building up or was just flagged (the position is not a safe setback target). */
+		public boolean violating() {
+			return violatingTicks > 0 || buffer > 0;
+		}
 	}
 
 	private SpeedCheck() {
