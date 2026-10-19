@@ -98,8 +98,8 @@ public final class AntiCheat {
 	/** Client ticks after leaving a vehicle in which movement is not predicted (dismount placement). */
 	private static final int PASSENGER_GRACE_TICKS = 10;
 	/**
-	 * Client ticks after an elytra glide in which horizontal speed is not predicted: the client can keep
-	 * gliding (decay 0.99) for a tick or two after the server already sees it on the ground.
+	 * Client ticks, once the client has seen the glide end, in which horizontal speed is still not predicted
+	 * (the last glide ticks' momentum on landing).
 	 */
 	private static final int GLIDE_GRACE_TICKS = 5;
 	/** Client ticks after mounting a boat before its movement is predicted. */
@@ -230,8 +230,11 @@ public final class AntiCheat {
 		volatile float msPerTick;
 		/** Client ticks since the player last rode a vehicle (large when never). */
 		int ticksSincePassenger = Integer.MAX_VALUE / 2;
-		/** Client ticks since the player last glided with an elytra (large when never). */
+		/** Client ticks since the player last glided with an elytra, or may still glide on the client (large when never). */
 		int ticksSinceGliding = Integer.MAX_VALUE / 2;
+		/** Last server tick at whose end the player was gliding. */
+		volatile int glideTick = Integer.MIN_VALUE;
+		volatile long glideNanos;
 		final JumpCheck.State jump = new JumpCheck.State();
 		/** Ground (server-side or claimed) at the end of the last client tick. */
 		boolean jumpGroundBefore = true;
@@ -389,6 +392,10 @@ public final class AntiCheat {
 		int tick = server.getTickCount();
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			PlayerData d = player.isFallFlying() ? players.get(player.getUUID()) : null;
+			if (d != null) {
+				d.glideTick = tick;
+				d.glideNanos = System.nanoTime();
+			}
 			if (d != null && !player.level().getEntities(player, player.getBoundingBox().inflate(3.0),
 					e -> e.getType() == EntityType.FIREWORK_ROCKET).isEmpty()) {
 				d.rocketTick = tick;
@@ -491,7 +498,7 @@ public final class AntiCheat {
 		}
 		boolean impulse = impulseUntrusted(player, d);
 		d.ticksSincePassenger = player.isPassenger() ? 0 : Math.min(d.ticksSincePassenger + 1, Integer.MAX_VALUE / 2);
-		d.ticksSinceGliding = player.isFallFlying() ? 0 : Math.min(d.ticksSinceGliding + 1, Integer.MAX_VALUE / 2);
+		d.ticksSinceGliding = player.isFallFlying() || glidePossibleOnClient(player, d) ? 0 : Math.min(d.ticksSinceGliding + 1, Integer.MAX_VALUE / 2);
 		double y = player.getY();
 		double dy = Double.isNaN(d.lastTickY) ? 0 : y - d.lastTickY;
 		d.lastTickY = y;
@@ -1044,6 +1051,19 @@ public final class AntiCheat {
 		}
 		OptionalInt ack = sync.lastAckTick(player.getUUID());
 		return ack.isPresent() ? ack.getAsInt() <= d.rocketTick + 1 : System.nanoTime() - d.rocketNanos < UNSYNCED_WINDOW_NANOS;
+	}
+
+	/**
+	 * Whether the client may still be gliding although the server has ended the glide: only the server ends it,
+	 * and the client keeps gliding (sliding along the ground on landing) until that change arrives, one round
+	 * trip later. So: gliding at the end of a server tick the client has not yet confirmed past.
+	 */
+	private boolean glidePossibleOnClient(ServerPlayer player, PlayerData d) {
+		if (d.glideTick == Integer.MIN_VALUE) {
+			return false;
+		}
+		OptionalInt ack = sync.lastAckTick(player.getUUID());
+		return ack.isPresent() ? ack.getAsInt() <= d.glideTick + 1 : System.nanoTime() - d.glideNanos < UNSYNCED_WINDOW_NANOS;
 	}
 
 	/** Judges the vertical movement of a boat or raft the player steers. See {@link BoatFlyCheck}. */
