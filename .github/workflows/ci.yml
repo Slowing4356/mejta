@@ -21,7 +21,7 @@ on:
         description: Client game tests to run
         type: choice
         default: none
-        options: [ none, all, mejta-core/test-addon, mejta-ac, mejta-utils, mejta-discord, mejta-perf ]
+        options: [ none, all, mejta-core/test-addon, mejta-ac, mejta-utils, mejta-discord, mejta-perf, mejta-corpse ]
 
 permissions:
   contents: read
@@ -103,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: ${{ fromJSON(inputs.game_tests == 'all' && '["mejta-core/test-addon","mejta-ac","mejta-utils","mejta-discord","mejta-perf"]' || format('["{0}"]', inputs.game_tests)) }}
+        project: ${{ fromJSON(inputs.game_tests == 'all' && '["mejta-core/test-addon","mejta-ac","mejta-utils","mejta-discord","mejta-perf","mejta-corpse"]' || format('["{0}"]', inputs.game_tests)) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
