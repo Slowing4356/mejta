@@ -24,6 +24,9 @@ import com.mejta.mejtaac.AntiCheat;
  * {@code PacketUtils.ensureRunningOnSameThread} reschedules them onto the server thread by throwing.
  * Hooks placed right after that call therefore run exactly once, on the server thread, in packet
  * order. The tick-end HEAD hook deliberately runs on the network thread to time packet arrival.
+ *
+ * <p>A hook cancels vanilla's handling when MejtaAC kicked the player, or when mitigation undoes the
+ * action (an attack or block action that is not processed).
  */
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class ServerGamePacketListenerImplMixin {
@@ -61,7 +64,7 @@ public abstract class ServerGamePacketListenerImplMixin {
 	@Inject(method = "handlePlayerAction", cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = ENSURE_SAME_THREAD))
 	private void mejtaac$onPlayerAction(ServerboundPlayerActionPacket packet, CallbackInfo ci) {
 		AntiCheat antiCheat = AntiCheat.get().orElse(null);
-		if (antiCheat != null && antiCheat.onPlayerAction(player, packet.getAction(), packet.getPos())) {
+		if (antiCheat != null && antiCheat.onPlayerAction(player, packet.getAction(), packet.getPos(), packet.getSequence())) {
 			ci.cancel();
 		}
 	}
@@ -69,7 +72,8 @@ public abstract class ServerGamePacketListenerImplMixin {
 	@Inject(method = "handleUseItemOn", cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = ENSURE_SAME_THREAD))
 	private void mejtaac$onUseItemOn(ServerboundUseItemOnPacket packet, CallbackInfo ci) {
 		AntiCheat antiCheat = AntiCheat.get().orElse(null);
-		if (antiCheat != null && antiCheat.onBlockInteraction(player, packet.getHitResult().getBlockPos(), "use_on_block")) {
+		if (antiCheat != null && antiCheat.onBlockInteraction(player, packet.getHitResult().getBlockPos(), "use_on_block",
+				packet.getHitResult().getDirection(), packet.getSequence())) {
 			ci.cancel();
 		}
 	}

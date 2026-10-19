@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtaperf.metrics.MetricRates;
+import com.mejta.mejtaperf.profiler.TickLog;
 import com.mejta.mejtaperf.tick.LagAlarm;
 import com.mejta.mejtaperf.tick.LevelTimes;
 import com.mejta.mejtaperf.tick.TickStats;
@@ -26,6 +27,7 @@ final class PerfMonitor {
 	}
 
 	private final TickStats ticks = new TickStats();
+	private final TickLog tickLog = new TickLog();
 	private final LevelTimes levels = new LevelTimes();
 	private final MetricRates metrics = new MetricRates();
 	private final JvmStats jvm = new JvmStats();
@@ -76,6 +78,7 @@ final class PerfMonitor {
 		// marked as ticks, so inTick does not stay true for good (the first real tick after a pause is not marked).
 		boolean unended = ticks.inTick();
 		ticks.tickStarted(now);
+		tickLog.started();
 		tickStartNanos = now; // before inTick: whoever sees inTick true sees this start or a newer one
 		inTick = !unended;
 	}
@@ -83,6 +86,7 @@ final class PerfMonitor {
 	private void tickEnded(MinecraftServer server) {
 		long now = System.nanoTime();
 		ticks.tickEnded(now);
+		tickLog.ended(now - tickStartNanos); // before inTick: the profiler reads the duration once the tick is over
 		inTick = false;
 		if (now - nextSecond < 0) {
 			return;
@@ -105,6 +109,11 @@ final class PerfMonitor {
 
 	TickStats ticks() {
 		return ticks;
+	}
+
+	/** Recent tick durations, readable from the profiler's thread. */
+	TickLog tickLog() {
+		return tickLog;
 	}
 
 	LevelTimes levels() {

@@ -32,6 +32,7 @@ Put `mejtaperf-1.0.0.jar` in the server's `mods/` folder next to MejtaCore and F
 | `/mperf entities` | `mejtaperf.view` | The 10 most common entity types, and the 5 chunks with the most entities (with coordinates). |
 | `/mperf metrics [addon]` | `mejtaperf.view` | Mejta metrics over the last minute. For timers: ms per tick, calls per second, average and peak. For counters: rate. For gauges: current value. |
 | `/mperf profiler start [seconds]` | `mejtaperf.profiler` | Samples the server thread until stopped, until the time given (5–3600 s), or until `profiler.max_seconds`. |
+| `/mperf profiler slow <ms> [seconds]` | `mejtaperf.profiler` | Like `start`, but keeps only samples of ticks that took at least `<ms>` (10–60000), like Spark's `--only-ticks-over`. Use it for lag spikes: the normal ticks around them no longer dilute the report. |
 | `/mperf profiler stop` | `mejtaperf.profiler` | Ends the profile early. The report is still saved. |
 | `/mperf profiler status` | `mejtaperf.profiler` | Whether a profile is running, and where the last report is. |
 | `/mperf report` | `mejtaperf.profiler` | Saves a full report (see [Reports](#reports)). |
@@ -57,7 +58,7 @@ Levels can be changed per node with `/mejtaadmin config set mejtacore.permission
 | `alerts.sustain_seconds` | `10` (1–600) | How long MSPT must stay at or above the threshold before an alert, and below 80% of it before the recovery |
 | `alerts.cooldown_minutes` | `10` (1–1440) | Minimum time between two lag alerts |
 | `alerts.recovery` | `true` | Also publish a message when the server has recovered |
-| `alerts.auto_profile` | `false`, **experimental** | Start a 30-second profile when a lag alert fires, and save its report |
+| `alerts.auto_profile` | `false`, **experimental** | Start a 30-second profile when a lag alert fires, keeping only ticks at or above `alerts.mspt_threshold`, and save its report |
 | `profiler.interval_ms` | `10` (2–100) | Time between two samples |
 | `profiler.max_seconds` | `600` (10–3600) | A profile stops by itself after this long |
 | `reports.keep` | `20` (1–500) | Reports of each kind that are kept; older ones are deleted |
@@ -105,6 +106,7 @@ The profiler takes a stack trace of the server thread every `profiler.interval_m
 - **Phases.** Each sample is marked as taken **in a tick** or **between ticks**. Between ticks, the server handles network packets (moves, attacks, chat) and waits for the next tick.
 - **Waiting.** Samples where the server was only waiting for the next tick are counted but left out of every percentage. That is decided from the stack, not the phase: the thread must be parked, sleeping or yielding, and above that there must be only the main loop's wait (`MinecraftServer.waitUntilNextTick`, through its `managedBlock` and `waitForTasks`), or, between ticks, only the server's own loop. Every other wait is lag and stays in: a tick waiting for a chunk to load (`ServerChunkCache.getChunk`), an autosave waiting for chunks to be written (`ChunkMap.saveAllChunks`), or a packet handler blocked on a lock. These wait through the same `managedBlock` or park as the idle loop, but are called from somewhere else.
 - **Time by mod.** Each sample is charged to the innermost frame that belongs to a mod other than Minecraft. If a mod's code is anywhere on the stack, the time was spent on its behalf, even when the innermost frames are vanilla code it called. Mixin handlers count for the mod that added them: Fabric names them `handler$…$<modid>$…`. Mods are found from the files they were loaded from; for mods nested inside another mod's jar, MejtaPerf falls back to the package name.
+- **Only slow ticks.** `/mperf profiler slow <ms>` holds each tick's samples until the tick has ended, then keeps them only if the tick took at least `<ms>`; samples between ticks are dropped. The report's header says how many slow ticks were found and how many samples were kept. Tick durations reach the sampler through a small lock-free log of the last 256 ticks.
 - **Cost.** Taking a stack briefly pauses the server thread at a safepoint. At the default 10 ms interval the cost is small, but a profile is meant to run for minutes, not permanently. Memory is bounded: the tree holds at most 200,000 nodes, and if it fills up, the report says how many samples were cut short.
 
 When the profile ends, the report is built and saved on MejtaPerf's own I/O thread. Holders of `mejtaperf.profiler` then see a "Profile saved" message with the top mods and methods. That message is published on `mejtaperf.profiler`, so it can be routed to Discord too. It does not say who started the profile ("started from a command"); the report file does. The report's TPS covers the whole profile. Its MSPT covers the whole profile too, up to the 15 minutes of tick history; the report says when it covers only the end of a longer profile.
@@ -149,7 +151,7 @@ cd ../mejta-perf && ./gradlew test build runClientGameTest
 
   Every check logs `[MejtaPerfTest] PASS/FAIL`.
 
-The repository's CI runs both on every push.
+The repository's CI builds and runs the unit tests on every push to `main`; the game test runs on demand (Actions > CI > Run workflow).
 
 ## Limitations
 

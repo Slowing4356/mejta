@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 
 import org.junit.jupiter.api.Test;
 
@@ -177,7 +178,7 @@ class ProfilerTest {
 		assertEquals(200, s.samples());
 		assertEquals(100, s.busy());
 		assertEquals("net.minecraft.world.entity.Entity.tick", s.hotMethods().get(0).getKey());
-		String text = report.render(new ProfileReport.Info("2026-10-18T20:00:00Z (test)", "stopped", 2.0, 10, "40 ticks"));
+		String text = report.render(new ProfileReport.Info("2026-10-18T20:00:00Z (test)", "stopped", 2.0, 10, "40 ticks", ""));
 		assertTrue(text.contains(" 60.00%") && text.contains("minecraft"), text);
 		assertTrue(text.contains("com.mejta.mejtaac.AntiCheat.onServerTickEnd  [mejtaac]"), text);
 		assertFalse(text.contains("waitUntilNextTick"), "idle branches are not in the tree");
@@ -230,5 +231,60 @@ class ProfilerTest {
 	void shortNames() {
 		assertEquals("Level.tick", ProfileReport.shorten("net.minecraft.world.level.Level.tick"));
 		assertEquals("Main.run", ProfileReport.shorten("Main.run"));
+	}
+
+	@Test
+	void tickLogKeepsRecentDurations() {
+		TickLog log = new TickLog();
+		assertEquals(0, log.current());
+		long first = log.started();
+		assertEquals(-1, log.duration(first), "still running");
+		log.ended(42);
+		assertEquals(42, log.duration(first));
+		for (int i = 0; i < TickLog.SIZE; i++) {
+			log.started();
+			log.ended(1);
+		}
+		assertEquals(-1, log.duration(first), "overwritten after SIZE ticks");
+	}
+
+	@Test
+	void onlySlowTicksAreKept() throws InterruptedException {
+		TickLog log = new TickLog();
+		AtomicBoolean inTick = new AtomicBoolean();
+		AtomicBoolean run = new AtomicBoolean(true);
+		Thread server = new Thread(() -> {
+			int n = 0;
+			while (run.get()) {
+				boolean slow = n++ % 4 == 0;
+				long start = System.nanoTime();
+				log.started();
+				inTick.set(true);
+				long end = start + (slow ? 60_000_000L : 4_000_000L);
+				while (System.nanoTime() < end) {
+					spin();
+				}
+				log.ended(System.nanoTime() - start);
+				inTick.set(false);
+				LockSupport.parkNanos(10_000_000L);
+			}
+		}, "fake-server");
+		server.setDaemon(true);
+		server.start();
+		CountDownLatch done = new CountDownLatch(1);
+		StackSampler sampler = new StackSampler(server, 2_000_000, 10_000_000_000L, inTick::get, System::nanoTime, done::countDown, log,
+				30_000_000L);
+		sampler.start();
+		Thread.sleep(1_000);
+		sampler.stop(StackSampler.End.STOPPED);
+		assertTrue(sampler.await(5_000));
+		run.set(false);
+		assertTrue(sampler.slowTicks() >= 2, "slow ticks: " + sampler.slowTicks());
+		assertTrue(sampler.keptSamples() > 0 && sampler.keptSamples() < sampler.samples(),
+				sampler.keptSamples() + " of " + sampler.samples());
+		assertEquals(sampler.keptSamples(), sampler.tree().samples());
+		assertEquals(List.of(StackSampler.IN_TICK), sampler.tree().root().children().stream().map(CallTree.Node::frame).toList(),
+				"samples between ticks are dropped");
+		assertEquals(30_000_000L, sampler.slowNanos());
 	}
 }

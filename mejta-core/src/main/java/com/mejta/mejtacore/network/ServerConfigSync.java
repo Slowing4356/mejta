@@ -23,11 +23,11 @@ import com.mejta.mejtacore.api.audit.AuditEntry;
 import com.mejta.mejtacore.api.audit.AuditOutcome;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
-import com.mejta.mejtacore.api.config.SettingType;
 import com.mejta.mejtacore.api.notify.Notification;
 import com.mejta.mejtacore.api.notify.Severity;
 import com.mejta.mejtacore.config.ConfigEditing;
 import com.mejta.mejtacore.config.ConfigNames;
+import com.mejta.mejtacore.config.SettingSteps;
 import com.mejta.mejtacore.config.SettingText;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.logging.MejtaLog;
@@ -150,33 +150,34 @@ public final class ServerConfigSync {
 	}
 
 	private static boolean hasRealRange(Setting<?> setting) {
-		if (setting.type() == SettingType.INTEGER) {
-			return setting.min().intValue() != Integer.MIN_VALUE || setting.max().intValue() != Integer.MAX_VALUE;
-		}
-		if (setting.type() == SettingType.DECIMAL) {
-			return setting.min().doubleValue() != -Double.MAX_VALUE || setting.max().doubleValue() != Double.MAX_VALUE;
-		}
-		return false;
+		return SettingSteps.hasRealRange(setting);
 	}
 
-	private static void handleEdit(ServerPlayer player, EditConfig edit) {
-		ConfigEditing.Result result;
+	/**
+	 * An edit by a player from a menu: the client's Server Settings (network) or the server's own chest menu
+	 * ({@code /mejtaadmin config menu}). Permission check, rate limit, then {@link #apply}: validation, save,
+	 * audit and notification. Secret settings are refused, as for every menu.
+	 */
+	public static ConfigEditing.Result applyAsPlayer(ServerPlayer player, String configId, String op, String key, String value) {
 		if (!PermissionRegistry.check(player.permissions(), PermissionRegistry.CONFIG_EDIT)) {
-			// A vanilla menu never sends this: only a modified client does. Answer it, but do not let it flood the
-			// audit log, the server log or notification providers.
+			// The menus never offer this without the permission: only a modified client (or a permission revoked a
+			// moment ago) gets here. Answer it, but do not let it flood the audit log, the server log or providers.
 			long now = System.currentTimeMillis();
 			Long last = lastDeniedAudit.get(player.getUUID());
 			if (last == null || now - last >= DENIED_AUDIT_INTERVAL_MS) {
 				lastDeniedAudit.put(player.getUUID(), now);
-				audit(MejtaCoreAPI.actor(player), edit.configId(), edit.op(), edit.key(), AuditOutcome.DENIED);
+				audit(MejtaCoreAPI.actor(player), configId, op, key, AuditOutcome.DENIED);
 			}
-			result = new ConfigEditing.Result(false, "You may not edit server settings");
-		} else if (!withinRate(player.getUUID())) {
-			result = new ConfigEditing.Result(false, "Too many changes at once; slow down");
-		} else {
-			result = apply(player.permissions(), MejtaCoreAPI.actor(player), edit.configId(), edit.op(), edit.key(), edit.value(),
-					false);
+			return new ConfigEditing.Result(false, "You may not edit server settings (needs " + PermissionRegistry.CONFIG_EDIT.node() + ")");
 		}
+		if (!withinRate(player.getUUID())) {
+			return new ConfigEditing.Result(false, "Too many changes at once; slow down");
+		}
+		return apply(player.permissions(), MejtaCoreAPI.actor(player), configId, op, key, value, false);
+	}
+
+	private static void handleEdit(ServerPlayer player, EditConfig edit) {
+		ConfigEditing.Result result = applyAsPlayer(player, edit.configId(), edit.op(), edit.key(), edit.value());
 		if (ServerPlayNetworking.canSend(player, EditResult.TYPE)) {
 			String message = result.message().length() > 1000 ? result.message().substring(0, 997) + "..." : result.message();
 			ServerPlayNetworking.send(player, new EditResult(result.ok(), message));
@@ -216,8 +217,13 @@ public final class ServerConfigSync {
 		if (result.ok()) {
 			// The message never contains a sensitive value (see ConfigEditing).
 			MejtaLog.CORE.info("[config] {} changed {}", who, result.message());
-			publishChange(who, configId, opName, key, result.message());
+			publishChange(who, configId, opName, key, result.message(), Severity.INFO);
 			audit(actor, configId, opName, key, AuditOutcome.SUCCESS);
+		} else if (result.unsaved()) {
+			// In effect until the next restart or reload, so it is announced, but as a problem.
+			MejtaLog.CORE.warn("[config] {} changed {}", who, result.message());
+			publishChange(who, configId, opName, key, result.message(), Severity.WARNING);
+			audit(actor, configId, opName, key, AuditOutcome.FAILED);
 		}
 		return result;
 	}
@@ -232,7 +238,7 @@ public final class ServerConfigSync {
 				.target("config " + clean(configId, CONFIG_ID))
 				.outcome(outcome)
 				.detail("operation", clean(op, OPERATION))
-				.detail("key", key == null ? "" : clean(key, Setting.KEY_PATTERN))
+				.detail("key", key == null || key.isEmpty() ? "" : clean(key, Setting.KEY_PATTERN))
 				.build());
 	}
 
@@ -257,9 +263,9 @@ public final class ServerConfigSync {
 	 * Publishes a config change on {@code mejtacore.config}, so it reaches staff chat, the notification
 	 * file log and external providers such as MejtaDiscord. Values of secret settings are never included.
 	 */
-	private static void publishChange(String who, String configId, String op, String key, String change) {
+	private static void publishChange(String who, String configId, String op, String key, String change, Severity severity) {
 		MejtaCoreAPI.notifications().publish(Notification.builder(MejtaCore.MOD_ID, CHANNEL_CONFIG)
-				.severity(Severity.INFO)
+				.severity(severity)
 				.title(who + " changed " + configId)
 				.message(change)
 				.field("by", who)

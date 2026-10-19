@@ -32,6 +32,16 @@ public final class AcSettings {
 		ENFORCE
 	}
 
+	public enum MitigationMode {
+		/** Never undo anything; flags are only recorded, alerted and counted towards kicks. */
+		OFF,
+		/**
+		 * Undo the offending action of every flag at {@code enforcement.min_confidence} or above (in DRY_RUN and
+		 * ENFORCE): set the player back, cancel the hit or cancel the block action.
+		 */
+		ON
+	}
+
 	// ---------------------------------------------------------------- general
 	public static final Setting<Boolean> ENABLED = Setting.bool("enabled", true)
 			.describedAs("Master switch. When off, no check runs and existing violation levels are kept");
@@ -57,6 +67,8 @@ public final class AcSettings {
 			.describedAs("OFF, DRY_RUN (log and alert only) or ENFORCE (kick). Starts in DRY_RUN so you can review flags first");
 	public static final Setting<Confidence> ENFORCEMENT_MIN_CONFIDENCE = Setting.enumeration("enforcement.min_confidence", Confidence.HIGH)
 			.describedAs("Flags below this confidence never lead to enforcement and never count towards a kick_vl threshold");
+	public static final Setting<MitigationMode> ENFORCEMENT_MITIGATION = Setting.enumeration("enforcement.mitigation", MitigationMode.OFF)
+			.describedAs("[Experimental] ON: undo the action behind every flag at min_confidence or above (set back, cancel the hit or block action), in DRY_RUN and ENFORCE. Independent of kicks");
 	public static final Setting<String> KICK_MESSAGE = Setting.string("enforcement.kick_message", "Disconnected by anti-cheat.")
 			.validatedBy(text -> !text.isBlank() && text.length() <= 256)
 			.describedAs("Message shown to kicked players (1-256 characters)");
@@ -153,11 +165,27 @@ public final class AcSettings {
 	public static final Setting<Double> BOAT_FLY_KICK_VL = Setting.decimal("checks.vehicle.boat_fly.kick_vl", 5.0, 1.0, 10_000.0)
 			.describedAs("Violation level at which enforcement kicks (HIGH flags add 1; MEDIUM 0.5, counted only if min_confidence allows)");
 
+	// ---------------------------------------------------------------- check: movement.elytra
+	public static final Setting<Boolean> ELYTRA_ENABLED = Setting.bool("checks.movement.elytra.enabled", true)
+			.describedAs("[Experimental] Flag elytra flight that ignores glide physics without a firework boost (elytra fly, glide speed)");
+	public static final Setting<Double> ELYTRA_KICK_VL = Setting.decimal("checks.movement.elytra.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (flags are MEDIUM and add 0.5, counted only if min_confidence allows)");
+	public static final Setting<Double> ELYTRA_TOLERANCE = Setting.decimal("checks.movement.elytra.tolerance", 0.01, 0.0, 0.5)
+			.describedAs("Blocks per tick allowed beyond the glide prediction (plus 0.5 % of the speed) before a tick counts as suspicious");
+
+	// ---------------------------------------------------------------- check: vehicle.horse
+	public static final Setting<Boolean> HORSE_ENABLED = Setting.bool("checks.vehicle.horse.enabled", true)
+			.describedAs("[Experimental] Flag horses, donkeys, mules and camels that move faster or jump higher than their own attributes allow");
+	public static final Setting<Double> HORSE_KICK_VL = Setting.decimal("checks.vehicle.horse.kick_vl", 5.0, 1.0, 10_000.0)
+			.describedAs("Violation level at which enforcement kicks (flags are MEDIUM and add 0.5, counted only if min_confidence allows)");
+	public static final Setting<Double> HORSE_SPEED_TOLERANCE = Setting.decimal("checks.vehicle.horse.speed_tolerance", 0.06, 0.0, 1.0)
+			.describedAs("Blocks per tick a mount may move beyond its speed limit (entity pushing, rounding) before a tick counts as suspicious");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, LOG_LEVEL,
 					DECAY_PER_MINUTE,
 					ALERTS_ENABLED, ALERTS_MIN_VL, ALERTS_COOLDOWN, ALERTS_ENFORCEMENT,
-					ENFORCEMENT_MODE, ENFORCEMENT_MIN_CONFIDENCE, KICK_MESSAGE,
+					ENFORCEMENT_MODE, ENFORCEMENT_MIN_CONFIDENCE, ENFORCEMENT_MITIGATION, KICK_MESSAGE,
 					BYPASS_PERMISSION,
 					RECORDS_ENABLED, RECORDS_MAX_FILE_MB, RECORDS_MAX_FILES, RECORDS_RETENTION_DAYS,
 					INVALID_MOVE_ENABLED, INVALID_MOVE_KICK_VL,
@@ -171,7 +199,9 @@ public final class AcSettings {
 					SPEED_ENABLED, SPEED_KICK_VL,
 					FAST_BREAK_ENABLED, FAST_BREAK_KICK_VL,
 					JUMP_ENABLED, JUMP_KICK_VL,
-					BOAT_FLY_ENABLED, BOAT_FLY_KICK_VL)
+					BOAT_FLY_ENABLED, BOAT_FLY_KICK_VL,
+					ELYTRA_ENABLED, ELYTRA_KICK_VL, ELYTRA_TOLERANCE,
+					HORSE_ENABLED, HORSE_KICK_VL, HORSE_SPEED_TOLERANCE)
 			.build();
 
 	private AcSettings() {

@@ -4,14 +4,14 @@ MejtaAC (mod ID `mejtaac`) is a server-side anti-cheat addon for **MejtaCore**. 
 
 | | |
 |---|---|
-| Version | 1.0.0, the first release (12 checks: protocol, timer, ground spoof, fly, jump, speed, reach, hitbox, multi-target, block reach, fast break, boat fly). See [CHANGELOG.md](CHANGELOG.md). |
+| Version | 1.1.0 (14 checks: protocol, timer, ground spoof, fly, jump, speed, elytra, reach, hitbox, multi-target, block reach, fast break, boat fly, horse; optional mitigation). See [CHANGELOG.md](CHANGELOG.md). |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | **MejtaCore 1.3.0 or newer, below 2.0.0** (API version 4) |
 | Third-party libraries | None |
 
 ## Installing
 
-Put `mejtacore-1.3.0.jar`, `mejtaac-1.0.0.jar` and Fabric API in the **server's** `mods/` folder. In single-player, MejtaAC runs on the integrated server, so install everything on the client.
+Put `mejtacore-1.3.0.jar`, `mejtaac-1.1.0.jar` and Fabric API in the **server's** `mods/` folder. In single-player, MejtaAC runs on the integrated server, so install everything on the client.
 
 | | Dedicated server | Player's client |
 |---|---|---|
@@ -35,6 +35,32 @@ Each piece of evidence goes through separate stages, and each stage is configure
    - A flag counts as enforceable by the minimum confidence set when it happens. An enforcement decision resets both VLs of that check.
 4. **Report.** MejtaAC writes to the server log, writes a violation record and publishes a staff alert. Records and log lines are limited to one per second for each player and check, and the next one reports how many similar flags were skipped ("+N similar"). Alerts have a configurable cooldown.
 5. **Act.** In `ENFORCE` mode the player is kicked. In `DRY_RUN` mode MejtaAC records and alerts "would be kicked" instead. Either way an audit record is written.
+   - Separately, if `enforcement.mitigation` is `ON` (experimental, off by default), every flag at `enforcement.min_confidence` or above undoes the action behind it: a setback, a cancelled hit or a cancelled block action. See [Mitigation](#mitigation-experimental-since-110).
+
+## Mitigation (experimental, since 1.1.0)
+
+A kick punishes; mitigation only undoes what the cheat just did, so it is safer and needs no violation level. It is off by default (`enforcement.mitigation`: `OFF`). With `ON`:
+
+- **When:** a single flag at `enforcement.min_confidence` (default `HIGH`) or above is enough, in `DRY_RUN` as in `ENFORCE`. Never in `OFF` mode, never for players with the bypass permission, and not for a flag that kicks the player anyway. Kicks are decided exactly as without mitigation.
+- **Reported:** violation records get `"mitigation": "<action>"`, alerts end with `[mitigated: <action>]` and carry a `mitigation` field, and the log line says `mitigated: <action>`. Nothing is added to flags that were not mitigated. Every confident flag is mitigated, even when its record or log line is rate-limited.
+
+| Checks | Action | What happens |
+|---|---|---|
+| `movement.fly`, `movement.speed`, `movement.jump`, `movement.elytra` | `setback` | The player is teleported back to the last *safe* position with vanilla's own position correction, the one vanilla sends a player who "moved wrongly". Momentum is reset. |
+| `combat.reach`, `combat.multi_target` | `cancel_attack` | The attack packet is not processed: no damage, no knockback. |
+| `combat.hitbox` | `block_attacks` | The hit is judged only at the end of its client tick, after vanilla has processed it, so it can't be undone. Instead the player's attacks are cancelled for the next 10 client ticks (0.5 s). |
+| `interaction.block_reach`, `interaction.fast_break` | `cancel_action` | The block action (start or finish breaking, using or placing against a block) is not processed. The client is told what vanilla tells it after refusing an action: its sequence number is acknowledged and it gets the real block states (and its inventory, after a refused use), so no ghost block stays. |
+
+**Setbacks:**
+- The target is the player's position at the end of the newest client tick that was *safe*: no movement prediction (fly, speed, elytra) was building up an excess, no movement check flagged, and the position was confirmed (not a vehicle seat, not asleep or dead, not while a teleport or dimension change is unconfirmed). Vanilla accepted that position.
+- Never into a block: if a block now collides with the player there, no setback is sent. Never across levels, never farther than 64 blocks, at most one every 0.25 s, and none while vanilla still waits for the client to confirm a teleport (its own correction or the previous setback).
+- Positions are only remembered while mitigation is on.
+
+What mitigation deliberately doesn't do:
+- **Flags below the minimum confidence are never mitigated.** With the default `HIGH`, MEDIUM flags (all `movement.elytra` and `vehicle.horse` flags, the first two too-high jumps, reach up to 0.5 blocks over) only alert and record.
+- **No mitigation for** `protocol.invalid_move` (vanilla already clamps or disconnects), `movement.timer` and `movement.ground_spoof` (a setback doesn't undo extra ticks or a spoofed fall; planned: dropping excess movement and applying fall damage), and the vehicle checks `vehicle.boat_fly` and `vehicle.horse` (planned: vehicle setbacks).
+- **Block actions beyond vanilla's own range** (interaction range plus one block) are left to vanilla, which refuses them anyway. A far block is never looked up.
+- While a setback is unconfirmed, `combat.reach`, `combat.hitbox` and `interaction.block_reach` wait for it like after any teleport, so the cheater's attacks in that round trip are not judged (vanilla's own range limits still apply).
 
 ## Checks
 
@@ -52,7 +78,7 @@ This check flags movement packets containing values an unmodified client can nev
 What this check deliberately doesn't do, to avoid false positives:
 - **Yaw has no range check.** The vanilla client sends yaw unwrapped: it keeps growing (720, 1080, …) as the player turns. The tests include more than two full turns.
 - A packet field the client didn't send is never checked, even if it holds garbage.
-- MejtaAC doesn't change how vanilla handles packets. It records first, then vanilla applies its own rules (for example, it still disconnects on NaN). A packet is cancelled only when MejtaAC itself kicks the player.
+- MejtaAC doesn't change how vanilla handles packets. It records first, then vanilla applies its own rules (for example, it still disconnects on NaN). A packet is cancelled only when MejtaAC itself kicks the player, or when [mitigation](#mitigation-experimental-since-110) is on and cancels an attack or block action.
 
 Typical cause: "derp"/spin modules and some kill auras that send impossible rotations.
 
@@ -170,7 +196,46 @@ This check flags boats and rafts that hover, rise, or fall slower than gravity a
 - The first airborne tick after a reset only establishes the velocity, so falling off a ledge or being thrown up by a bubble column never flags.
 - **Latency:** only the sequence of boat positions is used. Lag spikes and fake lag don't change it.
 - **Flags:** MEDIUM after the excess builds up; HIGH after 20 consecutive violating ticks.
-- **Only boats and rafts so far.** Horses, striders, camels and happy ghasts (which may legitimately fly) are not judged yet.
+- **Only boats and rafts.** Horses, donkeys, mules and camels are judged by `vehicle.horse`; striders, pigs, nautiluses and happy ghasts (which may legitimately fly) are not judged yet.
+
+### `movement.elytra` (experimental, since 1.1.0)
+
+This check flags elytra flight that ignores glide physics: flying level or upwards without losing speed ("elytra fly"), gliding faster than physics allows, and boosting without a firework rocket. `movement.fly` and `movement.speed` don't judge gliding players at all, so before 1.1.0 an elytra could fly freely.
+
+- **How:** vanilla's glide physics (`LivingEntity.updateFallFlyingMovement`) changes the velocity once per client tick, *before* the move, from the previous velocity and the rotation of that tick: gravity reduced by lift (`cos²(pitch)`), falling speed turned into forward speed, forward speed turned into climb when looking up, the horizontal velocity steered 10 % towards the look direction, then drag (0.99 horizontally, 0.98 vertically). The client sends that tick's rotation in the same movement packet, so each tick's movement is predictable from the previous one. Only moving *higher* or *faster* than the prediction counts: walls, ceilings and the ground only take movement away.
+- **Exact where it matters:** the look vector is computed with vanilla's sine table. Looking straight up or down, the steering direction is a rounding residue, so every possibility is allowed there.
+- **Lenient by design:**
+  - A tick counts only once it exceeds the prediction by `tolerance` (default 0.01 blocks) plus 0.5 % of the speed. In the unit tests, 30 random legitimate flights of 75 s each never used more than a quarter of that.
+  - The excess must build up to 0.5 blocks over many ticks, and flags are at most every 10 ticks.
+- **Firework rockets:** at the end of every server tick, MejtaAC notes whether a rocket is next to each gliding player. The client keeps its copy of a rocket until the server's removal reaches it, so the prediction stays off until the client has confirmed (tick sync) a tick after the last rocket was seen. Without tick sync, 2 s after the last rocket.
+- **Not judged (prediction reset):**
+  - server velocity (knockback, explosions, wind charges, fishing rods) and abilities until the client confirms them, teleports, dimension changes;
+  - riptide, levitation, slow falling, water and lava, climbing, cobwebs and similar blocks, pistons;
+  - any block on or within 0.5 blocks of the tick's path (landing, walls), entities next to the player, vehicles and the first 10 ticks after leaving one;
+  - the client claiming ground, and client ticks without a position (a client stuck at unloaded chunks);
+  - players the server doesn't see gliding.
+- The first tick after a reset only establishes the velocity, so take-off, the end of a boost and a push never flag.
+- **Latency:** only the sequence of client positions and the rotations sent with them is used, and latency doesn't change it.
+- **Flags:** MEDIUM only (`hovering`, `ascending`, `falling_too_slowly` or `too_fast`). In the unit tests, a client holding its height at 1.5 blocks/tick is flagged after 38 ticks (1.9 s), one climbing 0.3 blocks/tick after 25.
+- **Not caught:** cheats that stay within the prediction, firework abuse while a rocket really exists, and elytra state toggling (START_FALL_FLYING spam, used for no-fall). Spears' lunge while gliding has not been tested.
+
+### `vehicle.horse` (experimental, since 1.1.0)
+
+This check flags horse-like mounts that move faster or jump higher than their own attributes allow, or that hover and fly ("horse speed", "horse fly", "high jump"). Like a boat, the mount of a player is simulated by their client, and the server accepts the positions it reports (`ServerboundMoveVehiclePacket`).
+
+- **Mounts:** every `AbstractHorse` the player controls: horses, donkeys, mules, skeleton and zombie horses and camels. Llamas can't be steered, so the server moves them itself.
+- **How**, with the mount's own movement-speed and jump-strength attributes (which include Speed and Jump Boost on the mount):
+  - **Horizontal:** like `movement.speed`, `previous × decay + acceleration`. The acceleration is `speed × 0.216 / friction³` on the ground and `speed × 0.1` in the air; the decay `friction × 0.91` on the ground and 0.91 in the air. A jump adds up to 0.4 forward; a camel's dash adds up to `22.2222 × speed`, and a sprinting camel gets 0.1 more speed.
+  - **Take-off:** at most `jump strength + Jump Boost` (a full jump bar), `1.4285 ×` that for a camel's dash.
+  - **In the air:** `dy = (previous dy − gravity) × 0.98`, as for players. Only moving *up* relative to that counts.
+- **Allowances:**
+  - The speed and jump power used are the highest of the last 2 s plus twice the round trip: an effect the server just removed may still apply on the client.
+  - The slipperiest block under the mount for the decay, the least slippery for the acceleration, and 0.06 blocks/tick (`speed_tolerance`) for entities pushing the mount.
+  - **Ground:** the server's own collision test, or the client's claim while the server saw support there within the last round trip (a block removed under the mount reaches the client one network delay later).
+- **Not judged (prediction reset):** liquids in or up to one block below the mount, cobwebs and similar blocks, pistons, other entities touching it, a leash, slime blocks and beds under it (bounces), levitation or slow falling on the mount, the first 5 ticks after mounting, server corrections of the mount until the client has applied them (tick sync), teleports and dimension changes. Ground and collisions on the predicted path (landing) reset the vertical prediction only.
+- **Latency:** only the sequence of mount positions is used.
+- **Flags:** MEDIUM only. A too-high take-off is flagged on its own (`too_high`); hovering, climbing and speed need the excess to build up (`hovering`, `ascending`, `falling_too_slowly`, `too_fast`).
+- **Not caught:** striders, pigs, happy ghasts and nautiluses; vehicle timer (more vehicle moves than client ticks); steering spoofs within the limits.
 
 ### `combat.hitbox` (experimental)
 
@@ -231,6 +296,7 @@ Changes apply immediately, including to checks that are already running. The exc
 | `alerts.enforcement` | boolean | `true` | | Publish every kick and would-be kick on `mejtaac.enforcement` (staff chat, notification file log, Discord if installed), even when `alerts.enabled` is off. |
 | `enforcement.mode` | enum | `DRY_RUN` | `OFF`, `DRY_RUN`, `ENFORCE` | What happens when a threshold is reached. |
 | `enforcement.min_confidence` | enum | `HIGH` | `LOW`…`CERTAIN` | Flags below this confidence never lead to enforcement and don't count towards any `kick_vl`. |
+| `enforcement.mitigation` | enum | `OFF` | `OFF`, `ON` | Experimental. `ON`: every flag at `enforcement.min_confidence` or above undoes its action (setback, cancelled hit or block action), in `DRY_RUN` and `ENFORCE`. Independent of kicks. See [Mitigation](#mitigation-experimental-since-110). |
 | `enforcement.kick_message` | string | `Disconnected by anti-cheat.` | 1–256 chars | Shown to kicked players. |
 | `exemptions.bypass_permission` | boolean | `true` | | Players with `mejtaac.bypass` are skipped. |
 | `records.enabled` | boolean | `true` | | Write violation and enforcement records. |
@@ -264,6 +330,12 @@ Changes apply immediately, including to checks that are already running. The exc
 | `checks.movement.jump.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
 | `checks.vehicle.boat_fly.enabled` | boolean | `true` | | Turns `vehicle.boat_fly` on or off (experimental). |
 | `checks.vehicle.boat_fly.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks (HIGH flags add 1; MEDIUM flags add 0.5 to the reported VL only, see **Decide** above). |
+| `checks.movement.elytra.enabled` | boolean | `true` | | Turns `movement.elytra` on or off (experimental). |
+| `checks.movement.elytra.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks. Flags are MEDIUM (0.5 to the reported VL), so they only count if `enforcement.min_confidence` is `MEDIUM` or lower. |
+| `checks.movement.elytra.tolerance` | decimal | `0.01` | 0–0.5 | Blocks per tick allowed beyond the glide prediction (plus 0.5 % of the speed) before a tick counts. |
+| `checks.vehicle.horse.enabled` | boolean | `true` | | Turns `vehicle.horse` on or off (experimental). |
+| `checks.vehicle.horse.kick_vl` | decimal | `5.0` | 1–10000 | VL at which enforcement kicks. Flags are MEDIUM (0.5 to the reported VL), so they only count if `enforcement.min_confidence` is `MEDIUM` or lower. |
+| `checks.vehicle.horse.speed_tolerance` | decimal | `0.06` | 0–1 | Blocks per tick a mount may move beyond its speed limit before a tick counts. |
 
 Experimental checks say so in their setting description. They are new and have only been tested with the automated suite, not on a busy real server. Run them in `DRY_RUN` and review their flags before enforcing.
 
@@ -285,7 +357,7 @@ All commands are under `/mejtaadmin mejtaac` and run on the server.
 
 | Command | Permission | What it does |
 |---|---|---|
-| `status` | `mejtaac.alerts` | Mode, alert settings, log level, checks, number of players with violations |
+| `status` | `mejtaac.alerts` | Mode, mitigation, alert settings, log level, checks, number of players with violations |
 | `alerts` | `mejtaac.alerts` | Hides or shows anti-cheat alerts in your own chat. MejtaCore 1.3.0 keeps the choice across restarts. |
 | `vl <player>` | `mejtaac.alerts` | The player's current violation levels |
 | `history <name> [1-50]` | `mejtaac.alerts` | Recent violation records, newest first. Also works for offline players. Read on a background thread. |
@@ -310,6 +382,8 @@ Example violation record (one JSON object per line):
 {"type":"violation","player":"Steve","uuid":"…","check":"protocol.invalid_move","reason":"impossible_pitch","vl":3.0,"action":"NONE","confidence":"CERTAIN","vl_added":1.0,"measurements":{"yaw":12.5,"pitch":120.0},"ping_ms":34,"world":"minecraft:overworld","suppressed":0,"ts":"2026-10-18T04:31:16Z"}
 ```
 
+A flag whose action was undone (see [Mitigation](#mitigation-experimental-since-110)) also has `"mitigation":"setback"` (or `cancel_attack`, `block_attacks`, `cancel_action`).
+
 Records and alerts contain the player's name and UUID, the check, the reason, the VL, measurements, ping and world. They **never contain IP addresses** or other personal data. Memory use is limited by the number of online players times the number of checks. Disk use is limited by the `records.*` settings.
 
 ## Discord, performance and other integrations
@@ -329,7 +403,7 @@ MejtaAC ──publish──▶ MejtaCore NotificationService ──▶ in-game p
 
 ```bash
 cd ../mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.3.0 into ~/.m2
-cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-1.0.0.jar (also runs the unit tests)
+cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-1.1.0.jar (also runs the unit tests)
 ./gradlew test                                 # unit tests only (JUnit 6), a few seconds
 ./gradlew runClientGameTest                    # end-to-end tests with a real client, about 30 minutes
 ```
@@ -338,9 +412,11 @@ cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-1.0.0.jar
 - a vanilla jump arc;
 - the boat's fall off a ledge and a bubble-column launch;
 - walking speed;
-- real-time, jittery and frozen-then-bursting tick timing.
+- real-time, jittery and frozen-then-bursting tick timing;
+- glides simulated independently of the check: a level spiral, a dive and pull-up, straight up and down, a firework boost, and 30 random flights of 1,500 ticks each;
+- horses galloping and jumping at the highest speed and jump strength, on blue ice, braking, off a ledge, and camel dashes.
 
-They also cover violation levels, throttling and every enforcement decision.
+They also cover violation levels, throttling, every enforcement decision and every mitigation decision (when it applies, setback targets, rate limits).
 
 The game test (`src/gametest`) logs `[MejtaAcTest] PASS/FAIL` for each check:
 - **Pure logic, legitimate inputs:** normal positions, the world border, pitch exactly ±90, huge unwrapped yaw, and fields the client didn't send. None may flag.
@@ -396,11 +472,33 @@ What the results show:
 - **The `multi_target` premise holds.** With four clicks queued in one tick, the real vanilla client sent all four attacks at the same entity, in every profile.
 - **The tests can't prove the absence of false positives** on real servers, with real players, terrain, mobs and other mods. That is why these checks are marked experimental and MejtaAC starts in `DRY_RUN`.
 
-The suite writes this table to `build/run/clientGameTest/mejtaac-stage4-latency.md` on every run. Since 0.5.0 its legitimate-play scenarios also require zero `movement.jump` and `vehicle.boat_fly` flags.
+The suite writes this table to `build/run/clientGameTest/mejtaac-stage4-latency.md` on every run. Since 0.5.0 its legitimate-play scenarios also require zero `movement.jump` and `vehicle.boat_fly` flags, and since 1.1.0 zero `movement.elytra` and `vehicle.horse` flags.
+
+### Stage 6 latency tests: elytra, horses and mitigation (since 1.1.0)
+
+`MejtaAcStage6GameTest` uses the same five network profiles and runs with `enforcement.mitigation` set to `ON`. For each profile, a real non-op client first plays legitimately, and **none of the eight movement checks may flag** (so nothing may be mitigated):
+
+- **Elytra, with real input:** a long glide from 75 blocks up, steered around the arena: a level glide, a dive, a pull-up, looking straight down and straight up, a real firework rocket, a server push, and a landing. In the jitter profile the network freezes for 1.5 s during the boost. The test asserts that the player really glided, the dive built up speed, the pull-up climbed and the rocket boosted.
+- **Horses, with real input,** on the fastest possible horse (speed 0.3375, jump strength 1.0): galloping in circles with full jumps, a jump measured to be over 3 blocks, Speed II removed by the server mid-gallop (with a freeze in the jitter profile), packed ice, a 4-block ledge and a 1-block step.
+- **A camel** walking with sprint held and dashing, asserted to really dash.
+
+Then the client cheats, and the new checks must catch it (MEDIUM only):
+- **Elytra:** holding its height at 1.5 blocks/tick, climbing 0.3 blocks/tick, and boosting without a rocket.
+- **Horse:** hovering, climbing 0.2 blocks/tick, five take-offs at 1.1 blocks/tick with a jump strength of 0.7, and 1.2 blocks/tick on the ground.
+
+Finally every mitigation must undo its cheat:
+- a crafted hit 4.2 blocks away hurts a pig without mitigation and is cancelled with it;
+- the second of two targets attacked in one tick is not hurt;
+- after an attack while looking away, the next attack is cancelled, and one a second later works;
+- a slime block broken 5.15 blocks away breaks without mitigation and stays with it;
+- a dirt block "finished" after 3 of 15 ticks stays (without mitigation vanilla breaks it later itself);
+- a client forced to fly up at 0.2 blocks/tick, or to run at 0.5 blocks/tick, is set back by the server once the flag is HIGH.
+
+The suite writes its results to `build/run/clientGameTest/mejtaac-stage6-latency.md`. **No results yet:** this suite was written for 1.1.0 and has not been run at the time of writing; the first CI run will fill in the table.
 
 ### Stage 5 latency tests: jump height and boats
 
-`MejtaAcStage5GameTest` was added after a field test with a hack client: Fly, KillAura, Reach, Hitbox, Not Looking and FakeLag were flagged, but **BoatFly and Jump Height were not**. It uses the same five network profiles. For each one, a real non-op client first plays legitimately in the situations most likely to cause false positives, and **all six movement checks must stay silent**:
+`MejtaAcStage5GameTest` was added after a field test with a hack client: Fly, KillAura, Reach, Hitbox, Not Looking and FakeLag were flagged, but **BoatFly and Jump Height were not**. It uses the same five network profiles. For each one, a real non-op client first plays legitimately in the situations most likely to cause false positives, and **all six movement checks must stay silent** (eight since 1.1.0, with `movement.elytra` and `vehicle.horse`):
 
 - **Jumping:** ten jumps in place, with a 1.5 s network freeze in the middle in the jitter profile. The test asserts the vanilla height of 1.252 blocks.
 - **Steps:** walking with jump held over a full block, a slab and stairs, then up a slab without jumping.
@@ -439,7 +537,8 @@ What the results show:
   - Aim analysis for kill auras that do send rotations. This needs statistics over many attacks, so it is more prone to false positives and will start at MEDIUM.
   - Fast place, and scaffold-style building patterns.
   - Inventory actions while moving.
-  - Other vehicles: horse, llama and camel jump and speed, striders, and boat speed. `vehicle.boat_fly` covers vertical boat movement only.
-  - Elytra flight without fireworks.
+  - Other vehicles: striders, pigs, happy ghasts, boat speed and vehicle timer. `vehicle.boat_fly` covers vertical boat movement only; `vehicle.horse` covers horse-like mounts.
+  - Elytra: START_FALL_FLYING spam (no-fall), and firework accounting beyond "a rocket is near".
+- **More mitigation:** vehicle setbacks, fall damage for ground spoofing, and dropping a timer cheat's excess movement. Raise `movement.elytra` and `vehicle.horse` to HIGH once field data shows they are quiet.
 - **Field testing:** run the experimental checks in `DRY_RUN` on a real server (see `../server`) and review their records.
 - **Use more of MejtaCore 1.3.0:** `/mejtaadmin config get/set` and notification mutes that survive restarts (the `alerts` command) now come from MejtaCore. MejtaAC could also mark its experimental checks with MejtaCore's "experimental" setting flag instead of the `[Experimental]` text in their descriptions.

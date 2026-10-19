@@ -3,10 +3,12 @@
 MejtaCore (mod ID `mejtacore`) is the shared framework for Mejta addon mods. Every addon gets these from MejtaCore instead of building its own:
 
 - A chest-style in-game menu, opened with `/mejtacore` or `/mejta`. Addons can add their own entries and pages to it.
+- **Since 1.4.0:** `/mejtaadmin config menu`, a chest menu run by the server for editing its settings. It works for players **without any mod**.
 - A command namespace. Each addon gets its own subcommands under `/mejtacore <addon id> …`.
 - An addon registry, with dependency ordering and clear errors when something goes wrong.
 - Typed, validated, persistent configuration: one JSON file per addon, with migrations.
 - Logging and diagnostics that you can see in-game.
+- **Since 1.4.0**, edits in the client's menu that "didn't stick" are fixed (see the [changelog](CHANGELOG.md)). On a server, the Configuration page now says clearly which files are your computer's and which are the server's.
 - **Since 1.3.0 (API version 4):**
   - **Secret settings** (tokens, webhook URLs). They are kept in `config/mejta/secrets/`, never sent to clients and never shown, logged or published.
   - **Top-level addon commands** such as `/invsee`.
@@ -38,7 +40,7 @@ MejtaCore (mod ID `mejtacore`) is the shared framework for Mejta addon mods. Eve
 1. Install **Fabric Loader 0.19.5** (or newer) for Minecraft **26.1.2**.
 2. Put these jars in `.minecraft/mods/`:
    - `fabric-api-0.155.3+26.1.2.jar` (or a newer 26.1.2 build) from Modrinth or CurseForge
-   - `mejtacore-1.3.0.jar`
+   - `mejtacore-1.4.0.jar`
    - any Mejta addons
 3. Start the game. In a world, type `/mejta` to open the menu.
 
@@ -46,11 +48,13 @@ MejtaCore (mod ID `mejtacore`) is the shared framework for Mejta addon mods. Eve
 
 | | Dedicated server | Player's client |
 |---|---|---|
-| MejtaCore | Required if any Mejta addon runs on the server | Optional: needed for the `/mejta` menu, client commands, and **editing server settings in-game** |
+| MejtaCore | Required if any Mejta addon runs on the server | Optional: needed for the `/mejta` menu and client commands. Server settings can be edited in-game without it (`/mejtaadmin config menu`). |
 | Fabric API | Required | Required if the client has MejtaCore |
 | Server-side addons (e.g. MejtaAC) | Required | **Not needed.** Vanilla clients can join and play. |
 
-A client without MejtaCore, or with a version older than 1.2.0, still joins normally; it just isn't offered Server Settings. In single-player, install everything on the client.
+A client without MejtaCore, or with a version older than 1.2.0, still joins normally; it just isn't offered Server Settings in the client menu. `/mejtaadmin config menu` works for it. In single-player, install everything on the client.
+
+**Installed the same mods on your client too?** Then your client has its own copies of their config files, for example `.minecraft/config/mejta/mejtaac.json`. Changing those does **not** change the server. On a server, the client menu marks them "(this computer)". Clicking a config that the server also offers opens the **server's** copy; Shift-click opens your own.
 
 If an addon is installed without MejtaCore, or with an incompatible version, Fabric Loader refuses to start. It shows a clear "requires mod mejtacore" message instead of crashing.
 
@@ -58,7 +62,7 @@ Configuration files are stored in `.minecraft/config/mejta/` (on a dedicated ser
 
 Runtime data that addons record (for example anti-cheat violation history) is stored in `mejta-data/<addon id>/` next to the `config` folder. Each log has a size cap and a retention period.
 
-On a **dedicated server**, install MejtaCore, Fabric API and the addons in the server's `mods/` folder. Players don't need any mods to be affected by server-side addons or to use `/mejtaadmin`. To change the server's settings from the in-game menu, a player needs MejtaCore 1.2.0+ on their client and the `mejtacore.config.edit` permission.
+On a **dedicated server**, install MejtaCore, Fabric API and the addons in the server's `mods/` folder. Players don't need any mods to be affected by server-side addons or to use `/mejtaadmin`. To change the server's settings in-game, a player needs the `mejtacore.config.edit` permission. They can then use `/mejtaadmin config menu` (any client), or **Configuration → Server Settings** in the client menu (MejtaCore 1.2.0+ on the client).
 
 ## 2. Commands
 
@@ -84,6 +88,8 @@ These run **on the server** (dedicated, or the integrated server in single-playe
 | `/mejtaadmin`, `/mejtaadmin help` | none | Lists the server commands you are allowed to use |
 | `/mejtaadmin addons` | `mejtacore.admin` (GAMEMASTERS, 2) | Lists addons and their state |
 | `/mejtaadmin config reload` | `mejtacore.admin` (GAMEMASTERS, 2) | Re-reads every config file on the server |
+| `/mejtaadmin config` | `mejtacore.config.edit` (ADMINS, 3) or `mejtacore.admin` | Opens the config menu for a player who may edit settings (since 1.4.0). Otherwise, and from the console, it lists the config commands. |
+| `/mejtaadmin config menu [config]` | `mejtacore.config.edit` (ADMINS, 3) | Opens the server's settings as a chest menu that works without any client mod (since 1.4.0). See 3.1. |
 | `/mejtaadmin config get <config> [key]` | `mejtacore.config.edit` (ADMINS, 3) | Shows settings with their defaults, e.g. `config get mejtaac enforcement.mode` |
 | `/mejtaadmin config set <config> <key> <value>` | `mejtacore.config.edit` (ADMINS, 3) | Changes a setting; validated, saved at once and logged |
 | `/mejtaadmin config reset <config> <key>` | `mejtacore.config.edit` (ADMINS, 3) | Restores a setting's default |
@@ -122,7 +128,10 @@ The menu is a **client-side screen drawn with the vanilla chest texture**. It is
 - **MejtaCore Settings**: menu height (3–6 rows), click sound, debug logging, showing addon IDs in tooltips.
 - **Installed Addons**: every registered addon (green = active, red = failed). Click one to see its details, its settings and its own entries. If anything went wrong, a **Problems** entry lists it.
 - **Configuration**: every config file on your computer. Click one to edit it. Also has **Reload from Disk** and **Save Now**.
-  - **Server Settings** (on a multiplayer server with MejtaCore 1.2.0+): the server's config files, including those of server-only addons such as MejtaAC. You need `mejtacore.config.edit` (operator level 3 by default); otherwise the page says **No permission**. Edits are sent to the server, which checks the permission again, validates the value with the addon's own rules, saves the file at once, and logs who changed what (`[config] Steve changed mejtaac: enforcement.mode = ENFORCE`). Invalid values are refused with a message. The page refreshes when anyone changes a setting. In single-player there is no Server Settings entry, because your own files *are* the server's.
+  - **Server Settings** (on a multiplayer server with MejtaCore 1.2.0+): the server's config files, including those of server-only addons such as MejtaAC. You need `mejtacore.config.edit` (operator level 3 by default); otherwise the page says **No permission**. Edits are sent to the server, which checks the permission again, validates the value with the addon's own rules, saves the file at once, and logs who changed what (`[config] Steve changed mejtaac: enforcement.mode = ENFORCE`). The page refreshes when anyone changes a setting. In single-player (and on the computer hosting a LAN world) there is no Server Settings entry, because your own files *are* the server's.
+  - **This computer's files while on a server (1.4.0).** The page starts with a **This computer's settings** note, and each local file is labelled "(this computer)". If the server offers the same config in Server Settings (the addon is installed on both sides), clicking it opens the **server's** copy. Shift-click opens your own copy, whose page also starts with the note. **MejtaCore Settings** in the main menu is always this computer's: menu height, sounds and so on.
+  - **Feedback (1.4.0).** The result of each change is shown in a line under the menu, for example "Saved on the server: mejtaac: enforcement.mode = ENFORCE". The action bar is hidden behind the menu, so it isn't used for this. A refused change (missing permission, a value the addon's rules reject, a secret setting, a full rate limit, a file that could not be written) is shown in red there. It is also written to chat, so it is still there after the menu closes.
+  - If the server runs a MejtaCore version that uses a different settings protocol, Server Settings says so instead of "Loading…".
 - **About**: versions of MejtaCore, Minecraft, Fabric Loader and Fabric API.
 
 The bottom row is navigation: **Back**, **Previous/Next page** (or scroll the mouse wheel), and **Close**. Press Esc to close.
@@ -137,7 +146,32 @@ How to edit a setting:
 | Enum | next | previous | | | reset to default |
 | String | edit | edit | | | reset to default |
 
-"Reset All to Defaults" needs a Shift-click to confirm. Changes are saved when the menu closes, and only if something actually changed.
+"Reset All to Defaults" needs a Shift-click to confirm. Changes to this computer's files are saved when the menu closes, and only if something actually changed. Changes to Server Settings are saved by the server at once.
+
+### 3.1 The server's config menu (`/mejtaadmin config menu`, since 1.4.0)
+
+This menu is a chest **run by the server**, so it works for every player, even without any mod. Nothing in it can be moved or taken. It needs `mejtacore.config.edit`. The permissions file is listed only with `mejtacore.config.permissions` too, the same rules as Server Settings and `config get/set`. `/mejtaadmin config` without arguments opens it as well, and `/mejtaadmin config menu <config>` opens one config directly.
+
+- **First page:** the configs you may edit.
+- **A config's page:** one icon per setting, 45 per page with Previous/Next. The icon shows the type: dye (on/off), repeater (whole number), clock (decimal), hopper (choice), name tag (text) and tripwire hook (secret). The tooltip shows the key, description, current value, default, range or options, and an **Experimental** marker.
+- **Bottom row:** Back, the page number and the result of your last change, and Close.
+
+| Type | Left click | Right click | Shift | Drop key (Q) |
+|---|---|---|---|---|
+| Boolean | toggle | toggle | | reset to default |
+| Integer | +1 | −1 | ±10 | reset to default |
+| Decimal | + step | − step | ±10 steps | reset to default |
+| Enum / choice | next | previous | | reset to default |
+| Text | closes the menu and puts a clickable `/mejtaadmin config set <config> <key> ` in chat | | | reset to default |
+| Secret | not editable: shows `(set)` or `(not set)` and the console command to use | | | |
+
+- **Decimal step:** a power of ten that divides the setting's range into 20 to 200 steps. For example 0.01 for 0 to 1, 0.1 for 0.1 to 5 and 1 for 0 to 100. A decimal without a range uses 0.1.
+- **Limits:** numbers stop at the range limits, and the menu says when you are already at one.
+- **Validation:** a choice the addon's rules refuse is skipped.
+- **Same path as the commands:** every change goes through Server Settings and `/mejtaadmin config set`, so it is permission-checked again, validated, saved at once, written to the audit log and announced on `mejtacore.config`.
+- **Feedback:** the result appears in the action bar and in the bottom-row icon. A refusal is also written to chat.
+- **Permission:** it is checked on every click and refresh. Once it is gone, the menu closes.
+- **Refresh:** the menu redraws every half second, so changes made by others show up.
 
 ---
 
@@ -186,12 +220,14 @@ main/
 │   │   ├── presence/   PresenceService, VisibilityProvider, PresenceListener (API 4)
 │   │   └── server/     ServerCommandProvider, Scheduler (API 4)
 │   ├── audit/          AuditChain (hash chain), AuditTrail
-│   ├── menu/           ButtonMenu (server-side chest menu)
+│   ├── menu/           ButtonMenu (server-side chest menu), ConfigServerMenu (/mejtaadmin config menu)
 │   ├── presence/       Presence
 │   ├── storage/        RecordLogs, JsonlRecordLog, JsonDataStore
 │   ├── core/           MejtaCore (main entrypoint), MejtaCoreServer, CoreSettings
 │   ├── addons/         AddonRegistry (registration, dependency resolution, init)
-│   ├── config/         ConfigManager, ConfigFile (JSON persistence, migration, recovery)
+│   ├── config/         ConfigManager, ConfigFile (JSON persistence, migration, recovery),
+│   │                   ConfigEditing (the one edit path), SettingSteps (menu clicks), PendingEdits
+│   ├── network/        ServerConfigSync (Server Settings, server side), ConfigPayloads
 │   ├── logging/        MejtaLog, Diagnostics
 │   └── util/           SafeFiles (atomic writes, backups)
 ├── src/client/java/com/mejta/mejtacore/                client-only code
@@ -199,6 +235,7 @@ main/
 │   │                   ClientCommandProvider, MejtaClientAddon
 │   ├── core/           MejtaCoreClient (client entrypoint)
 │   ├── commands/       MejtaCommands (/mejtacore and /mejta)
+│   ├── network/        RemoteConfigs, RemoteConfigHandle (Server Settings, client side)
 │   ├── ui/             ChestMenuScreen, CoreMenus, ConfigMenus, TextInputScreen, ScreenOpener
 │   └── addons/         ClientAddonExtensions (menu entries and commands per addon)
 └── test-addon/         separate Gradle project: example addon + automated in-game tests
@@ -544,7 +581,11 @@ MejtaCoreAPI.metrics().gauge("myaddon", "queue.size", queue::size);   // read on
   - it checks that values persist across restarts;
   - it repeats the key checks on a dedicated server as a non-operator player;
   - it checks permissions and per-node overrides, `/mejtaadmin` (as a non-op, with and without an override), notification delivery (including a provider that fails, muting and audience filtering), and record logs (ordering, filtering, rotation, size limits, unwritable records);
-  - it edits the dedicated server's settings through the real menu as a non-op: **No permission** by default; with an override, clicks change the server's values and files (number and enum); the server rejects out-of-range values and values the addon's validator refuses; the permissions file stays hidden from non-owners; `/mejtaadmin config get/set` work; edits are refused again once the permission is revoked; there is no Server Settings entry in single-player.
+  - it edits the dedicated server's settings through the real menu as a non-op: **No permission** by default; with an override, clicks change the server's values and files (number and enum); the server rejects out-of-range values and values the addon's validator refuses; the permissions file stays hidden from non-owners; `/mejtaadmin config get/set` work; edits are refused again once the permission is revoked; there is no Server Settings entry in single-player;
+  - since 1.4.0, it also checks:
+    - the server's confirmation and refusals are shown in the menu, and refusals in chat;
+    - a local config that the server also offers opens the server's copy, while Shift-click opens this computer's copy, which is labelled as such;
+    - `/mejtaadmin config menu` as a non-op with an override: it toggles a boolean, cycles an enum both ways, steps a whole number and a decimal, and resets with the drop key, each saved to the server's file and announced; a secret shows only `(not set)` and can't be edited; a text setting hands out the command; the menu closes when the permission is revoked and is refused without it.
 
 It also checks the API 4 additions:
 - secret settings never reach the client's Server Settings, chat, the config file or notifications;
@@ -554,9 +595,18 @@ It also checks the API 4 additions:
 - server menus: clicks, number keys, drop keys and inventory clicks move nothing;
 - presence and the scheduler.
 
-The suite had 144 checks in 1.2.x. 1.3.0 adds about 40; the `SUMMARY` line prints the total.
+The suite had 144 checks in 1.2.x. 1.3.0 added about 40 and 1.4.0 adds 35, about 225 in all. The `SUMMARY` line prints the total.
 
-**Unit tests** (JUnit 6, `./gradlew test`) cover the logic that needs no running game: secret storage and masking, the data store (ordering, coalescing, durability, corrupt files, key validation), the audit hash chain, and metrics (timers and their peaks, counters, gauges, name rules, concurrent recording): 25 tests.
+The client and the dedicated test server run in **one JVM** and share MejtaCore's config objects, so the game test can't see the difference between a client's own copy of a config and the server's. That is how the "edits don't stick" bug of 1.3.0 passed CI. The 1.4.0 checks therefore test what the menu opens and labels, and the logic is covered by unit tests.
+
+**Unit tests** (JUnit 6, `./gradlew test`) cover the logic that needs no running game, 44 tests in all:
+- secret storage and masking;
+- the data store: ordering, coalescing, durability, corrupt files and key validation;
+- the audit hash chain;
+- metrics: timers and their peaks, counters, gauges, name rules and concurrent recording;
+- since 1.4.0, the edit path: saving at once, refusal messages, a failed save reported as a failure, and a warning when a save replaces hand edits;
+- since 1.4.0, menu steps: toggling, cycling past values the validator refuses, clamping, decimal steps without rounding noise;
+- since 1.4.0, the client's bookkeeping of unanswered edits, so an old catalog can't undo a click.
 
 To run everything:
 
@@ -577,13 +627,17 @@ Fabric Loader stops with *"Mod 'MejtaCore Example Addon' (mejtacore_example) 1.0
 
 Note that Fabric's `TestInput` sends key and mouse events with no modifier bits. MejtaCore therefore also checks the live Shift/Ctrl key state, so Shift- and Ctrl-clicks behave the same under automation as they do in normal play.
 
-## 8. Known limitations (v1.3.0)
+## 8. Known limitations (v1.4.0)
 
-- Server Settings needs MejtaCore 1.2.0+ on both the server and the client. Older clients and vanilla clients aren't offered it; they can use `/mejtaadmin config` with the permission.
+- Server Settings in the client menu needs MejtaCore 1.2.0+ on both the server and the client. Other clients can use `/mejtaadmin config menu` or `/mejtaadmin config get/set` with the permission.
+- Text settings can't be typed into the server's chest menu; it hands out a `/mejtaadmin config set` command in chat instead.
+- The client's Server Settings doesn't show the **Experimental** marker, because the settings protocol (version 1) doesn't carry it. `/mejtaadmin config menu` and `config get` show it.
+- The client's Configuration page still lists this computer's copies of server-only addons' configs; they only matter in single-player. On a server they are labelled, and those the server offers open the server's copy.
 - Editing permission is per server, not per addon: `mejtacore.config.edit` grants every config except the permissions file.
 - Permissions are operator levels only. There's no per-player node assignment (for example via LuckPerms) yet.
 - Settings have no grouping yet; dotted keys (`checks.x.enabled`) keep related settings together.
-- Secret settings can only be changed with `/mejtaadmin config set` (or by editing `config/mejta/secrets/<id>.json` and running `config reload`), never from the Server Settings menu.
+- Secret settings can only be changed with `/mejtaadmin config set` (or by editing `config/mejta/secrets/<id>.json` and running `config reload`), never from a menu.
+- A change made in-game rewrites the whole config file. Edits made to the file by hand since it was loaded are replaced; since 1.4.0 this is logged as a warning. Run `/mejtaadmin config reload` after editing a file by hand.
 - A command registered with the same name by a mod that loads *after* MejtaCore replaces an addon's top-level command without warning.
 - There's no in-game keybind for the menu yet; use `/mejta`.
 - The registry is populated during startup. Addons can't be registered or unregistered while the game is running.

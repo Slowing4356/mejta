@@ -47,6 +47,15 @@ public class ChestMenuScreen extends Screen {
 	private static final int NAV_PAGE = 4;
 	private static final int NAV_NEXT = 5;
 	private static final int NAV_CLOSE = 8;
+	private static final long STATUS_MILLIS = 6_000;
+
+	/**
+	 * Feedback of the last action (e.g. the server's answer to an edit), drawn under the menu. The action bar
+	 * and chat are behind the menu's darkened background, where a refusal used to go unnoticed. Static, so it
+	 * stays visible across pages and the text input screen.
+	 */
+	private static @Nullable Component status;
+	private static long statusUntil;
 
 	private final Supplier<List<MenuEntry>> source;
 	private final @Nullable Screen parent;
@@ -198,10 +207,26 @@ public class ChestMenuScreen extends Screen {
 		graphics.blit(RenderPipelines.GUI_TEXTURED, CHEST_TEXTURE, left, top + bodyHeight, 0.0F, 215.0F, IMAGE_WIDTH, 7, 256, 256);
 	}
 
+	/** Shows {@code message} under the open (or next opened) menu for a few seconds. Call on the client thread. */
+	public static void showStatus(Component message) {
+		String text = message.getString();
+		status = text.length() <= 100 ? message : Component.literal(text.substring(0, 97) + "...").setStyle(message.getStyle());
+		statusUntil = System.currentTimeMillis() + STATUS_MILLIS;
+	}
+
+	/** The status line currently shown, if any (used by tests). */
+	public static @Nullable Component currentStatus() {
+		return status != null && System.currentTimeMillis() < statusUntil ? status : null;
+	}
+
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
 		super.extractRenderState(graphics, mouseX, mouseY, a);
 		graphics.text(font, getTitle(), left + 8, top + 6, TITLE_COLOR, false);
+		Component line = currentStatus();
+		if (line != null) {
+			graphics.centeredText(font, line, width / 2, top + imageHeight() + 6, 0xFFFFFFFF);
+		}
 
 		int hovered = slotAt(mouseX, mouseY);
 		MenuEntry hoveredEntry = hovered >= 0 ? slotEntries[hovered] : null;

@@ -137,6 +137,7 @@ public final class ConfigFile implements ConfigHandle {
 		String secrets = secretsFile == null ? null : serializeSecrets();
 		boolean ok = true;
 		if (!content.equals(lastWritten)) {
+			warnIfEditedOnDisk();
 			try {
 				SafeFiles.writeAtomically(file, content);
 				lastWritten = content;
@@ -159,6 +160,25 @@ public final class ConfigFile implements ConfigHandle {
 		}
 		if (ok) {
 			dirty = false;
+		}
+	}
+
+	/**
+	 * A save writes every value held in memory. If the file was edited by hand since it was loaded (without a
+	 * reload), those edits are replaced: say so, instead of letting them vanish silently.
+	 */
+	private void warnIfEditedOnDisk() {
+		if (lastWritten == null || !Files.exists(file)) {
+			return;
+		}
+		try {
+			if (!Files.readString(file, StandardCharsets.UTF_8).equals(lastWritten)) {
+				Diagnostics.warn("config:" + id, file.getFileName() + " was edited on disk since it was loaded; this save replaces"
+						+ " those edits. After editing a file by hand, run /mejtaadmin config reload (or /mejtacore config reload)"
+						+ " before changing settings in-game.");
+			}
+		} catch (IOException e) {
+			// only a hint; the save itself reports real problems
 		}
 	}
 

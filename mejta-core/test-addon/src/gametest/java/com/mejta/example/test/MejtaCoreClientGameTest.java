@@ -634,6 +634,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("remote: left click changes the server's value (8 -> 9)", waitUntil(ctx, () -> example.get(ExampleAddon.RADIUS) == 9));
 		check("remote: server saved the change to disk", waitUntil(ctx,
 				() -> read(example.file()).contains("\"radius\": 9")));
+		check("remote: the server's confirmation is shown in the menu (1.4.0)", waitUntil(ctx, () -> statusContains(ctx, "Saved on the server")));
 		clickSlot(ctx, findSlot(ctx, "setting_mode"), 0);
 		check("remote: enum setting cycles on the server (NORMAL -> FAST)",
 				waitUntil(ctx, () -> example.get(ExampleAddon.MODE) == ExampleAddon.Mode.FAST));
@@ -645,7 +646,26 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 			return slot >= 0 && menu.entryAt(slot).title().getString().contains("9");
 		})));
 		ctx.takeScreenshot("mejtacore-10-server-config-edit");
+
+		// 1.4.0: a refusal used to show only in the action bar, hidden behind the menu.
+		clearChat(ctx);
+		clickSlot(ctx, findSlot(ctx, "setting_greeting"), 0);
+		waitForScreenClass(ctx, TextInputScreen.class);
+		selectAllAndType(ctx, "   ");
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
+		check("remote: a refused edit is shown in the menu", waitUntil(ctx, () -> statusContains(ctx, "Server refused the change")
+				&& statusContains(ctx, "greeting")));
+		check("remote: a refused edit is also written to chat", chatContains(ctx, "Server refused the change"));
+		check("remote: the refused value was not applied", !example.get(ExampleAddon.GREETING).isBlank());
+		check("remote: the page shows the server's value again", waitUntil(ctx, () -> ctx.computeOnClient(mc -> {
+			if (!(mc.screen instanceof ChestMenuScreen menu)) {
+				return false;
+			}
+			int slot = findSlotOn(menu, "setting_greeting");
+			return slot >= 0 && menu.entryAt(slot).title().getString().contains("Hello from");
+		})));
 		closeMenu(ctx);
+		localCopyChecks(ctx);
 
 		ctx.runOnClient(mc -> ClientPlayNetworking.send(new ConfigPayloads.EditConfig("example", "SET", "radius", "999")));
 		ctx.runOnClient(mc -> ClientPlayNetworking.send(new ConfigPayloads.EditConfig("example", "SET", "greeting", "   ")));
@@ -672,6 +692,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("command: invalid value explained", chatContains(ctx, "expected a whole number"));
 
 		secretSettingChecks(ctx, perms);
+		vanillaConfigMenuChecks(ctx, server, perms, edit);
 
 		perms.reset(edit);
 		perms.save();
@@ -682,6 +703,135 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		launches = example.get(ExampleAddon.LAUNCH_COUNT);
 		example.resetAll();
 		example.set(ExampleAddon.LAUNCH_COUNT, launches); // the next run's persistence check compares against it
+		example.save();
+	}
+
+	/**
+	 * 1.4.0: with an addon installed on both sides, the Configuration page lists this computer's copy of its config.
+	 * Editing it used to change only the client's file ("edits don't stick" on the server). The client and the test
+	 * server share one JVM here, so the values cannot tell the copies apart: the checks are on what the menu opens.
+	 * Needs mejtacore.config.edit granted.
+	 */
+	private void localCopyChecks(ClientGameTestContext ctx) {
+		chat(ctx, "/mejta gui");
+		waitForMenu(ctx, "MejtaCore");
+		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
+		waitForMenu(ctx, "Configuration");
+		check("local copy: Configuration page says the files are this computer's", findSlot(ctx, "this_computer_note") >= 0);
+		check("local copy: entry labelled '(this computer)'", ctx.computeOnClient(mc -> mc.screen instanceof ChestMenuScreen menu
+				&& findSlotOn(menu, "config_example") >= 0
+				&& menu.entryAt(findSlotOn(menu, "config_example")).title().getString().equals("Example Addon (this computer)")));
+		clickSlot(ctx, findSlot(ctx, "config_example"), 0);
+		check("local copy: clicking a config the server also has opens the SERVER's copy", waitForMenu(ctx, "Example Addon (Server)"));
+		check("local copy: the menu says which copy is open", statusContains(ctx, "SERVER's settings"));
+		ctx.takeScreenshot("mejtacore-12-local-config-redirect");
+		clickSlot(ctx, navRow(ctx), 0);
+		waitForMenu(ctx, "Configuration");
+		ctx.getInput().holdShift();
+		clickSlot(ctx, findSlot(ctx, "config_example"), 0);
+		ctx.getInput().releaseShift();
+		check("local copy: shift-click opens this computer's copy", waitForMenu(ctx, "Example Addon (This Computer)"));
+		check("local copy: that page is labelled as not the server's", findSlot(ctx, "this_computer_note") >= 0
+				&& findSlot(ctx, "setting_radius") >= 0);
+		clickSlot(ctx, findSlot(ctx, "this_computer_note"), 0);
+		check("local copy: the note leads to Server Settings", waitForMenu(ctx, "Server Settings"));
+		closeMenu(ctx);
+
+		chat(ctx, "/mejta gui");
+		waitForMenu(ctx, "MejtaCore");
+		clickSlot(ctx, findSlot(ctx, "core_settings"), 0);
+		check("local copy: MejtaCore Settings labelled as this computer's on a server",
+				waitForMenu(ctx, "MejtaCore Settings") && findSlot(ctx, "this_computer_note") >= 0);
+		closeMenu(ctx);
+	}
+
+	/**
+	 * 1.4.0: {@code /mejtaadmin config menu}, a server-side chest menu that needs no client mod. Runs as a non-op with
+	 * mejtacore.config.edit granted; every change must reach the server's file through the normal edit path.
+	 */
+	private void vanillaConfigMenuChecks(ClientGameTestContext ctx, TestDedicatedServerContext server, ConfigHandle perms,
+			Setting<PermissionLevel> edit) {
+		ConfigHandle example = ExampleAddon.config();
+		Path file = example.file();
+		UUID me = ctx.computeOnClient(mc -> mc.player.getUUID());
+		example.set(ExampleAddon.RADIUS, 12);
+		example.set(ExampleAddon.MODE, ExampleAddon.Mode.FAST);
+		example.save();
+		resendCommands(server);
+
+		chat(ctx, "/mejtaadmin config menu");
+		check("vanilla menu: /mejtaadmin config menu opens a plain chest", waitForContainer(ctx, "Server Settings"));
+		check("vanilla menu: lists the example config", containerSlot(ctx, "Example Addon", true) >= 0);
+		check("vanilla menu: permissions file hidden from non-owners", containerSlot(ctx, "Permissions", true) < 0);
+		ctx.takeScreenshot("mejtacore-13-vanilla-config-menu");
+		clickContainerSlot(ctx, containerSlot(ctx, "Example Addon", true), 0);
+		check("vanilla menu: config page opens", waitForContainer(ctx, "Example Addon settings"));
+		ctx.takeScreenshot("mejtacore-14-vanilla-config-settings");
+
+		clickContainerSlot(ctx, containerSlot(ctx, "Enabled:", false), 0);
+		check("vanilla menu: click toggles a boolean on the server and saves it", waitUntil(ctx, () -> !example.get(ExampleAddon.ENABLED)
+				&& read(file).contains("\"enabled\": false")));
+		check("vanilla menu: the icon shows the new value", waitUntil(ctx, () -> containerName(ctx, "Enabled:").endsWith("OFF")));
+
+		clickContainerSlot(ctx, containerSlot(ctx, "Mode:", false), 0);
+		check("vanilla menu: left click cycles an enum (FAST -> SILENT)",
+				waitUntil(ctx, () -> example.get(ExampleAddon.MODE) == ExampleAddon.Mode.SILENT));
+		clickContainerSlot(ctx, containerSlot(ctx, "Mode:", false), 1);
+		check("vanilla menu: right click cycles back (SILENT -> FAST), saved", waitUntil(ctx,
+				() -> example.get(ExampleAddon.MODE) == ExampleAddon.Mode.FAST && read(file).contains("\"mode\": \"FAST\"")));
+
+		clickContainerSlot(ctx, containerSlot(ctx, "Radius:", false), 0);
+		check("vanilla menu: left click adds 1 to a number (12 -> 13), saved", waitUntil(ctx,
+				() -> example.get(ExampleAddon.RADIUS) == 13 && read(file).contains("\"radius\": 13")));
+		clickContainerSlot(ctx, containerSlot(ctx, "Radius:", false), 1);
+		check("vanilla menu: right click subtracts 1 (13 -> 12)", waitUntil(ctx, () -> example.get(ExampleAddon.RADIUS) == 12));
+		clickContainerSlot(ctx, containerSlot(ctx, "Speed:", false), 0);
+		check("vanilla menu: decimal step (1.0 -> 1.1)", waitUntil(ctx, () -> example.get(ExampleAddon.SPEED) == 1.1));
+		hoverContainerSlot(ctx, containerSlot(ctx, "Speed:", false));
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_Q);
+		check("vanilla menu: drop key resets to the default (1.1 -> 1.0)", waitUntil(ctx,
+				() -> example.get(ExampleAddon.SPEED) == 1.0 && read(file).contains("\"speed\": 1.0")));
+		check("vanilla menu: nothing dropped or carried", server.computeOnServer(s -> {
+			ServerPlayer p = s.getPlayerList().getPlayer(me);
+			return p.containerMenu.getCarried().isEmpty() && p.level().getEntitiesOfClass(
+					net.minecraft.world.entity.item.ItemEntity.class, p.getBoundingBox().inflate(8)).isEmpty();
+		}));
+		check("vanilla menu: changes are audited and published", waitUntil(ctx, () -> !notificationLog(r ->
+				r.get("channel").getAsString().equals("mejtacore.config")
+						&& r.getAsJsonObject("fields").get("key").getAsString().equals("speed")).isEmpty()));
+
+		int token = containerSlot(ctx, "Api Token:", false);
+		check("vanilla menu: a secret shows only (not set)", token >= 0 && containerName(ctx, "Api Token:").endsWith("(not set)"));
+		clearChat(ctx);
+		clickContainerSlot(ctx, token, 0);
+		check("vanilla menu: a secret cannot be edited from the menu", waitUntil(ctx, () -> chatHas(ctx, "cannot be changed from the menu"))
+				&& example.get(ExampleAddon.API_TOKEN).isEmpty()
+				&& ctx.computeOnClient(mc -> mc.screen instanceof AbstractContainerScreen<?>));
+
+		clearChat(ctx);
+		clickContainerSlot(ctx, containerSlot(ctx, "Greeting:", false), 0);
+		check("vanilla menu: a text setting closes the menu", waitUntil(ctx, () -> ctx.computeOnClient(mc -> mc.screen == null)));
+		check("vanilla menu: and offers the command in chat", chatContains(ctx, "Click here to type a new value for greeting"));
+
+		clearChat(ctx);
+		chat(ctx, "/mejtaadmin config");
+		check("vanilla menu: /mejtaadmin config without arguments opens it", waitForContainer(ctx, "Server Settings"));
+		closeMenu(ctx);
+
+		chat(ctx, "/mejtaadmin config menu example");
+		check("vanilla menu: opens one config directly", waitForContainer(ctx, "Example Addon settings"));
+		perms.reset(edit);
+		perms.save();
+		clickContainerSlot(ctx, containerSlot(ctx, "Radius:", false), 0);
+		check("vanilla menu: closes once the permission is revoked, without a change", waitUntil(ctx,
+				() -> ctx.computeOnClient(mc -> !(mc.screen instanceof AbstractContainerScreen<?>))) && example.get(ExampleAddon.RADIUS) == 12);
+		resendCommands(server);
+		chat(ctx, "/mejtaadmin config menu");
+		check("vanilla menu: refused without the permission", !waitForContainer(ctx, "Server Settings"));
+
+		perms.set(edit, PermissionLevel.ALL);
+		perms.save();
+		example.set(ExampleAddon.ENABLED, true);
 		example.save();
 	}
 
@@ -881,7 +1031,50 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("api4: repeating task ran about 5 times, then stopped (" + runs.get() + ")", runs.get() >= 4 && runs.get() <= 6);
 	}
 
+	private static boolean statusContains(ClientGameTestContext ctx, String text) {
+		return ctx.computeOnClient(mc -> ChestMenuScreen.currentStatus() != null && ChestMenuScreen.currentStatus().getString().contains(text));
+	}
+
+	/** Waits (up to 40 ticks) for a vanilla container screen with this title, e.g. a server menu. */
+	private static boolean waitForContainer(ClientGameTestContext ctx, String title) {
+		for (int i = 0; i < 40; i++) {
+			if (ctx.computeOnClient(mc -> mc.screen instanceof AbstractContainerScreen<?> screen && screen.getTitle().getString().equals(title))) {
+				ctx.waitTicks(2);
+				return true;
+			}
+			ctx.waitTick();
+		}
+		return false;
+	}
+
+	/** The first menu slot (of a 6-row server menu) whose item name equals, or starts with, {@code name}. */
+	private static int containerSlot(ClientGameTestContext ctx, String name, boolean exact) {
+		return ctx.computeOnClient(mc -> {
+			if (!(mc.screen instanceof AbstractContainerScreen<?> screen)) {
+				return -1;
+			}
+			int slots = Math.min(54, screen.getMenu().slots.size());
+			for (int i = 0; i < slots; i++) {
+				ItemStack stack = screen.getMenu().getSlot(i).getItem();
+				String shown = stack.isEmpty() ? "" : stack.getHoverName().getString();
+				if (exact ? shown.equals(name) : shown.startsWith(name)) {
+					return i;
+				}
+			}
+			return -1;
+		});
+	}
+
+	private static String containerName(ClientGameTestContext ctx, String prefix) {
+		int slot = containerSlot(ctx, prefix, false);
+		return slot < 0 ? "" : ctx.computeOnClient(mc -> mc.player.containerMenu.getSlot(slot).getItem().getHoverName().getString());
+	}
+
 	private static void clickContainerSlot(ClientGameTestContext ctx, int slot, int button) {
+		if (slot < 0) {
+			LOG.error("[MejtaTest] cannot click missing container slot");
+			return;
+		}
 		hoverContainerSlot(ctx, slot);
 		ctx.getInput().pressMouse(button);
 		ctx.waitTicks(3);
@@ -889,6 +1082,10 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 
 	/** Moves the mouse over a slot of a vanilla container screen. */
 	private static void hoverContainerSlot(ClientGameTestContext ctx, int slot) {
+		if (slot < 0 || !ctx.computeOnClient(mc -> mc.screen instanceof AbstractContainerScreen<?>)) {
+			LOG.error("[MejtaTest] cannot hover container slot {}", slot);
+			return;
+		}
 		double[] pos = ctx.computeOnClient(mc -> {
 			AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) mc.screen;
 			int left = intField(screen, "leftPos");

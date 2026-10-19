@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -12,6 +13,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
 import com.mejta.mejtacore.api.config.ConfigHandle;
+import com.mejta.mejtacore.config.PendingEdits;
 import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.network.ConfigPayloads.EditResult;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteConfig;
@@ -25,8 +27,12 @@ import com.mejta.mejtacore.ui.ChestMenuScreen;
  */
 public final class RemoteConfigs {
 	private static final Map<String, RemoteConfigHandle> handles = new LinkedHashMap<>();
+	/** Edits sent and not answered yet; their values win over catalogs that were sent before them. */
+	static final PendingEdits PENDING = new PendingEdits();
 	private static boolean received;
 	private static boolean permitted;
+	/** The server's config protocol if it differs from this client's, else 0. */
+	private static int incompatibleProtocol;
 
 	private RemoteConfigs() {
 	}
@@ -34,9 +40,8 @@ public final class RemoteConfigs {
 	public static void register() {
 		ClientPlayNetworking.registerGlobalReceiver(ServerConfigs.TYPE, (payload, ctx) -> ctx.client().execute(() -> apply(payload)));
 		ClientPlayNetworking.registerGlobalReceiver(EditResult.TYPE, (payload, ctx) -> ctx.client().execute(() -> {
-			if (!payload.ok() && ctx.client().player != null) {
-				ctx.client().player.sendOverlayMessage(Component.literal(payload.message()).withStyle(ChatFormatting.RED));
-			}
+			PENDING.answered();
+			showResult(ctx.client(), payload.ok(), payload.message());
 		}));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(RemoteConfigs::clear));
 	}
@@ -69,8 +74,39 @@ public final class RemoteConfigs {
 		return permitted;
 	}
 
+	/** The server's config protocol if this client cannot use it (a different MejtaCore version), else 0. */
+	public static synchronized int incompatibleProtocol() {
+		return incompatibleProtocol;
+	}
+
 	public static synchronized List<ConfigHandle> configs() {
 		return new ArrayList<>(handles.values());
+	}
+
+	/** The server's copy of config {@code id}, if it lets this player edit it. */
+	public static synchronized Optional<ConfigHandle> find(String id) {
+		return Optional.ofNullable(handles.get(id));
+	}
+
+	/**
+	 * Shows the server's answer to an edit where it can be read: in the open menu's status line (the action bar
+	 * is hidden behind the menu) and, for a refusal, also in chat, so it is still there after the menu closes.
+	 */
+	static void showResult(Minecraft client, boolean ok, String message) {
+		if (ok) {
+			ChestMenuScreen.showStatus(Component.literal("Saved on the server: " + message).withStyle(ChatFormatting.GREEN));
+			return;
+		}
+		Component text = Component.literal("Server refused the change: " + message).withStyle(ChatFormatting.RED);
+		ChestMenuScreen.showStatus(text);
+		if (client.player != null) {
+			client.gui.getChat().addClientSystemMessage(Component.literal("[MejtaCore] ").withStyle(ChatFormatting.DARK_GRAY).append(text));
+		}
+	}
+
+	/** Whether {@code handle} is a server's config (edits are sent to the server) rather than a local file. */
+	public static boolean isRemote(ConfigHandle handle) {
+		return handle instanceof RemoteConfigHandle;
 	}
 
 	/** Display name sent by the server for a remote config. */
@@ -80,11 +116,25 @@ public final class RemoteConfigs {
 
 	private static void apply(ServerConfigs payload) {
 		if (payload.protocol() != ConfigPayloads.PROTOCOL) {
-			MejtaLog.CORE.warn("Server uses config protocol {}, this client {}; remote settings disabled",
-					payload.protocol(), ConfigPayloads.PROTOCOL);
+			// Before 1.4.0 this was only logged: Server Settings then said "Loading..." forever.
+			boolean first;
+			synchronized (RemoteConfigs.class) {
+				first = incompatibleProtocol != payload.protocol();
+				incompatibleProtocol = payload.protocol();
+				received = false;
+				handles.clear();
+			}
+			if (first) {
+				MejtaLog.CORE.warn("Server uses config protocol {}, this client {}; remote settings disabled",
+						payload.protocol(), ConfigPayloads.PROTOCOL);
+			}
+			if (Minecraft.getInstance().screen instanceof ChestMenuScreen menu) {
+				menu.refresh();
+			}
 			return;
 		}
 		synchronized (RemoteConfigs.class) {
+			incompatibleProtocol = 0;
 			received = true;
 			permitted = payload.permitted();
 			Map<String, RemoteConfigHandle> next = new LinkedHashMap<>();
@@ -105,5 +155,7 @@ public final class RemoteConfigs {
 		handles.clear();
 		received = false;
 		permitted = false;
+		incompatibleProtocol = 0;
+		PENDING.clear();
 	}
 }

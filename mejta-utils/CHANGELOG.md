@@ -23,4 +23,5 @@ Fixes from the release review, before the first release:
   - The player's XP is set to zero on entry (and restored on exit), and nothing drops if they die in staff mode.
   - Claiming items in staff mode is refused.
 - **Vanish:** the leave message no longer leaks when `vanish.persist_across_relog` is false.
+- **Freeze:** commands typed in chat were not filtered, only commands run by other code. Every command a frozen player runs is now checked against `freeze.allowed_commands`.
 - **Single-player and LAN:** state is kept per world, so it no longer carries over between worlds.
