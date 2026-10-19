@@ -35,8 +35,9 @@ import com.mejta.mejtacorpse.data.CorpseRecord;
  * <li>an invisible <b>interaction</b> entity over the body, because a lying mannequin's own hitbox is
  *     tiny. It receives the clicks.</li>
  * </ul>
- * Both carry the tags {@code mejtacorpse} and {@code mejtacorpse.<id>}. They hold no items: if one is
- * killed or removed, the corpse is unchanged and the entities are put back.
+ * MejtaCorpse knows them by UUID (stored with the corpse). They also carry the tags {@code mejtacorpse}
+ * and {@code mejtacorpse.<id>} for commands. They hold no items: if one is killed or removed, the corpse
+ * is unchanged and the entities are put back.
  */
 public final class CorpseEntities {
 	public static final String TAG = "mejtacorpse";
@@ -45,19 +46,6 @@ public final class CorpseEntities {
 	static final float HITBOX_HEIGHT = 0.6f;
 
 	private CorpseEntities() {
-	}
-
-	/** The corpse ID an entity belongs to, if it is a corpse entity. */
-	public static Optional<String> corpseId(Entity entity) {
-		if (!entity.getTags().contains(TAG)) {
-			return Optional.empty();
-		}
-		for (String tag : entity.getTags()) {
-			if (tag.startsWith(TAG_PREFIX)) {
-				return Optional.of(tag.substring(TAG_PREFIX.length()));
-			}
-		}
-		return Optional.empty();
 	}
 
 	/** The skin the player is wearing now, to store with their corpse. */

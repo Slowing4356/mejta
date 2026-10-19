@@ -27,7 +27,6 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacorpse.data.CorpseRecord;
 import com.mejta.mejtacorpse.data.CorpseStore;
 import com.mejta.mejtacorpse.util.ScopedDataStore;
-import com.mejta.mejtacorpse.world.CorpseEntities;
 
 /**
  * MejtaCorpse entrypoint. Registers the addon with MejtaCore (settings, permissions, commands), then
@@ -88,7 +87,7 @@ public final class MejtaCorpse implements MejtaAddon {
 				player instanceof ServerPlayer sp ? manager.onUse(sp, entity, hand) : InteractionResult.PASS);
 		// Corpses cannot be hit.
 		AttackEntityCallback.EVENT.register((player, level, hand, entity, hit) ->
-				CorpseEntities.corpseId(entity).isPresent() ? InteractionResult.FAIL : InteractionResult.PASS);
+				manager.isCorpseEntity(entity) ? InteractionResult.FAIL : InteractionResult.PASS);
 	}
 
 	/** Integrated servers (singleplayer, LAN) keep corpses per world; a dedicated server uses the keys as they are. */

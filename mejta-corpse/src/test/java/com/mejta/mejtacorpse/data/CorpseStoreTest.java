@@ -100,6 +100,37 @@ class CorpseStoreTest {
 	}
 
 	@Test
+	void findsCorpsesByTheirEntities() throws IOException {
+		FlakyStore raw = new FlakyStore();
+		CorpseStore store = new CorpseStore(raw);
+		UUID body = UUID.randomUUID();
+		UUID hitbox = UUID.randomUUID();
+		store.saveNow(corpse("aaaa0003", 1).withEntities(body, hitbox));
+		assertEquals("aaaa0003", store.ofEntity(hitbox).orElseThrow().id());
+		UUID newBody = UUID.randomUUID();
+		store.saveLater(store.get("aaaa0003").orElseThrow().withEntities(newBody, hitbox));
+		assertTrue(store.ofEntity(body).isEmpty(), "replaced entity forgotten");
+		assertEquals("aaaa0003", store.ofEntity(newBody).orElseThrow().id());
+		store.delete("aaaa0003");
+		assertTrue(store.ofEntity(newBody).isEmpty() && store.ofEntity(hitbox).isEmpty(), "deleted corpse forgotten");
+	}
+
+	@Test
+	void retiredEntitiesSurviveARestartOnce() {
+		FlakyStore raw = new FlakyStore();
+		CorpseStore store = new CorpseStore(raw);
+		UUID stray = UUID.randomUUID();
+		store.retire(stray);
+		CorpseStore fresh = new CorpseStore(raw);
+		fresh.load();
+		assertTrue(fresh.takeRetired(stray));
+		assertTrue(!fresh.takeRetired(stray), "removed only once");
+		CorpseStore again = new CorpseStore(raw);
+		again.load();
+		assertTrue(!again.takeRetired(stray), "forgotten on disk too");
+	}
+
+	@Test
 	void idsAreShortAndUnique() throws IOException {
 		CorpseStore store = new CorpseStore(new FlakyStore());
 		String a = store.newId();

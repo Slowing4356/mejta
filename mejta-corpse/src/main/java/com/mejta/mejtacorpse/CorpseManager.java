@@ -89,8 +89,6 @@ public final class CorpseManager {
 	private final Map<String, LiveCorpse> live = new HashMap<>();
 	/** Corpse entities MejtaCorpse itself removes: their removal must not trigger a repair. */
 	private final Set<UUID> ownRemovals = ConcurrentHashMap.newKeySet();
-	/** Corpses whose entities are being created right now. */
-	private final Set<String> spawning = ConcurrentHashMap.newKeySet();
 	private final Set<String> repairs = ConcurrentHashMap.newKeySet();
 	private volatile MinecraftServer server;
 
@@ -181,18 +179,13 @@ public final class CorpseManager {
 	}
 
 	private void spawnEntities(MinecraftServer srv, CorpseRecord corpse) {
-		spawning.add(corpse.id());
-		try {
-			Optional<CorpseRecord> spawned = CorpseEntities.spawn(srv, corpse, config.get(CorpseSettings.SHOW_SKIN), config.get(CorpseSettings.SHOW_NAME));
-			if (spawned.isPresent()) {
-				// Only the entities change: the items are taken from the stored record as it is now.
-				store.get(corpse.id()).ifPresent(current -> store.saveLater(current.withEntities(spawned.get().body(), spawned.get().hitbox())));
-			} else {
-				MejtaCorpse.log().warn("Could not place the entities of corpse {} in {}; it can still be opened with /corpse open {}",
-						corpse.id(), corpse.dimension(), corpse.id());
-			}
-		} finally {
-			spawning.remove(corpse.id());
+		Optional<CorpseRecord> spawned = CorpseEntities.spawn(srv, corpse, config.get(CorpseSettings.SHOW_SKIN), config.get(CorpseSettings.SHOW_NAME));
+		if (spawned.isPresent()) {
+			// Only the entities change: the items are taken from the stored record as it is now.
+			store.get(corpse.id()).ifPresent(current -> store.saveLater(current.withEntities(spawned.get().body(), spawned.get().hitbox())));
+		} else {
+			MejtaCorpse.log().warn("Could not place the entities of corpse {} in {}; it can still be opened with /corpse open {}",
+					corpse.id(), corpse.dimension(), corpse.id());
 		}
 	}
 
@@ -229,23 +222,27 @@ public final class CorpseManager {
 
 	/** A right-click on a corpse entity. */
 	public InteractionResult onUse(ServerPlayer player, Entity entity, InteractionHand hand) {
-		Optional<String> id = CorpseEntities.corpseId(entity);
-		if (id.isEmpty()) {
+		Optional<CorpseRecord> corpse = store.ofEntity(entity.getUUID());
+		if (corpse.isEmpty()) {
+			if (store.takeRetired(entity.getUUID())) {
+				removeEntity(entity);
+				return InteractionResult.SUCCESS;
+			}
 			return InteractionResult.PASS;
 		}
 		if (hand != InteractionHand.MAIN_HAND) {
 			return InteractionResult.SUCCESS;
 		}
-		Optional<CorpseRecord> corpse = store.get(id.get());
-		if (corpse.isEmpty() || !corpse.get().owns(entity.getUUID())) {
-			removeEntity(entity);
-			return InteractionResult.SUCCESS;
-		}
-		if (player.containerMenu instanceof CorpseMenu menu && menu.corpse().record().id().equals(id.get())) {
+		if (player.containerMenu instanceof CorpseMenu menu && menu.corpse().record().id().equals(corpse.get().id())) {
 			return InteractionResult.SUCCESS;
 		}
 		open(player, corpse.get(), false);
 		return InteractionResult.SUCCESS;
+	}
+
+	/** Whether the entity shows a corpse (and so cannot be hit). */
+	public boolean isCorpseEntity(Entity entity) {
+		return store.ofEntity(entity.getUUID()).isPresent();
 	}
 
 	/**
@@ -377,30 +374,36 @@ public final class CorpseManager {
 
 	// ---------------------------------------------------------------- entities
 
-	/** A corpse entity was loaded: one that belongs to no current corpse is removed. */
+	/** An entity was loaded: one left over from a removed or replaced corpse is removed. */
 	public void onEntityLoad(Entity entity) {
-		Optional<String> id = CorpseEntities.corpseId(entity);
-		if (id.isEmpty() || spawning.contains(id.get())) {
-			return;
-		}
-		Optional<CorpseRecord> corpse = store.get(id.get());
-		if (corpse.isEmpty() || corpse.get().state() != CorpseRecord.State.ACTIVE || !corpse.get().owns(entity.getUUID())) {
+		if (store.takeRetired(entity.getUUID())) {
 			removeEntity(entity);
 		}
 	}
 
 	/** A corpse entity was killed or removed by something else: put the corpse's entities back. */
 	public void onEntityUnload(Entity entity) {
-		Optional<String> id = CorpseEntities.corpseId(entity);
-		if (id.isEmpty() || ownRemovals.remove(entity.getUUID())) {
+		if (ownRemovals.remove(entity.getUUID())) {
 			return;
 		}
 		Entity.RemovalReason reason = entity.getRemovalReason();
 		if (reason == null || !reason.shouldDestroy()) {
 			return;
 		}
-		store.get(id.get()).filter(c -> c.state() == CorpseRecord.State.ACTIVE && c.owns(entity.getUUID()))
-				.ifPresent(c -> repairs.add(c.id()));
+		store.ofEntity(entity.getUUID()).filter(c -> c.state() == CorpseRecord.State.ACTIVE).ifPresent(c -> repairs.add(c.id()));
+	}
+
+	/** Removes the corpse entity if it is loaded, else remembers to remove it when it loads. */
+	private void removeOrRetire(MinecraftServer srv, CorpseRecord corpse, UUID entity) {
+		if (entity == null) {
+			return;
+		}
+		Optional<Entity> loaded = CorpseEntities.find(srv, corpse, entity);
+		if (loaded.isPresent()) {
+			removeEntity(loaded.get());
+		} else {
+			store.retire(entity);
+		}
 	}
 
 	private void removeEntity(Entity entity) {
@@ -414,20 +417,21 @@ public final class CorpseManager {
 			return;
 		}
 		for (UUID old : new UUID[] {corpse.get().body(), corpse.get().hitbox()}) {
-			CorpseEntities.find(srv, corpse.get(), old).ifPresent(this::removeEntity);
+			removeOrRetire(srv, corpse.get(), old);
 		}
 		spawnEntities(srv, corpse.get().withEntities(null, null));
 		MejtaCorpse.log().info("Put back the entities of corpse {} of {}", id, corpse.get().ownerName());
 	}
 
 	/** Removes an empty corpse: its record and its entities. */
-	void finish(CorpseRecord corpse) {
+	void finish(CorpseRecord stale) {
+		CorpseRecord corpse = store.get(stale.id()).orElse(stale);
 		live.remove(corpse.id());
 		store.delete(corpse.id());
 		MinecraftServer srv = server;
 		if (srv != null) {
 			for (UUID e : new UUID[] {corpse.body(), corpse.hitbox()}) {
-				CorpseEntities.find(srv, corpse, e).ifPresent(this::removeEntity);
+				removeOrRetire(srv, corpse, e);
 			}
 		}
 	}
@@ -454,7 +458,6 @@ public final class CorpseManager {
 		server = null;
 		live.clear();
 		ownRemovals.clear();
-		spawning.clear();
 		repairs.clear();
 		store.clear();
 	}

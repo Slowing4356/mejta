@@ -6,10 +6,13 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.random.RandomGenerator;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import com.mejta.mejtacore.api.storage.DataStore;
@@ -23,10 +26,18 @@ import com.mejta.mejtacore.api.storage.DataStore;
  */
 public final class CorpseStore {
 	static final String FOLDER = "corpses";
+	static final String RETIRED = "retired-entities";
 	private static final char[] HEX = "0123456789abcdef".toCharArray();
 
 	private final DataStore store;
 	private final Map<String, CorpseRecord> records = new ConcurrentHashMap<>();
+	/** Which corpse each corpse entity belongs to. */
+	private final Map<UUID, String> byEntity = new ConcurrentHashMap<>();
+	/**
+	 * Entities of removed or replaced corpses that were in unloaded chunks: removed when they load again.
+	 * They hold no items, so losing this list in a crash leaves at most a corpse that vanishes when clicked.
+	 */
+	private final Set<UUID> retired = ConcurrentHashMap.newKeySet();
 	private final RandomGenerator random = RandomGenerator.getDefault();
 
 	public CorpseStore(DataStore store) {
@@ -35,17 +46,78 @@ public final class CorpseStore {
 
 	/** Reads every record (server start). Damaged files are skipped and reported in the result. */
 	public List<String> load() {
-		records.clear();
+		clear();
 		List<String> damaged = new ArrayList<>();
 		for (String key : store.keys(FOLDER)) {
 			Optional<CorpseRecord> r = store.read(key).flatMap(CorpseRecord::fromJson);
 			if (r.isPresent() && key.equals(key(r.get().id()))) {
-				records.put(r.get().id(), r.get());
+				put(r.get());
 			} else {
 				damaged.add(key);
 			}
 		}
+		store.read(RETIRED).ifPresent(doc -> {
+			if (doc.has("uuids") && doc.get("uuids").isJsonArray()) {
+				for (JsonElement e : doc.getAsJsonArray("uuids")) {
+					try {
+						retired.add(UUID.fromString(e.getAsString()));
+					} catch (RuntimeException ignored) {
+						// not a UUID: skipped
+					}
+				}
+			}
+		});
 		return damaged;
+	}
+
+	private void put(CorpseRecord record) {
+		CorpseRecord old = records.put(record.id(), record);
+		if (old != null) {
+			unindex(old);
+		}
+		for (UUID e : new UUID[] {record.body(), record.hitbox()}) {
+			if (e != null) {
+				byEntity.put(e, record.id());
+			}
+		}
+	}
+
+	private void unindex(CorpseRecord record) {
+		for (UUID e : new UUID[] {record.body(), record.hitbox()}) {
+			if (e != null) {
+				byEntity.remove(e, record.id());
+			}
+		}
+	}
+
+	/** The corpse an entity belongs to, if it is one of the current entities of a corpse. */
+	public Optional<CorpseRecord> ofEntity(UUID entity) {
+		String id = byEntity.get(entity);
+		return id == null ? Optional.empty() : get(id);
+	}
+
+	/** Marks an entity of a removed or replaced corpse, so it is removed once its chunk loads. */
+	public void retire(UUID entity) {
+		if (entity != null && retired.add(entity)) {
+			saveRetired();
+		}
+	}
+
+	/** Whether {@code entity} was retired; it is forgotten, as it is about to be removed. */
+	public boolean takeRetired(UUID entity) {
+		if (retired.remove(entity)) {
+			saveRetired();
+			return true;
+		}
+		return false;
+	}
+
+	private void saveRetired() {
+		JsonObject doc = new JsonObject();
+		JsonArray list = new JsonArray();
+		retired.forEach(u -> list.add(u.toString()));
+		doc.add("uuids", list);
+		store.write(RETIRED, doc);
 	}
 
 	public static String key(String id) {
@@ -87,12 +159,12 @@ public final class CorpseStore {
 	public void saveNow(CorpseRecord record) throws IOException {
 		JsonObject json = record.toJson();
 		store.writeNow(key(record.id()), json);
-		records.put(record.id(), record);
+		put(record);
 	}
 
 	/** Like {@link #saveNow}, queued: for changes that move no items (which entities show the corpse). */
 	public void saveLater(CorpseRecord record) {
-		records.put(record.id(), record);
+		put(record);
 		store.write(key(record.id()), record.toJson());
 	}
 
@@ -101,7 +173,10 @@ public final class CorpseStore {
 	 * written elsewhere: a removal that is lost in a crash then brings back at most an empty corpse.
 	 */
 	public void delete(String id) {
-		records.remove(id);
+		CorpseRecord old = records.remove(id);
+		if (old != null) {
+			unindex(old);
+		}
 		store.delete(key(id));
 	}
 
@@ -111,5 +186,7 @@ public final class CorpseStore {
 
 	public void clear() {
 		records.clear();
+		byEntity.clear();
+		retired.clear();
 	}
 }

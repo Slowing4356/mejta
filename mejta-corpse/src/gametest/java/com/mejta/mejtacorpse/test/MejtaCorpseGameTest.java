@@ -26,7 +26,7 @@ import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.decoration.Mannequin;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -117,30 +117,30 @@ public class MejtaCorpseGameTest {
 		int cobble = SlotLayout.toDisplay(9).getAsInt();
 
 		// Shift-click: into the inventory, out of the corpse on disk. A second click moves nothing more.
-		menu.clicked(diamonds, 0, ClickType.QUICK_MOVE, owner);
+		menu.clicked(diamonds, 0, ContainerInput.QUICK_MOVE, owner);
 		helper.assertValueEqual(count(inv, Items.DIAMOND), 5, Component.literal("diamonds moved"));
 		helper.assertTrue(!onDisk(corpse.id()).containsKey(0), Component.literal("diamonds gone from disk"));
-		menu.clicked(diamonds, 0, ClickType.QUICK_MOVE, owner);
-		menu.clicked(diamonds, 0, ClickType.PICKUP_ALL, owner);
+		menu.clicked(diamonds, 0, ContainerInput.QUICK_MOVE, owner);
+		menu.clicked(diamonds, 0, ContainerInput.PICKUP_ALL, owner);
 		helper.assertValueEqual(count(inv, Items.DIAMOND) + count(menu.getCarried(), Items.DIAMOND), 5, Component.literal("still 5 diamonds"));
 
 		// Nothing can be put in.
 		menu.setCarried(new ItemStack(Items.DIRT, 3));
-		menu.clicked(diamonds, 0, ClickType.PICKUP, owner);
-		menu.clicked(diamonds, 1, ClickType.PICKUP, owner);
+		menu.clicked(diamonds, 0, ContainerInput.PICKUP, owner);
+		menu.clicked(diamonds, 1, ContainerInput.PICKUP, owner);
 		helper.assertTrue(live.getItem(diamonds).isEmpty(), Component.literal("nothing placed into the corpse"));
 		helper.assertValueEqual(menu.getCarried().getCount(), 3, Component.literal("dirt still carried"));
 		menu.setCarried(ItemStack.EMPTY);
 
 		// Number key: into an empty hotbar slot only.
 		inv.setItem(5, ItemStack.EMPTY);
-		menu.clicked(cobble, 5, ClickType.SWAP, owner);
+		menu.clicked(cobble, 5, ContainerInput.SWAP, owner);
 		helper.assertValueEqual(inv.getItem(5).getCount(), 64, Component.literal("cobblestone swapped to the hotbar"));
 		helper.assertTrue(live.getItem(cobble).isEmpty() && !onDisk(corpse.id()).containsKey(9), Component.literal("cobblestone gone"));
 
 		// Buttons cannot be taken.
-		menu.clicked(46, 0, ClickType.PICKUP, owner);
-		menu.clicked(46, 0, ClickType.QUICK_MOVE, owner);
+		menu.clicked(46, 0, ContainerInput.PICKUP, owner);
+		menu.clicked(46, 0, ContainerInput.QUICK_MOVE, owner);
 		helper.assertTrue(menu.getCarried().isEmpty(), Component.literal("a button is never picked up"));
 
 		// Take all: the owner wears the helmet and holds the shield again.
@@ -180,15 +180,15 @@ public class MejtaCorpseGameTest {
 		CorpseMenu menu = new CorpseMenu(2, owner.getInventory(), live, true);
 		disk.fail = true;
 		int slot = SlotLayout.toDisplay(0).getAsInt();
-		menu.clicked(slot, 0, ClickType.QUICK_MOVE, owner);
-		menu.clicked(slot, 0, ClickType.PICKUP, owner);
-		menu.clicked(slot, 0, ClickType.THROW, owner);
+		menu.clicked(slot, 0, ContainerInput.QUICK_MOVE, owner);
+		menu.clicked(slot, 0, ContainerInput.PICKUP, owner);
+		menu.clicked(slot, 0, ContainerInput.THROW, owner);
 		menu.takeAll(owner, true);
 		helper.assertValueEqual(count(owner.getInventory(), Items.EMERALD) + count(menu.getCarried(), Items.EMERALD), 0,
 				Component.literal("nothing handed out while the disk fails"));
 		helper.assertValueEqual(live.getItem(slot).getCount(), 7, Component.literal("the corpse keeps all 7"));
 		disk.fail = false;
-		menu.clicked(slot, 0, ClickType.QUICK_MOVE, owner);
+		menu.clicked(slot, 0, ContainerInput.QUICK_MOVE, owner);
 		helper.assertValueEqual(count(owner.getInventory(), Items.EMERALD), 7, Component.literal("taken once the disk works"));
 		helper.assertTrue(disk.read(CorpseStore.key("f00d0000")).orElseThrow().getAsJsonObject("items").isEmpty(),
 				Component.literal("and gone from that disk"));
