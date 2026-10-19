@@ -14,20 +14,23 @@ It uses MejtaCore for everything shared:
 
 | | |
 |---|---|
-| Version | 0.1.0 (first release; **not yet built or run**, see [Status](#status)) |
+| Version | 1.0.0 (first release; the game test is not green yet, see [Status](#status)) |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | **MejtaCore 1.3.0 or newer, below 2.0.0** (API version 4) |
 | Third-party libraries | None |
 
 ## Status
 
-This release was written without access to the Minecraft jars, so it has **not been compiled or run yet**. Every Minecraft and Fabric name it uses was checked against these 26.1.x sources:
-- Fabric API 0.155.3+26.1.2 (including its test mods);
-- the 26.1.2 Vanish mod;
-- sgui for 26.1;
-- InvView for 26.1.
+MejtaUtils is compiled in CI against Minecraft 26.1.2, Fabric API 0.155.3+26.1.2 and MejtaCore 1.3.0, so every Minecraft and Fabric name it uses exists. Its 21 JUnit tests pass: offline changes, the staff-mode state machine, the freeze command filter and the per-world data scope.
 
-Names not found there are listed under [Things to verify](#things-to-verify). The pure logic is unit-tested: 21 JUnit tests cover offline changes, the staff-mode state machine, the command filter and the per-world data scope.
+The client game test ([Building and testing](#building-and-testing)) also runs in CI. A real client joins a dedicated server, and the game test reaches all of its checks, so the mixins of that build applied at startup. (The freeze-command hook added since then is checked by the next run.) It is **still being brought to green**: the latest run passed 71 of 77 checks. The failures were:
+- Frozen players could still run commands typed in chat. This is fixed (see the changelog). It also left the player vanished, which failed the staff-mode visibility check that came next.
+- After a reconnect in staff mode, the restored offhand shield no longer matched the inventory from before the *first* scenario. The cause is not known yet; the item and count were the same, so a component differed. The test now logs every component of a mismatch. Each scenario now starts from a fresh kit and must give back exactly that kit.
+
+Still not checked at runtime:
+- **Advancement announcements of vanished players.** The hook targets the lambda `lambda$award$0` and is optional (`require = 0`). If the name differs in 26.1.2, the hook is skipped and announcements are not hidden; no test checks them.
+- **`PermissionLevel` order.** MejtaCore's offline permission check (used for `mejtautils.protected` on offline targets) assumes the constants are declared from `ALL` to `OWNERS`. The game test does not cover protected offline players.
+- **Single-client limits.** The tab list, and what other players see of a vanished player, need a second client; the game test has one.
 
 ## Installing
 
@@ -270,23 +273,10 @@ The gametest starts a dedicated server, connects a real non-operator client and 
 | Area | What is checked |
 |---|---|
 | Unauthorized use | Every command is unavailable without permission |
-| Inspection | View mode moves nothing, under any click type; edit mode moves a stack exactly once; your own inventory opens view-only; edit sessions are audited |
+| Inspection | View mode moves nothing, under any click type; edit mode moves a stack exactly once; the crafting grid stays view-only; your own inventory opens view-only; the ender chest and status panel open; edit sessions and opens are audited |
 | Offline changes | Applied once, not twice; a changed save is refused with the item returned; each of the three interrupted-apply recoveries |
 | Vanish | The paths in the table marked "tested" |
 | Freeze | Walking, the drop key, a blocked and an allowed command, the logout notification, freeze kept after rejoin, unfreeze |
 | Staff mode | Exact restoration; recovery after a disconnect in each session state, including after the `restored` marker; the confirmation path; tool removal; `/invsee claims` refused |
 
 Every check logs `[MejtaUtilsTest] PASS/FAIL`.
-
-## Things to verify
-
-These Minecraft names are used, but weren't found in the 26.1.x sources I could check. The first build will confirm them; each is a one-line fix if a name differs.
-
-- `ItemStack.CODEC` with `encodeStart` and `parse`: item JSON.
-- `Inventory.getSelectedSlot()` and `setSelectedSlot(int)`.
-- `ChunkMap$TrackedEntity.updatePlayers(List<ServerPlayer>)` and the `ChunkMap.entityMap` field.
-- `ServerboundSetCreativeModeSlotPacket.slotNum()`.
-- `BuiltInRegistries.MOB_EFFECT.wrapAsHolder(...)`.
-- `FoodData.setSaturation(float)`, `GameType.byName(String, GameType)`.
-- `PlayerList.saveAll()`: MejtaUtils saves a player only after checking they are in the player list, because `saveAll()` saves only the players in it.
-- `PermissionLevel` constants being declared in order from `ALL` to `OWNERS` (used by MejtaCore's offline permission check).

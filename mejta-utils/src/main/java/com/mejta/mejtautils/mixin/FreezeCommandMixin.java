@@ -1,6 +1,8 @@
 package com.mejta.mejtautils.mixin;
 
+import com.mojang.brigadier.ParseResults;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -13,11 +15,27 @@ import net.minecraft.server.level.ServerPlayer;
 
 import com.mejta.mejtautils.freeze.FreezeHooks;
 
-/** Frozen players may only run the commands in freeze.allowed_commands. Every command passes through here. */
+/**
+ * Frozen players may only run the commands in freeze.allowed_commands. Commands typed in chat (signed
+ * or not) go straight to {@code performCommand} with an already parsed command; commands run for a
+ * player by other code (sign and book click events, other mods) go through {@code performPrefixedCommand},
+ * which parses and then calls {@code performCommand}. Both are checked; a command blocked in the first
+ * never reaches the second, so nothing is counted or reported twice.
+ */
 @Mixin(Commands.class)
 public abstract class FreezeCommandMixin {
 	@Inject(method = "performPrefixedCommand", at = @At("HEAD"), cancellable = true)
-	private void mejtautils$blockWhileFrozen(CommandSourceStack source, String command, CallbackInfo ci) {
+	private void mejtautils$blockPrefixedWhileFrozen(CommandSourceStack source, String command, CallbackInfo ci) {
+		mejtautils$check(source, command, ci);
+	}
+
+	@Inject(method = "performCommand(Lcom/mojang/brigadier/ParseResults;Ljava/lang/String;)V", at = @At("HEAD"), cancellable = true)
+	private void mejtautils$blockWhileFrozen(ParseResults<CommandSourceStack> parsed, String command, CallbackInfo ci) {
+		mejtautils$check(parsed.getContext().getSource(), command, ci);
+	}
+
+	@Unique
+	private static void mejtautils$check(CommandSourceStack source, String command, CallbackInfo ci) {
 		ServerPlayer player = source.getPlayer();
 		if (player != null && FreezeHooks.commandBlocked(player, command)) {
 			player.sendSystemMessage(Component.literal("You cannot use that command while frozen.").withStyle(ChatFormatting.RED));

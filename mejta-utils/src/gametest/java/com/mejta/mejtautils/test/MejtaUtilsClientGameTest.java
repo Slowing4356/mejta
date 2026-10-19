@@ -45,6 +45,7 @@ import net.minecraft.world.phys.AABB;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.addon.AddonState;
+import com.mejta.mejtacore.api.audit.AuditActor;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.permission.MejtaPermission;
@@ -248,7 +249,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		// 2. The save changed in between: refused, added items returned.
 		disconnect(ctx, server);
 		onServer(server, s -> {
-			MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test"));
+			MejtaUtils.pending().discard(me, AuditActor.system("test"));
 			HolderLookup.Provider r = s.registryAccess();
 			PendingChange c = new PendingChange(me, name, STAFF, "TestStaff", Instant.now());
 			c.remove(Container.INVENTORY, 9, ItemJson.encode(r, new ItemStack(Items.IRON_INGOT, 99)));
@@ -273,14 +274,14 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		// 5. Interrupted, and the save shows neither: nothing is changed.
 		rejoinWithChange(ctx, server, me, name, 24, new ItemStack(Items.COAL, 5));
 		recoveryCheck(server, me, 24, PendingChange.State.APPLYING, false, "unknown");
-		onServer(server, s -> MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test")));
+		onServer(server, s -> MejtaUtils.pending().discard(me, AuditActor.system("test")));
 	}
 
 	/** Disconnects, stores an APPLYING change removing {@code item} from {@code slot}, reconnects. */
 	private void rejoinWithChange(ClientGameTestContext ctx, TestDedicatedServerContext server, UUID me, String name, int slot, ItemStack item) {
 		disconnect(ctx, server);
 		onServer(server, s -> {
-			MejtaUtils.pending().discard(me, com.mejta.mejtacore.api.audit.AuditActor.system("test"));
+			MejtaUtils.pending().discard(me, AuditActor.system("test"));
 			PendingChange c = new PendingChange(me, name, STAFF, "TestStaff", Instant.now());
 			c.remove(Container.INVENTORY, slot, ItemJson.encode(s.registryAccess(), item));
 			c.markApplying();
@@ -406,8 +407,11 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	private void staffModeChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
 		UUID me = id(ctx);
-		givePlayerKit(server, me);
-		List<ItemStack> before = server.computeOnServer(s -> inventoryCopy(player(s, me)));
+		// Start visible: whether staff mode vanished the player decides whether leaving it un-vanishes them.
+		server.runOnServer(s -> MejtaUtils.vanish().setVanished(player(s, me), false, AuditActor.system("test")));
+		// Each scenario starts from a fresh kit and compares with the inventory as it was just before it
+		// entered staff mode: exact restoration of that state, independent of the scenarios before it.
+		List<ItemStack> before = givePlayerKit(server, me);
 
 		chat(ctx, "/staffmode");
 		check("staff mode: on", waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me))));
@@ -431,24 +435,27 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 				&& player(s, me).gameMode.getGameModeForPlayer() == GameType.SURVIVAL));
 
 		// Disconnect while ACTIVE: staff mode continues, then restores.
+		List<ItemStack> beforeActive = givePlayerKit(server, me);
 		chat(ctx, "/staffmode");
 		waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)));
 		rejoin(ctx, server);
 		check("staff recovery (active): resumed with tools", server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me) && onlyTools(player(s, me))));
 		chat(ctx, "/staffmode off");
 		check("staff recovery (active): restored afterwards", waitUntil(ctx, () -> server.computeOnServer(s ->
-				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), before))));
+				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), beforeActive))));
 
 		// Interrupted while RESTORING: the replacement is repeated, never doubled.
+		List<ItemStack> beforeRestoring = givePlayerKit(server, me);
 		chat(ctx, "/staffmode");
 		waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)));
 		setSessionState(server, me, "RESTORING");
 		rejoin(ctx, server);
 		check("staff recovery (restoring): restored after joining", waitUntil(ctx, () -> server.computeOnServer(s ->
-				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), before))));
+				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), beforeRestoring))));
 
 		// Restored, then interrupted before the session ended (the "restored" marker): only finished,
 		// nothing is handed out again, even though the player used an item since.
+		givePlayerKit(server, me);
 		chat(ctx, "/staffmode");
 		waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)));
 		onServer(server, s -> {
@@ -466,9 +473,9 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		check("staff recovery (restored marker): finished without restoring again", waitUntil(ctx, () -> server.computeOnServer(s ->
 				!MejtaUtils.staffMode().isActive(me) && player(s, me).getInventory().getItem(5).isEmpty()
 						&& player(s, me).getInventory().getItem(0).is(Items.DIAMOND_SWORD))));
-		server.runOnServer(s -> player(s, me).getInventory().setItem(5, new ItemStack(Items.BREAD, 12)));
 
 		// Interrupted while ENTERING, before anything changed: the session is dropped, nothing lost.
+		List<ItemStack> beforeEntering = givePlayerKit(server, me);
 		onServer(server, s -> {
 			ServerPlayer p = player(s, me);
 			JsonObject snapshot = StaffSnapshot.capture(p);
@@ -487,9 +494,10 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 		});
 		rejoin(ctx, server);
 		check("staff recovery (entering): session dropped, inventory untouched", server.computeOnServer(s ->
-				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), before)));
+				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), beforeEntering)));
 
 		// Ambiguous: active session but a foreign item in the inventory. Nothing changes until confirmed.
+		List<ItemStack> beforeAmbiguous = givePlayerKit(server, me);
 		chat(ctx, "/staffmode");
 		waitUntil(ctx, () -> server.computeOnServer(s -> MejtaUtils.staffMode().isActive(me)));
 		server.runOnServer(s -> player(s, me).getInventory().setItem(30, new ItemStack(Items.DIRT, 1)));
@@ -498,7 +506,7 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 				&& MejtaUtils.staffMode().confirmationNeeded(me).isPresent() && player(s, me).getInventory().getItem(30).is(Items.DIRT)));
 		chat(ctx, "/staffmode restore confirm");
 		check("staff recovery (ambiguous): restored after confirmation", waitUntil(ctx, () -> server.computeOnServer(s ->
-				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), before))));
+				!MejtaUtils.staffMode().isActive(me) && sameInventory(player(s, me), beforeAmbiguous))));
 
 		// A tool outside staff mode is removed on join.
 		server.runOnServer(s -> player(s, me).getInventory().setItem(35, StaffTools.create(StaffTools.Kind.COMPASS)));
@@ -508,14 +516,16 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 				&& recentAudit("staffmode.recover") != null);
 	}
 
-	private static void givePlayerKit(TestDedicatedServerContext server, UUID me) {
-		server.runOnServer(s -> {
+	/** Replaces the inventory with a fresh kit and returns a copy of it, the state staff mode must give back. */
+	private static List<ItemStack> givePlayerKit(TestDedicatedServerContext server, UUID me) {
+		return server.computeOnServer(s -> {
 			ServerPlayer p = player(s, me);
 			p.getInventory().clearContent();
 			p.getInventory().setItem(0, new ItemStack(Items.DIAMOND_SWORD));
 			p.getInventory().setItem(5, new ItemStack(Items.BREAD, 12));
 			p.getInventory().setItem(39, new ItemStack(Items.IRON_HELMET));
 			p.getInventory().setItem(40, new ItemStack(Items.SHIELD));
+			return inventoryCopy(p);
 		});
 	}
 
@@ -584,8 +594,17 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	private static boolean sameInventory(ServerPlayer p, List<ItemStack> expected) {
 		for (int i = 0; i < expected.size(); i++) {
-			if (!ItemStack.matches(p.getInventory().getItem(i), expected.get(i))) {
-				LOG.error("[MejtaUtilsTest] slot {} is {}, expected {}", i, p.getInventory().getItem(i), expected.get(i));
+			ItemStack actual = p.getInventory().getItem(i);
+			if (!ItemStack.matches(actual, expected.get(i))) {
+				// With every component: two stacks of one item that differ only in a component print alike.
+				HolderLookup.Provider r = p.level().getServer().registryAccess();
+				String was = actual.isEmpty() ? "empty" : ItemJson.encode(r, actual).toString();
+				String wanted = expected.get(i).isEmpty() ? "empty" : ItemJson.encode(r, expected.get(i)).toString();
+				LOG.error("[MejtaUtilsTest] slot {} is {}, expected {}", i, was, wanted);
+				if (was.equals(wanted)) {
+					// Same patch, so the item's default components differ: show them all.
+					LOG.error("[MejtaUtilsTest] slot {} components {}, expected {}", i, actual.getComponents(), expected.get(i).getComponents());
+				}
 				return false;
 			}
 		}
