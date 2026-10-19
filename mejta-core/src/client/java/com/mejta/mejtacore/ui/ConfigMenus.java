@@ -17,7 +17,9 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.config.SettingType;
 import com.mejta.mejtacore.config.ConfigEditing;
+import com.mejta.mejtacore.config.SettingSteps;
 import com.mejta.mejtacore.config.SettingText;
+import com.mejta.mejtacore.network.RemoteConfigs;
 
 /** Builds editable menu pages for a {@link ConfigHandle}. */
 public final class ConfigMenus {
@@ -44,14 +46,21 @@ public final class ConfigMenus {
 						Component.literal("Restores every setting in this file").withStyle(ChatFormatting.GRAY),
 						Component.literal("Shift-click to confirm").withStyle(ChatFormatting.DARK_GRAY))
 				.onClick(ctx -> {
-					if (ctx.shiftDown()) {
+					if (ctx.shiftDown() && RemoteConfigs.isRemote(handle)) {
+						// One RESET_ALL edit: resetting setting by setting sent one edit each, and the server's rate limit
+						// (20 a second) refused the rest of a larger config. The server keeps secrets and answers in the menu.
+						handle.resetAll();
+						ctx.refresh();
+					} else if (ctx.shiftDown()) {
 						// Secrets are kept, as with a server's Reset All: they can only be changed with /mejtaadmin config.
 						ConfigEditing.Result result = ConfigEditing.apply(handle, ConfigEditing.Op.RESET_ALL, null, null, false);
-						ctx.player().sendOverlayMessage(Component.literal(result.message().contains("kept")
-								? "Settings reset to defaults (secret settings kept)" : "Settings reset to defaults").withStyle(ChatFormatting.GREEN));
+						ChestMenuScreen.showStatus(!result.ok() ? Component.literal(result.message()).withStyle(ChatFormatting.RED)
+								: Component.literal(result.message().contains("kept")
+										? "Settings reset to defaults (secret settings kept)" : "Settings reset to defaults")
+										.withStyle(ChatFormatting.GREEN));
 						ctx.refresh();
 					} else {
-						ctx.player().sendOverlayMessage(Component.literal("Hold Shift and click to reset everything").withStyle(ChatFormatting.YELLOW));
+						ChestMenuScreen.showStatus(Component.literal("Hold Shift and click to reset everything").withStyle(ChatFormatting.YELLOW));
 					}
 				})
 				.build());
@@ -143,11 +152,7 @@ public final class ConfigMenus {
 	}
 
 	private static boolean hasRealRange(Setting<?> setting) {
-		return switch (setting.type()) {
-			case INTEGER -> setting.min().intValue() != Integer.MIN_VALUE || setting.max().intValue() != Integer.MAX_VALUE;
-			case DECIMAL -> setting.min().doubleValue() != -Double.MAX_VALUE || setting.max().doubleValue() != Double.MAX_VALUE;
-			default -> false;
-		};
+		return SettingSteps.hasRealRange(setting);
 	}
 
 	private static Component hint(String text) {
@@ -164,7 +169,8 @@ public final class ConfigMenus {
 		switch (raw.type()) {
 			case BOOLEAN -> {
 				Setting<Boolean> s = cast(raw);
-				handle.trySet(s, !handle.get(s));
+				boolean next = !handle.get(s);
+				refuseIfNot(handle.trySet(s, next), raw, next);
 			}
 			case INTEGER -> {
 				Setting<Integer> s = cast(raw);
@@ -172,10 +178,13 @@ public final class ConfigMenus {
 					editAsText(ctx, handle, s, text -> Integer.parseInt(text.trim()));
 					return;
 				}
-				long step = ctx.shiftDown() ? 10 : 1;
-				long next = (long) handle.get(s) + (back ? -step : step);
-				next = Math.clamp(next, s.min().longValue(), s.max().longValue());
-				handle.trySet(s, (int) next);
+				int current = handle.get(s);
+				int next = SettingSteps.nextInteger(s, current, back, ctx.shiftDown());
+				if (next == current) {
+					ChestMenuScreen.showStatus(Component.literal(SettingSteps.unchangedReason(s, current, back)).withStyle(ChatFormatting.YELLOW));
+				} else {
+					refuseIfNot(handle.trySet(s, next), raw, next);
+				}
 			}
 			case DECIMAL -> {
 				Setting<Double> s = cast(raw);
@@ -183,48 +192,42 @@ public final class ConfigMenus {
 					editAsText(ctx, handle, s, text -> Double.parseDouble(text.trim()));
 					return;
 				}
-				double step = ctx.shiftDown() ? 1.0 : 0.1;
-				double next = handle.get(s) + (back ? -step : step);
-				next = Math.round(next * 10000.0) / 10000.0;
-				next = Math.clamp(next, s.min().doubleValue(), s.max().doubleValue());
-				handle.trySet(s, next);
+				double current = handle.get(s);
+				double next = SettingSteps.nextDecimal(s, current, 0.1, back, ctx.shiftDown());
+				if (next == current) {
+					ChestMenuScreen.showStatus(Component.literal(SettingSteps.unchangedReason(s, current, back)).withStyle(ChatFormatting.YELLOW));
+				} else {
+					refuseIfNot(handle.trySet(s, next), raw, next);
+				}
 			}
 			case STRING -> {
 				Setting<String> s = cast(raw);
 				editAsText(ctx, handle, s, text -> text);
 				return;
 			}
-			case ENUM -> {
-				if (raw.valueClass() == String.class) {
-					cycleChoice(handle, cast(raw), back ? -1 : 1);
-				} else {
-					cycleEnum(handle, raw, back ? -1 : 1);
-				}
-			}
+			case ENUM -> cycle(handle, raw, back ? -1 : 1);
 		}
 		ctx.refresh();
 	}
 
-	private static <E extends Enum<E>> void cycleEnum(ConfigHandle handle, Setting<?> raw, int direction) {
-		Setting<E> s = cast(raw);
-		E[] values = s.valueClass().getEnumConstants();
-		int index = handle.get(s).ordinal();
-		for (int i = 1; i <= values.length; i++) {
-			E candidate = values[Math.floorMod(index + direction * i, values.length)];
-			if (handle.trySet(s, candidate)) {
-				return;
-			}
+	/** Shows why a value was not taken (before 1.4.0 a refused click simply did nothing). */
+	private static void refuseIfNot(boolean accepted, Setting<?> setting, Object value) {
+		if (!accepted) {
+			ChestMenuScreen.showStatus(Component.literal((SettingText.isSensitive(setting) ? "The value" : format(value))
+					+ " is not allowed for " + setting.displayName()).withStyle(ChatFormatting.RED));
 		}
 	}
 
-	private static void cycleChoice(ConfigHandle handle, Setting<String> s, int direction) {
-		List<String> options = s.options();
-		int index = Math.max(0, options.indexOf(handle.get(s)));
-		for (int i = 1; i <= options.size(); i++) {
-			if (handle.trySet(s, options.get(Math.floorMod(index + direction * i, options.size())))) {
-				return;
-			}
+	private static <T> void cycle(ConfigHandle handle, Setting<?> raw, int direction) {
+		Setting<T> s = cast(raw);
+		T current = handle.get(s);
+		@SuppressWarnings("unchecked")
+		T next = (T) SettingSteps.cycle(s, current, direction);
+		if (!SettingSteps.changes(current, next)) {
+			ChestMenuScreen.showStatus(Component.literal(SettingSteps.unchangedReason(s, current, direction < 0)).withStyle(ChatFormatting.YELLOW));
+			return;
 		}
+		refuseIfNot(handle.trySet(s, next), raw, next);
 	}
 
 	private interface Parser<T> {
@@ -240,6 +243,6 @@ public final class ConfigMenus {
 		ctx.openScreen(new TextInputScreen(ctx.screen(), Component.literal("Edit " + setting.displayName()),
 				sensitive ? "" : format(handle.get(setting)), hint,
 				text -> setting.isValid(parser.parse(text)),
-				text -> handle.trySet(setting, parser.parse(text))));
+				text -> refuseIfNot(handle.trySet(setting, parser.parse(text)), setting, text)));
 	}
 }

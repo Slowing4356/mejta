@@ -9,23 +9,28 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.ConfigSpec;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.config.SettingType;
 import com.mejta.mejtacore.config.ConfigEditing;
+import com.mejta.mejtacore.config.PendingEdits;
 import com.mejta.mejtacore.config.SettingText;
 import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.network.ConfigPayloads.EditConfig;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteConfig;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteSetting;
+import com.mejta.mejtacore.ui.ChestMenuScreen;
 
 /**
  * A server config as seen by a client, usable everywhere a {@link ConfigHandle} is (in particular the
  * standard settings pages). Settings are rebuilt from the server's description, so the addon does
  * not need to be installed on the client. Changes are sent to the server, which validates and saves
- * them; the value shown changes immediately and is replaced by the server's answer right after.
+ * them; the value shown changes immediately and is replaced by the server's answer right after (see
+ * {@link PendingEdits} for catalogs that cross an edit on the network).
  */
 final class RemoteConfigHandle implements ConfigHandle {
 	private final String id;
@@ -59,9 +64,11 @@ final class RemoteConfigHandle implements ConfigHandle {
 			spec = builder.build();
 		}
 		values.clear();
+		Map<String, String> pending = RemoteConfigs.PENDING.overrides(id);
 		for (RemoteSetting s : remote.settings()) {
 			spec.setting(s.key()).ifPresent(setting -> {
-				Object value = SettingText.parse(setting, s.value());
+				// While this client's edits are on their way, a catalog may predate them: keep what was sent.
+				Object value = SettingText.parse(setting, pending.getOrDefault(s.key(), s.value()));
 				if (value != null) {
 					values.put(s.key(), value);
 				}
@@ -133,31 +140,44 @@ final class RemoteConfigHandle implements ConfigHandle {
 		if (!setting.isValid(value)) {
 			return false;
 		}
+		String text = SettingText.format(setting, value);
+		if (!send(ConfigEditing.Op.SET, setting.key(), text, Map.of(setting.key(), text))) {
+			return false;
+		}
 		synchronized (this) {
 			values.put(setting.key(), value);
 		}
-		send(ConfigEditing.Op.SET, setting.key(), SettingText.format(setting, value));
 		fireChanged();
 		return true;
 	}
 
 	@Override
 	public <T> void reset(Setting<T> setting) {
+		if (!send(ConfigEditing.Op.RESET, setting.key(), "", Map.of(setting.key(), SettingText.format(setting, setting.defaultValue())))) {
+			return;
+		}
 		synchronized (this) {
 			values.put(setting.key(), setting.defaultValue());
 		}
-		send(ConfigEditing.Op.RESET, setting.key(), "");
 		fireChanged();
 	}
 
 	@Override
 	public void resetAll() {
+		Map<String, String> defaults = new HashMap<>();
+		synchronized (this) {
+			for (Setting<?> setting : spec.settings()) {
+				defaults.put(setting.key(), SettingText.format(setting, setting.defaultValue()));
+			}
+		}
+		if (!send(ConfigEditing.Op.RESET_ALL, "", "", defaults)) {
+			return;
+		}
 		synchronized (this) {
 			for (Setting<?> setting : spec.settings()) {
 				values.put(setting.key(), setting.defaultValue());
 			}
 		}
-		send(ConfigEditing.Op.RESET_ALL, "", "");
 		fireChanged();
 	}
 
@@ -182,10 +202,26 @@ final class RemoteConfigHandle implements ConfigHandle {
 		listeners.add(Objects.requireNonNull(listener));
 	}
 
-	private void send(ConfigEditing.Op op, String key, String value) {
-		if (ClientPlayNetworking.canSend(EditConfig.TYPE)) {
-			ClientPlayNetworking.send(new EditConfig(id, op.name(), key, value));
+	/**
+	 * Sends one edit and remembers the values it sets until the server answers. Returns {@code false}, and says
+	 * so in the menu, if the server no longer accepts edits (before 1.4.0 the edit was dropped silently while
+	 * the menu showed the new value).
+	 */
+	private boolean send(ConfigEditing.Op op, String key, String value, Map<String, String> optimistic) {
+		boolean canSend;
+		try {
+			canSend = ClientPlayNetworking.canSend(EditConfig.TYPE);
+		} catch (IllegalStateException e) {
+			canSend = false; // not connected
 		}
+		if (!canSend) {
+			ChestMenuScreen.showStatus(Component.literal("Not sent: you are not connected to a server that accepts setting changes")
+					.withStyle(ChatFormatting.RED));
+			return false;
+		}
+		RemoteConfigs.PENDING.sent(id, optimistic);
+		ClientPlayNetworking.send(new EditConfig(id, op.name(), key, value));
+		return true;
 	}
 
 	private void fireChanged() {

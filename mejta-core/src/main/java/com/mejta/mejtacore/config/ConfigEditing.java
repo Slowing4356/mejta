@@ -18,8 +18,16 @@ public final class ConfigEditing {
 		RESET_ALL
 	}
 
-	/** @param message what changed, or why nothing did */
-	public record Result(boolean ok, String message) {
+	/**
+	 * @param message what changed, or why nothing did
+	 * @param unsaved the change was made in memory (and is in effect) but writing the file failed, so it
+	 *                is lost on the next restart or reload; {@code ok} is then {@code false}
+	 */
+	public record Result(boolean ok, String message, boolean unsaved) {
+		public Result(boolean ok, String message) {
+			this(ok, message, false);
+		}
+
 		static Result fail(String message) {
 			return new Result(false, message);
 		}
@@ -43,8 +51,7 @@ public final class ConfigEditing {
 					skipped++;
 				}
 			}
-			handle.save();
-			return new Result(true, handle.id() + ": all settings reset to defaults"
+			return saved(handle, handle.id() + ": all settings reset to defaults"
 					+ (skipped > 0 ? " (" + skipped + " secret setting(s) kept)" : ""));
 		}
 		Optional<Setting<?>> found = handle.spec().setting(key);
@@ -58,8 +65,7 @@ public final class ConfigEditing {
 		}
 		if (op == Op.RESET) {
 			handle.reset(setting);
-			handle.save();
-			return new Result(true, handle.id() + ": " + key + " reset to " + SettingText.display(setting, setting.defaultValue()));
+			return saved(handle, handle.id() + ": " + key + " reset to " + SettingText.display(setting, setting.defaultValue()));
 		}
 		Object value = SettingText.parse(setting, text);
 		if (value == null) {
@@ -81,10 +87,22 @@ public final class ConfigEditing {
 			return Result.fail("'" + text + "' is not allowed for " + key + range);
 		}
 		set(handle, setting, value);
-		handle.save();
-		return new Result(true, sensitive
+		return saved(handle, sensitive
 				? handle.id() + ": " + key + " changed (value hidden)"
 				: handle.id() + ": " + key + " = " + SettingText.format(setting, value));
+	}
+
+	/**
+	 * Saves at once and reports a failed write. Before 1.4.0 the result said "changed" even when the file could
+	 * not be written (it is only logged by {@link ConfigHandle#save()}): the change then vanished on restart.
+	 */
+	private static Result saved(ConfigHandle handle, String change) {
+		handle.save();
+		if (handle.isDirty()) {
+			return new Result(false, change + ", but it could NOT be saved to " + handle.file().getFileName()
+					+ " (see the server log): it is lost on restart", true);
+		}
+		return new Result(true, change);
 	}
 
 	@SuppressWarnings("unchecked")

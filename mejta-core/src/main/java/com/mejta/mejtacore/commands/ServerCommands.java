@@ -26,6 +26,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.level.ServerPlayer;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.addon.AddonDefinition;
@@ -40,6 +41,7 @@ import com.mejta.mejtacore.core.CoreSettings;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.logging.Diagnostics;
+import com.mejta.mejtacore.menu.ConfigServerMenu;
 import com.mejta.mejtacore.network.ServerConfigSync;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
 
@@ -107,6 +109,12 @@ public final class ServerCommands {
 				.then(Commands.literal("config")
 						.requires(s -> MejtaCoreAPI.hasPermission(s, PermissionRegistry.ADMIN)
 								|| MejtaCoreAPI.hasPermission(s, PermissionRegistry.CONFIG_EDIT))
+						.executes(ServerCommands::configRoot)
+						.then(Commands.literal("menu")
+								.requires(MejtaCoreAPI.requires(PermissionRegistry.CONFIG_EDIT))
+								.executes(ctx -> openMenu(ctx, null))
+								.then(Commands.argument("config", StringArgumentType.word()).suggests(CONFIG_IDS)
+										.executes(ctx -> openMenu(ctx, StringArgumentType.getString(ctx, "config")))))
 						.then(Commands.literal("reload")
 								.requires(MejtaCoreAPI.requires(PermissionRegistry.ADMIN))
 								.executes(ServerCommands::reload))
@@ -241,6 +249,7 @@ public final class ServerCommands {
 			line(source, "/" + ROOT + " audit verify", "check the audit log's hash chain for edits");
 		}
 		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_EDIT)) {
+			line(source, "/" + ROOT + " config menu [config]", "edit settings in a chest menu (no client mod needed)");
 			line(source, "/" + ROOT + " config get <config> [key]", "show settings");
 			line(source, "/" + ROOT + " config set <config> <key> <value>", "change a setting (saved immediately)");
 			if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_SECRETS)) {
@@ -259,6 +268,36 @@ public final class ServerCommands {
 			line(source, "/" + command.getKey() + " ...", "command of addon '" + command.getValue() + "'");
 		}
 		return 1;
+	}
+
+	/** {@code /mejtaadmin config}: the menu for players who may edit settings, otherwise the config commands. */
+	private static int configRoot(CommandContext<CommandSourceStack> ctx) {
+		CommandSourceStack source = ctx.getSource();
+		ServerPlayer player = source.getPlayer();
+		if (player != null && MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_EDIT)) {
+			return ConfigServerMenu.open(player) ? 1 : 0;
+		}
+		source.sendSystemMessage(Component.literal("Config commands:").withStyle(ChatFormatting.GOLD));
+		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.ADMIN)) {
+			line(source, "/" + ROOT + " config reload", "re-read every config file from disk");
+		}
+		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_EDIT)) {
+			line(source, "/" + ROOT + " config menu [config]", "edit settings in a chest menu (players only)");
+			line(source, "/" + ROOT + " config get <config> [key]", "show settings");
+			line(source, "/" + ROOT + " config set <config> <key> <value>", "change a setting (saved immediately)");
+			line(source, "/" + ROOT + " config reset <config> <key>", "restore a setting's default");
+		}
+		return 1;
+	}
+
+	private static int openMenu(CommandContext<CommandSourceStack> ctx, String configId) {
+		CommandSourceStack source = ctx.getSource();
+		ServerPlayer player = source.getPlayer();
+		if (player == null) {
+			source.sendFailure(Component.literal("Only players can open the menu; use /" + ROOT + " config get/set here"));
+			return 0;
+		}
+		return (configId == null ? ConfigServerMenu.open(player) : ConfigServerMenu.open(player, configId)) ? 1 : 0;
 	}
 
 	private static int auditVerify(CommandContext<CommandSourceStack> ctx) {
