@@ -1,0 +1,13 @@
+{
+	"required": true,
+	"package": "com.mejta.mejtaqol.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"AfkTabListMixin",
+		"MsgCommandInvoker",
+		"MsgCommandMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
