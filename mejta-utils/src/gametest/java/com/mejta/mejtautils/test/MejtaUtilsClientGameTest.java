@@ -595,31 +595,29 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 	private static boolean sameInventory(ServerPlayer p, List<ItemStack> expected) {
 		for (int i = 0; i < expected.size(); i++) {
 			ItemStack actual = p.getInventory().getItem(i);
-			if (!ItemStack.matches(actual, expected.get(i))) {
-				// With every component: two stacks of one item that differ only in a component print alike.
+			if (!sameStack(actual, expected.get(i))) {
 				HolderLookup.Provider r = p.level().getServer().registryAccess();
 				String was = actual.isEmpty() ? "empty" : ItemJson.encode(r, actual).toString();
 				String wanted = expected.get(i).isEmpty() ? "empty" : ItemJson.encode(r, expected.get(i)).toString();
-				LOG.error("[MejtaUtilsTest] slot {} is {}, expected {}", i, was, wanted);
-				if (was.equals(wanted)) {
-					// Same saved form, yet not equal: name the component whose equals() differs, and the patches.
-					ItemStack want = expected.get(i);
-					LOG.error("[MejtaUtilsTest] slot {} patch {}, expected {}", i, actual.getComponentsPatch(), want.getComponentsPatch());
-					for (net.minecraft.core.component.TypedDataComponent<?> c : actual.getComponents()) {
-						Object other = want.getComponents().get(c.type());
-						if (!java.util.Objects.equals(c.value(), other)) {
-							LOG.error("[MejtaUtilsTest] slot {} component {} differs: {} ({}@{}) vs {} ({}@{})", i, c.type(), c.value(),
-									c.value().getClass().getName(), System.identityHashCode(c.value()), other,
-									other == null ? "-" : other.getClass().getName(), System.identityHashCode(other));
-						}
-					}
-					LOG.error("[MejtaUtilsTest] slot {} same item {}, same count {}, components equal {}", i, actual.getItem() == want.getItem(),
-							actual.getCount() == want.getCount(), actual.getComponents().equals(want.getComponents()));
-				}
+				LOG.error("[MejtaUtilsTest] slot {} is {} (patch {}), expected {} (patch {})", i, was, actual.getComponentsPatch(), wanted,
+						expected.get(i).getComponentsPatch());
 				return false;
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * Same item, count and component patch. Not {@link ItemStack#matches}: the test client and server share one JVM,
+	 * and each time the client joins, the item defaults that hold data-driven tags (the shield's blocks_attacks with
+	 * its damage-type tag) are rebuilt as new objects that only compare by identity. A stack taken before a
+	 * reconnect then never "matches" its exact restored copy, although both carry no changes of their own.
+	 */
+	private static boolean sameStack(ItemStack a, ItemStack b) {
+		if (a.isEmpty() || b.isEmpty()) {
+			return a.isEmpty() && b.isEmpty();
+		}
+		return a.getItem() == b.getItem() && a.getCount() == b.getCount() && a.getComponentsPatch().equals(b.getComponentsPatch());
 	}
 
 	private static boolean onlyTools(ServerPlayer p) {

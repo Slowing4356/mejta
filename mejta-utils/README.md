@@ -21,11 +21,11 @@ It uses MejtaCore for everything shared:
 
 ## Status
 
-MejtaUtils is compiled in CI against Minecraft 26.1.2, Fabric API 0.155.3+26.1.2 and MejtaCore 1.3.0, so every Minecraft and Fabric name it uses exists. Its 21 JUnit tests pass: offline changes, the staff-mode state machine, the freeze command filter and the per-world data scope.
+MejtaUtils is compiled in CI against Minecraft 26.1.2, Fabric API 0.155.3+26.1.2 and MejtaCore 1.4.0, so every Minecraft and Fabric name it uses exists. Its 21 JUnit tests pass: offline changes, the staff-mode state machine, the freeze command filter and the per-world data scope.
 
-The client game test ([Building and testing](#building-and-testing)) also runs in CI. A real client joins a dedicated server, and the game test reaches all of its checks, so the mixins of that build applied at startup. (The freeze-command hook added since then is checked by the next run.) It is **still being brought to green**: the latest run passed 71 of 77 checks. The failures were:
-- Frozen players could still run commands typed in chat. This is fixed (see the changelog). It also left the player vanished, which failed the staff-mode visibility check that came next.
-- After a reconnect in staff mode, the restored offhand shield no longer matched the inventory from before the *first* scenario. The cause is not known yet; the item and count were the same, so a component differed. The test now logs every component of a mismatch. Each scenario now starts from a fresh kit and must give back exactly that kit.
+The client game test ([Building and testing](#building-and-testing)) also runs in CI. A real client joins a dedicated server and the game test reaches all of its checks, so the mixins applied at startup. The latest runs found:
+- Frozen players could still run commands typed in chat. Fixed (see the changelog); the freeze checks now pass.
+- 4 staff-recovery checks failed after a reconnect, although the restored inventory was exactly right: same items, counts and components. The test client and server share one JVM, and each client join rebuilds the shield's default `blocks_attacks` component as a new object that compares by identity, so `ItemStack.matches` against a stack taken before the reconnect always fails. The test now compares item, count and component patch. On a real server the client runs in its own process and this cannot happen.
 
 Still not checked at runtime:
 - **Advancement announcements of vanished players.** The hook targets the lambda `lambda$award$0` and is optional (`require = 0`). If the name differs in 26.1.2, the hook is skipped and announcements are not hidden; no test checks them.
