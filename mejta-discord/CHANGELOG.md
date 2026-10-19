@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-First release.
+First release. Requires MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4); built and tested against MejtaCore 1.4.0.
 
 - **Anti-cheat alerts to Discord:**
   - MejtaCore notifications are posted as embeds through up to three webhooks, chosen by routing rules. The default rule sends `mejtaac.*` to the `default` webhook.
