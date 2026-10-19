@@ -21,7 +21,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Interaction;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.decoration.Mannequin;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -89,6 +91,19 @@ public class MejtaCorpseGameTest {
 		helper.assertTrue(level.getEntity(corpse.hitbox()) instanceof Interaction, Component.literal("hitbox is an interaction entity"));
 		helper.assertTrue(!manager.open(other, corpse, false), Component.literal("another player may not open it"));
 
+		// The body wears a display copy of the armour, and nothing else.
+		LivingEntity dressed = (LivingEntity) body;
+		helper.assertTrue(dressed.getItemBySlot(EquipmentSlot.HEAD).is(Items.IRON_HELMET), Component.literal("body wears the helmet"));
+		helper.assertTrue(dressed.getItemBySlot(EquipmentSlot.OFFHAND).isEmpty() && dressed.getItemBySlot(EquipmentSlot.FEET).isEmpty(),
+				Component.literal("body wears only the armour the corpse holds"));
+		helper.assertTrue(!dressed.canEquipWithDispenser(new ItemStack(Items.IRON_BOOTS)), Component.literal("dispensers cannot equip the body"));
+
+		// Killing the body drops nothing: the armour it wears is only a copy.
+		dressed.hurtServer(level, level.damageSources().genericKill(), Float.MAX_VALUE);
+		helper.assertTrue(dressed.isDeadOrDying(), Component.literal("body killed"));
+		helper.assertTrue(level.getEntitiesOfClass(ItemEntity.class, body.getBoundingBox().inflate(4)).isEmpty(),
+				Component.literal("a killed body drops nothing"));
+
 		// Something else removes the body: the corpse's entities come back, the items are untouched.
 		UUID oldBody = corpse.body();
 		body.discard();
@@ -97,6 +112,8 @@ public class MejtaCorpseGameTest {
 			helper.assertTrue(repaired.body() != null && !repaired.body().equals(oldBody), Component.literal("new body"));
 			helper.assertTrue(level.getEntity(repaired.body()) instanceof Mannequin, Component.literal("new body exists"));
 			helper.assertValueEqual(repaired.items().size(), 4, Component.literal("items untouched by the repair"));
+			helper.assertTrue(((LivingEntity) level.getEntity(repaired.body())).getItemBySlot(EquipmentSlot.HEAD).is(Items.IRON_HELMET),
+					Component.literal("new body wears the helmet"));
 
 			menuMovesEachItemOnce(helper, level, manager, owner, repaired);
 			failedWriteMovesNothing(helper, level, owner);
@@ -143,8 +160,12 @@ public class MejtaCorpseGameTest {
 		menu.clicked(46, 0, ContainerInput.QUICK_MOVE, owner);
 		helper.assertTrue(menu.getCarried().isEmpty(), Component.literal("a button is never picked up"));
 
-		// Take all: the owner wears the helmet and holds the shield again.
+		LivingEntity body = (LivingEntity) level.getEntity(corpse.body());
+		helper.assertTrue(body.getItemBySlot(EquipmentSlot.HEAD).is(Items.IRON_HELMET), Component.literal("body still wears the helmet"));
+
+		// Take all: the owner wears the helmet and holds the shield again, and the body no longer shows it.
 		menu.takeAll(owner, true);
+		helper.assertTrue(body.getItemBySlot(EquipmentSlot.HEAD).isEmpty(), Component.literal("the taken helmet leaves the body"));
 		helper.assertTrue(inv.getItem(39).is(Items.IRON_HELMET), Component.literal("helmet back on the head"));
 		helper.assertTrue(inv.getItem(40).is(Items.SHIELD), Component.literal("shield back in the offhand"));
 		helper.assertTrue(live.holdsNothing() && onDisk(corpse.id()).isEmpty(), Component.literal("corpse empty"));
@@ -152,8 +173,7 @@ public class MejtaCorpseGameTest {
 		// Closing the empty corpse removes it.
 		menu.removed(owner);
 		helper.assertTrue(manager.store().get(corpse.id()).isEmpty(), Component.literal("record removed"));
-		Entity body = level.getEntity(corpse.body());
-		helper.assertTrue(body == null || body.isRemoved(), Component.literal("body removed"));
+		helper.assertTrue(level.getEntity(corpse.body()) == null || body.isRemoved(), Component.literal("body removed"));
 		helper.assertValueEqual(count(inv, Items.DIAMOND), 5, Component.literal("exactly 5 diamonds"));
 		helper.assertValueEqual(count(inv, Items.COBBLESTONE), 64, Component.literal("exactly 64 cobblestone"));
 		helper.assertValueEqual(count(inv, Items.IRON_HELMET), 1, Component.literal("exactly 1 helmet"));

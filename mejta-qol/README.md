@@ -10,14 +10,14 @@ Every feature has its own on/off switch, and every command its own permission no
 
 | | |
 |---|---|
-| Version | 1.0.0 |
+| Version | 1.0.1 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | MejtaCore 1.4.0 (any version from 1.3.0 up to, not including, 2.0.0 is accepted) |
 | Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.4.0.jar`, `mejtaqol-1.0.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.4.0.jar`, `mejtaqol-1.0.1.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtaqol.json` is created on first start.
 3. Players type `/qol` to see the commands they can use.
 
@@ -88,11 +88,11 @@ Stored in `config/mejta/mejtaqol.json`. Change them in the file, in MejtaCore's 
 | `tpa.enabled` | `true` | Teleport requests |
 | `tpa.here_enabled` | `true` | `/tpahere` |
 | `tpa.timeout_seconds` | `60` (10–600) | Unanswered requests expire after this |
-| `tpa.cooldown_seconds` | `10` (0–3600) | Time between two requests from one player |
+| `tpa.cooldown_seconds` | `3` (0–3600) | Time between two requests from one player |
 | `homes.enabled` | `true` | Homes |
 | `homes.max` | `3` (0–100) | Homes per player |
 | `homes.max_extra` | `10` (0–100) | Homes per player with `homes.extra` |
-| `homes.cooldown_seconds` | `5` (0–3600) | Time between two `/home` teleports |
+| `homes.cooldown_seconds` | `3` (0–3600) | Time between two `/home` teleports |
 | `homes.blocked_dimensions` | empty | Dimensions where `/sethome` is refused, comma-separated (`the_end` means `minecraft:the_end`) |
 | `homes.menu` | `true` | `/homes` opens a chest menu; off: a chat list |
 | `back.enabled` | `true` | `/back` |

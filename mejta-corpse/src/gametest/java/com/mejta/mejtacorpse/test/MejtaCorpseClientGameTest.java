@@ -103,6 +103,13 @@ public final class MejtaCorpseClientGameTest implements FabricClientGameTest {
 
 		// Back to the corpse, looking at it from the front and the side.
 		lookAtCorpse(ctx, server, me, X, Z + 3);
+		check("client: the corpse is seen wearing the diamond armour", waitUntil(ctx, () -> ctx.computeOnClient(mc ->
+				mc.level.getEntitiesOfClass(net.minecraft.world.entity.decoration.Mannequin.class,
+						new net.minecraft.world.phys.AABB(X - 2, Y - 1, Z - 2, X + 2, Y + 2, Z + 2)).stream().anyMatch(m ->
+						m.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).is(Items.DIAMOND_HELMET)
+								&& m.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST).is(Items.DIAMOND_CHESTPLATE)
+								&& m.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.LEGS).is(Items.DIAMOND_LEGGINGS)
+								&& m.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.FEET).is(Items.DIAMOND_BOOTS)))));
 		clearToasts(ctx);
 		ctx.takeScreenshot("corpse-2-front");
 		lookAtCorpse(ctx, server, me, X + 3, Z + 1);

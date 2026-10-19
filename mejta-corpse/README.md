@@ -1,7 +1,7 @@
 # MejtaCorpse
 
 MejtaCorpse (mod ID `mejtacorpse`) keeps a dead player's items in a **corpse** instead of scattering them on the ground, in the spirit of the [Corpse](https://modrinth.com/mod/corpse) mod, for servers running **MejtaCore**:
-- The corpse lies where the player died, wearing their skin, with "<player>'s corpse" above it.
+- The corpse lies where the player died, wearing their skin and the armour it holds, with "<player>'s corpse" above it.
 - Right-click it to open a chest menu with the items, laid out like the inventory screen.
 - **Take all** gives the owner every item back in its old slot, armour included.
 - **Items can never be duplicated.** Not by clicking, not by two players at once, not by a crash or a full disk. See [How duplication is prevented](#how-duplication-is-prevented).
@@ -10,14 +10,14 @@ It is server-side only: the corpse is a vanilla mannequin and the menu is a vani
 
 | | |
 |---|---|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | MejtaCore 1.4.0 (any version from 1.3.0 up to, not including, 2.0.0 is accepted) |
 | Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.4.0.jar`, `mejtacorpse-1.0.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.4.0.jar`, `mejtacorpse-1.1.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtacorpse.json` is created on first start.
 
 With the `keepInventory` game rule on, players keep their items and no corpse appears. Items with Curse of Vanishing disappear as in vanilla. Experience drops as in vanilla.
@@ -32,6 +32,7 @@ With the `keepInventory` game rule on, players keep their items and no corpse ap
   - Nothing can be put into a corpse.
 - **Menu layout:** rows 1 to 3 are the main inventory and row 4 the hotbar. Row 5 holds the helmet, chestplate, leggings, boots and offhand item. Row 6 has the info, **Take all** and **Close** buttons.
 - **Two players at once** see the same items live, so an item can only be taken once.
+- **Armour you can see:** the corpse wears the armour it holds. It is only a display copy: the items stay in the corpse, and a piece taken from the menu also leaves the body.
 - **When the last item is taken** and the menu is closed, the corpse disappears.
 - **Corpses cannot be hurt or pushed.** If a command kills or removes one, it is put back at once with its items.
 - **Dying in the void:** the corpse stays at the bottom of the world, and its owner can open it from anywhere with `/corpse open <id>`.
@@ -74,6 +75,7 @@ Stored in `config/mejta/mejtacorpse.json`. Change them in the file, in MejtaCore
 | `expire.action` | `DROP_ITEMS` | `DROP_ITEMS` (the items fall where the corpse lay) or `DELETE_ITEMS` |
 | `display.player_skin` | `true` | The corpse wears the player's skin; off: the default skin |
 | `display.show_name` | `true` | Show "<player>'s corpse" above it |
+| `display.show_armor` | `true` | The corpse wears a display copy of the armour it holds |
 | `notify.death_message` | `true` | Tell players where their corpse is when they die |
 | `audit.looting` | `true` | Record in the audit log when someone other than the owner takes items |
 
@@ -81,7 +83,13 @@ An expiring corpse only expires while its chunk is loaded, so expiry never loads
 
 ## How duplication is prevented
 
-The corpse's stored record (`mejta-data/mejtacorpse/store/corpses/<id>.json`) is the only copy of its items. The entities in the world hold none, so killing, copying or reloading them changes nothing. Every step that moves items writes to disk with a forced flush before the game can save the player:
+The corpse's stored record (`mejta-data/mejtacorpse/store/corpses/<id>.json`) is the only copy of its items. The entities in the world hold none of them; the armour the body wears is a display copy:
+- a mannequin never drops its equipment, so killing the body drops nothing;
+- every click on the body opens the menu instead of reaching the mannequin;
+- dispensers cannot put armour on it;
+- the copy is rewritten from the record whenever items are taken, and when the body is put back.
+
+So killing, copying or reloading the entities changes nothing. Every step that moves items writes to disk with a forced flush before the game can save the player:
 
 1. **Death.** The game drops the inventory in one place. MejtaCorpse replaces that step:
    1. The corpse is written as **pending**, holding the items.
@@ -121,9 +129,10 @@ xvfb-run ./gradlew runClientGameTest             # real client on a dedicated se
   - every default setting.
 - **The server game test** starts a headless server with MejtaCore and MejtaCorpse, so the death hook must apply. With Fabric's fake players and the real menu code, it checks:
   - a corpse is created, a lying mannequin with an interaction box, and the inventory is emptied;
+  - the body wears a copy of the armour and nothing else, killing it drops nothing, and a dispenser cannot equip it;
   - another player cannot open it;
-  - a removed body comes back with the items untouched;
-  - shift-click, a repeated shift-click, double-click, placing items, a number-key swap, button clicks and Take all (armour back in place) each move every item exactly once, on disk and in the inventory;
+  - a removed body comes back with the items untouched, wearing the armour again;
+  - shift-click, a repeated shift-click, double-click, placing items, a number-key swap, button clicks and Take all (armour back in place, and off the body) each move every item exactly once, on disk and in the inventory;
   - an empty corpse is removed;
   - while the disk refuses writes, no click, drop or Take all hands anything out;
   - an unfinished death is resolved correctly at join, both ways;
@@ -131,6 +140,7 @@ xvfb-run ./gradlew runClientGameTest             # real client on a dedicated se
 
 - **The client game test** runs a real client on a dedicated server, with a real player and no fake players:
   - the player dies; chat names the corpse's place, no items drop and the inventory is empty after respawning;
+  - the client sees the corpse wearing the player's armour;
   - hitting the corpse does nothing, and right-clicking it opens the menu;
   - a real shift-click takes a stack once, and a picked-up stack cannot be put back;
   - Take all puts the armour back on and the shield in the offhand, gives every item exactly once and closes the menu;

@@ -28,6 +28,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -179,7 +180,8 @@ public final class CorpseManager {
 	}
 
 	private void spawnEntities(MinecraftServer srv, CorpseRecord corpse) {
-		Optional<CorpseRecord> spawned = CorpseEntities.spawn(srv, corpse, config.get(CorpseSettings.SHOW_SKIN), config.get(CorpseSettings.SHOW_NAME));
+		Optional<CorpseRecord> spawned = CorpseEntities.spawn(srv, corpse, config.get(CorpseSettings.SHOW_SKIN), config.get(CorpseSettings.SHOW_NAME),
+				config.get(CorpseSettings.SHOW_ARMOR));
 		if (spawned.isPresent()) {
 			// Only the entities change: the items are taken from the stored record as it is now.
 			store.get(corpse.id()).ifPresent(current -> store.saveLater(current.withEntities(spawned.get().body(), spawned.get().hitbox())));
@@ -317,6 +319,17 @@ public final class CorpseManager {
 		} else if (slot == BUTTON_CLOSE && player instanceof ServerPlayer sp) {
 			sp.closeContainer();
 		}
+	}
+
+	/** After items moved: the body shows the armour the corpse holds now. */
+	public void itemsChanged(LiveCorpse lc) {
+		MinecraftServer srv = server;
+		if (srv == null) {
+			return;
+		}
+		store.get(lc.record().id()).ifPresent(corpse -> CorpseEntities.find(srv, corpse, corpse.body())
+				.filter(e -> e instanceof LivingEntity)
+				.ifPresent(e -> CorpseEntities.dress((LivingEntity) e, corpse, srv.registryAccess(), config.get(CorpseSettings.SHOW_ARMOR))));
 	}
 
 	public boolean stillValid(CorpseMenu menu, Player player) {

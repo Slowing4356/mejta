@@ -1,5 +1,10 @@
 # MejtaCorpse changelog
 
+## 1.1.0
+
+- **Visible armour:** the corpse wears the armour it holds, so you can see it. It is a display copy: the items stay in the corpse, killing the body drops nothing, dispensers cannot equip it, and a piece taken from the menu also leaves the body. New setting `display.show_armor` (default on).
+- **Tests:** a client game test with a real player covers dying, right-clicking the corpse, taking items and the armour on the body.
+
 ## 1.0.0
 
 First release. Requires MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4); built and tested against MejtaCore 1.4.0.
