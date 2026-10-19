@@ -55,6 +55,3 @@ First public release of the Mejta platform. Addons built for API 2 or 3 keep wor
 - Non-secret settings whose key contains "token", "secret", "password" or "webhook" were hidden. This also hid the permission level of `mejtacore.config.secrets`.
 - Single-player "Reset All" also reset secrets.
 - A failing vanish provider revealed hidden players; presence now fails closed.
-
-### Notes
-- The event bus, the action registry and most of the offline permission check proposed for API 4 are deferred: no current addon needs them.
