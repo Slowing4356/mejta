@@ -3,11 +3,14 @@
 	"id": "mejtacorpse_test",
 	"version": "1.0.0",
 	"name": "MejtaCorpse Tests",
-	"description": "Server game tests for MejtaCorpse. Development only.",
+	"description": "Server and client game tests for MejtaCorpse. Development only.",
 	"environment": "*",
 	"entrypoints": {
 		"fabric-gametest": [
 			"com.mejta.mejtacorpse.test.MejtaCorpseGameTest"
+		],
+		"fabric-client-gametest": [
+			"com.mejta.mejtacorpse.test.MejtaCorpseClientGameTest"
 		]
 	},
 	"depends": {
