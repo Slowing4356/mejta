@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtaqol_test",
+	"version": "1.0.0",
+	"name": "MejtaQoL Tests",
+	"description": "Server game tests for MejtaQoL. Development only.",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.mejta.mejtaqol.test.MejtaQolGameTest"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtaqol": "*"
+	}
+}

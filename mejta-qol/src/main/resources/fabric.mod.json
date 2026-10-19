@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtaqol",
+	"version": "${version}",
+	"name": "MejtaQoL",
+	"description": "Server-side player commands for MejtaCore: teleport requests, homes, warps, spawn, /back, random teleport, portable ender chest and workstations, trash, AFK and /r. Every feature can be switched off and tuned.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.mejtaqol.MejtaQoL"
+		]
+	},
+	"mixins": [
+		"mejtaqol.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.3.0 <2.0.0"
+	}
+}
