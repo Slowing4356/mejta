@@ -64,15 +64,19 @@ jobs:
       - name: MejtaPerf
         working-directory: mejta-perf
         run: bash ./gradlew test build --stacktrace
-      # MejtaQoL's game test is a headless server test (about a minute), so it runs with every build.
+      # MejtaQoL's and MejtaCorpse's game tests are headless server tests (about a minute each), so they run
+      # with every build.
       - name: MejtaQoL
         working-directory: mejta-qol
+        run: bash ./gradlew test build runGameTest --stacktrace
+      - name: MejtaCorpse
+        working-directory: mejta-corpse
         run: bash ./gradlew test build runGameTest --stacktrace
       - name: Collect jars
         if: always()
         run: |
           mkdir -p dist
-          for p in mejta-core mejta-ac mejta-utils mejta-discord mejta-perf mejta-qol; do
+          for p in mejta-core mejta-ac mejta-utils mejta-discord mejta-perf mejta-qol mejta-corpse; do
             [ -d "$p/build/libs" ] || continue
             find "$p/build/libs" -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -exec cp {} dist/ \;
           done

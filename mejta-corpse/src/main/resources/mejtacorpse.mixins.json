@@ -1,0 +1,11 @@
+{
+	"required": true,
+	"package": "com.mejta.mejtacorpse.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"DeathDropMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
