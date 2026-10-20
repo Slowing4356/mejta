@@ -221,7 +221,8 @@ public final class StaffTools {
 		if (MejtaUtils.freeze().isFrozen(target.getUUID())) {
 			MejtaUtils.freeze().unfreeze(target.getUUID(), MejtaCoreAPI.actor(staff), staff.level().getServer());
 			staff.sendSystemMessage(Component.literal("Unfroze " + target.getGameProfile().name() + ".").withStyle(ChatFormatting.AQUA));
-		} else if (MejtaCoreAPI.hasPermission(target, UtilsPermissions.FREEZE_EXEMPT) || !Targets.mayActOn(staff, target)) {
+		} else if (MejtaUtils.config().get(UtilsSettings.OP_BYPASS) && MejtaCoreAPI.hasPermission(target, UtilsPermissions.FREEZE_EXEMPT)
+				|| !Targets.mayActOn(staff, target)) {
 			staff.sendSystemMessage(Component.literal(target.getGameProfile().name() + " cannot be frozen.").withStyle(ChatFormatting.RED));
 			UtilsAudit.record("freeze.start", staff, target, AuditOutcome.DENIED, Map.of("reason", "exempt or protected", "via", "freeze rod"));
 		} else {

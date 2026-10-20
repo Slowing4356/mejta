@@ -59,7 +59,7 @@ public final class AntiAlt {
 
 	/** A player joined: refuses them if the limit is reached. Returns whether they may stay. */
 	public boolean onJoin(ServerPlayer player) {
-		if (!config.get(SmpSettings.ANTIALT) || MejtaCoreAPI.hasPermission(player, SmpPermissions.ANTIALT_BYPASS)) {
+		if (!config.get(SmpSettings.ANTIALT) || SmpPermissions.bypasses(player, SmpPermissions.ANTIALT_BYPASS)) {
 			return true;
 		}
 		InetAddress ip;

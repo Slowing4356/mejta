@@ -1,5 +1,9 @@
 # MejtaUtils changelog
 
+## 1.0.2
+
+- **Op bypass switch:** `mejtautils.freeze.exempt` now only applies while the new setting `op_bypass.enabled` is on (off by default). Players with `mejtautils.protected` (owners by default) can still only be frozen by staff who have it too.
+
 ## 1.0.1
 
 - **Faster joins:** a joining player's vanish state is now read from disk once, when their connection is set up. Before, it was read for each check during the join, up to about 100 times with 50 players online.

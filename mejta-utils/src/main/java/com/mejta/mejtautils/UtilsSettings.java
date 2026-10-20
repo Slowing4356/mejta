@@ -99,8 +99,14 @@ public final class UtilsSettings {
 	public static final Setting<Integer> STAFF_HISTORY = Setting.integer("staffmode.session_history", 10, 1, 100)
 			.describedAs("Finished staff-mode sessions kept per staff member, for recovery");
 
+	// ---------------------------------------------------------------- operators
+	public static final Setting<Boolean> OP_BYPASS = Setting.bool("op_bypass.enabled", false)
+			.describedAs("Let mejtautils.freeze.exempt protect from being frozen (owners by default). Off: it does nothing;"
+					+ " players with mejtautils.protected (owners by default) can still only be frozen by staff who have it too");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
-			.add(INVSEE_REFRESH_TICKS, OFFLINE_VIEW, OFFLINE_EDIT, OFFLINE_BACKUPS,
+			.add(OP_BYPASS,
+					INVSEE_REFRESH_TICKS, OFFLINE_VIEW, OFFLINE_EDIT, OFFLINE_BACKUPS,
 					VANISH_PICKUP, VANISH_MOB_TARGETING, VANISH_NIGHT_VISION, VANISH_FLIGHT_SPEED, VANISH_SILENT_CONTAINERS,
 					VANISH_PERSIST, VANISH_HIDE_SERVER_LIST, VANISH_FAKE_PRESENCE, VANISH_BLOCK_GAME_EVENTS, VANISH_FILTER_SOUNDS,
 					FREEZE_MOVEMENT, FREEZE_DROP, FREEZE_BREAK, FREEZE_PLACE, FREEZE_INTERACT, FREEZE_ATTACK, FREEZE_COMMANDS,

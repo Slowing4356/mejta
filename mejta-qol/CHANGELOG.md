@@ -1,5 +1,9 @@
 # MejtaQoL changelog
 
+## 1.1.1
+
+- **Operators follow the teleport rules:** the wait, cooldowns and combat lock were skipped for every operator, because operators have `mejtaqol.teleport.bypass`. Bypass permissions (`mejtaqol.teleport.bypass` and `mejtaqol.afk.kick_exempt`) now only apply while the new setting `op_bypass.enabled` is on. It is off by default, so operators follow the rules like everyone else.
+
 ## 1.1.0
 
 Requires MejtaCore 1.5.0 or newer, below 2.0.0 (API version 5).

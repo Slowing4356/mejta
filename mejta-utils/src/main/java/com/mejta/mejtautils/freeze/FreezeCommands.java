@@ -17,6 +17,7 @@ import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.audit.AuditOutcome;
 import com.mejta.mejtautils.MejtaUtils;
 import com.mejta.mejtautils.UtilsPermissions;
+import com.mejta.mejtautils.UtilsSettings;
 import com.mejta.mejtautils.util.Targets;
 import com.mejta.mejtautils.util.Targets.Target;
 import com.mejta.mejtautils.util.UtilsAudit;
@@ -58,7 +59,8 @@ public final class FreezeCommands {
 			source.sendFailure(Component.literal("You cannot freeze yourself."));
 			return 0;
 		}
-		boolean exempt = target.online().map(p -> MejtaCoreAPI.hasPermission(p, UtilsPermissions.FREEZE_EXEMPT))
+		boolean exempt = MejtaUtils.config().get(UtilsSettings.OP_BYPASS) && target.online()
+				.map(p -> MejtaCoreAPI.hasPermission(p, UtilsPermissions.FREEZE_EXEMPT))
 				.orElseGet(() -> MejtaCoreAPI.hasPermission(source.getServer(), target.profile(), UtilsPermissions.FREEZE_EXEMPT));
 		if (exempt || !Targets.mayActOn(source, target)) {
 			source.sendFailure(Component.literal(target.name() + " cannot be frozen (" + (exempt ? UtilsPermissions.FREEZE_EXEMPT

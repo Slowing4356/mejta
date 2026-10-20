@@ -39,7 +39,7 @@ public final class UtilsPermissions {
 	public static final MejtaPermission FREEZE_INFO = MejtaPermission.of("mejtautils.freeze.info", PermissionLevel.MODERATORS)
 			.describedAs("See freeze diagnostics and freeze alerts");
 	public static final MejtaPermission FREEZE_EXEMPT = MejtaPermission.of("mejtautils.freeze.exempt", PermissionLevel.OWNERS)
-			.describedAs("Cannot be frozen");
+			.describedAs("Cannot be frozen (only while op_bypass.enabled is on)");
 	public static final MejtaPermission STAFFMODE = MejtaPermission.of("mejtautils.staffmode", PermissionLevel.MODERATORS)
 			.describedAs("Use /staffmode and its tools");
 	public static final MejtaPermission STAFFMODE_TELEPORT = MejtaPermission.of("mejtautils.staffmode.teleport", PermissionLevel.MODERATORS)

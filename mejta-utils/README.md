@@ -65,7 +65,7 @@ All nodes start with `mejtautils.`. Change their levels in `config/mejta/mejtaco
 | `mejtautils.vanish.fake` | 3 | `/vanish fakequit` and `fakejoin` |
 | `mejtautils.freeze` | 1 | Freeze and unfreeze |
 | `mejtautils.freeze.info` | 1 | `/freeze list`, `/freeze info`, freeze alerts |
-| `mejtautils.freeze.exempt` | 4 (owners) | Cannot be frozen |
+| `mejtautils.freeze.exempt` | 4 (owners) | Only while `op_bypass.enabled` is on: cannot be frozen |
 | `mejtautils.staffmode` | 1 | `/staffmode` and its tools |
 | `mejtautils.staffmode.teleport` | 1 | The random-player compass |
 | `mejtautils.staffmode.restore` | 3 | Confirm a restore for another player; `sessions`; staff-mode alerts |
@@ -78,6 +78,7 @@ Stored in `config/mejta/mejtautils.json`. Change them in the file, in MejtaCore'
 
 | Key | Default | Meaning |
 |---|---|---|
+| `op_bypass.enabled` | `false` | Let `mejtautils.freeze.exempt` work. Off: it does nothing, but players with `mejtautils.protected` can still only be frozen by staff who have it too. |
 | `invsee.refresh_ticks` | `10` (1–200) | How often the info row and status panel refresh, in ticks |
 | `invsee.offline.enabled` | `true` | Allow viewing offline players (read-only) |
 | `invsee.offline.edit` | `false` | **Experimental.** Allow queueing changes for offline players. Read [Offline inventories](#offline-inventories) first. |

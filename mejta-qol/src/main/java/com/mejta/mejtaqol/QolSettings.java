@@ -11,6 +11,11 @@ import com.mejta.mejtaqol.util.Templates;
  * own {@code <feature>.enabled} switch; a disabled feature's commands disappear from the command list.
  */
 public final class QolSettings {
+	// ---------------------------------------------------------------- operators
+	public static final Setting<Boolean> OP_BYPASS = Setting.bool("op_bypass.enabled", false)
+			.describedAs("Let mejtaqol.teleport.bypass skip the teleport wait, cooldowns, combat lock and dimension rule, and mejtaqol.afk.kick_exempt"
+					+ " prevent the idle kick (both operators by default). Off: operators follow the rules like everyone else");
+
 	// ---------------------------------------------------------------- teleports (shared)
 	public static final Setting<Integer> WARMUP_SECONDS = Setting.integer("teleport.warmup_seconds", 3, 0, 60)
 			.describedAs("Seconds a player must wait (standing still) before a teleport happens. 0 = instant");
@@ -144,7 +149,8 @@ public final class QolSettings {
 				data.remove("teleport.combat_seconds");
 				data.remove("afk.auto_minutes");
 			})
-			.add(WARMUP_SECONDS, CANCEL_ON_MOVE, CANCEL_ON_DAMAGE, CROSS_DIMENSION,
+			.add(OP_BYPASS,
+					WARMUP_SECONDS, CANCEL_ON_MOVE, CANCEL_ON_DAMAGE, CROSS_DIMENSION,
 					TPA_ENABLED, TPAHERE_ENABLED, TPA_TIMEOUT, TPA_COOLDOWN,
 					HOMES_ENABLED, HOMES_MAX, HOMES_MAX_EXTRA, HOMES_COOLDOWN, HOMES_BLOCKED_DIMENSIONS, HOMES_MENU,
 					BACK_ENABLED, BACK_ON_DEATH, BACK_COOLDOWN,

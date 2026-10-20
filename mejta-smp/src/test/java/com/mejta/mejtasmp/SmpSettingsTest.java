@@ -21,7 +21,7 @@ class SmpSettingsTest {
 			assertFalse(s.description().isBlank(), s.key());
 			assertTrue(s.key().contains("."), "every key has a group prefix for the settings menu: " + s.key());
 		}
-		assertEquals(24, keys.size(), "a setting was added or removed: update the README's settings table");
+		assertEquals(25, keys.size(), "a setting was added or removed: update the README's settings table");
 		assertTrue(SmpSettings.DROPS_STACK.isExperimental(), "piles bigger than a stack are experimental");
 	}
 }

@@ -53,11 +53,11 @@ public final class QolPermissions {
 	public static final MejtaPermission AFK = MejtaPermission.of("mejtaqol.afk", PermissionLevel.ALL)
 			.describedAs("Use /afk");
 	public static final MejtaPermission AFK_KICK_EXEMPT = MejtaPermission.of("mejtaqol.afk.kick_exempt", PermissionLevel.MODERATORS)
-			.describedAs("Never kicked for being idle");
+			.describedAs("Never kicked for being idle (only while op_bypass.enabled is on)");
 	public static final MejtaPermission REPLY = MejtaPermission.of("mejtaqol.reply", PermissionLevel.ALL)
 			.describedAs("Use /r and /reply");
 	public static final MejtaPermission TELEPORT_BYPASS = MejtaPermission.of("mejtaqol.teleport.bypass", PermissionLevel.MODERATORS)
-			.describedAs("Teleport without waiting, without cooldowns and while in combat");
+			.describedAs("Teleport without waiting, without cooldowns and while in combat (only while op_bypass.enabled is on)");
 	public static final MejtaPermission ADMIN = MejtaPermission.of("mejtaqol.admin", PermissionLevel.ADMINS)
 			.describedAs("Use /mejtaadmin mejtaqol status");
 
