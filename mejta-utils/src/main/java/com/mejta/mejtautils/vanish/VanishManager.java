@@ -43,8 +43,8 @@ import com.mejta.mejtautils.util.UtilsAudit;
  * every Mejta addon that shows players respects vanish.
  *
  * <p>All methods run on the server thread; the state map is concurrent only because packet sending
- * can happen on network threads. Only players who have joined are cached (until they leave); a lookup
- * for anyone else (an offline UUID from another addon, a player still logging in) reads the store.
+ * can happen on network threads. Only connected players are cached (from the moment their connection is
+ * set up until they leave); a lookup for anyone else (an offline UUID from another addon) reads the store.
  */
 public final class VanishManager implements VisibilityProvider {
 	private static final String FOLDER = "vanish";
@@ -236,6 +236,12 @@ public final class VanishManager implements VisibilityProvider {
 	// ---------------------------------------------------------------- join, leave, fake presence
 
 	/** On join (server thread, after the player is placed): keep or drop the saved vanish state. */
+	/** A player is connecting: cache their state from now on (their LEAVE forgets it again). */
+	public void preload(UUID player) {
+		online.add(player);
+		state(player);
+	}
+
 	public void onJoin(ServerPlayer player) {
 		online.add(player.getUUID());
 		VanishState s = state(player.getUUID());

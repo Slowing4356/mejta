@@ -42,6 +42,9 @@ import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SlimeBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -375,7 +378,10 @@ public final class AntiCheat {
 	private void onServerTickEndMeasured(MinecraftServer server) {
 		AcConfig cfg = config;
 		if (cfg.needsSync()) {
-			history.record(server, server.getTickCount());
+			// Only the combat checks look at where other entities were.
+			if (cfg.reachEnabled() || cfg.hitboxEnabled()) {
+				history.record(server, server.getTickCount());
+			}
 			sync.sendPings(server);
 		}
 		if (cfg.enabled() && cfg.elytraEnabled()) {
@@ -917,7 +923,46 @@ public final class AntiCheat {
 	}
 
 	/** Moving pistons push entities, including upwards. */
+	private static final java.util.function.Predicate<BlockState> PISTON_PART = state -> state.is(Blocks.MOVING_PISTON)
+			|| state.is(Blocks.PISTON_HEAD);
+
+	/**
+	 * Whether a moving piston or piston head is in {@code box}. Runs every tick for every player, so it first
+	 * asks each chunk section's palette (a few entries) whether it can hold one at all; almost always none
+	 * can, and no block is read.
+	 */
 	private static boolean nearPiston(Entity entity, AABB box) {
+		Level level = entity.level();
+		int minX = Mth.floor(box.minX) >> 4;
+		int maxX = Mth.floor(box.maxX) >> 4;
+		int minY = Mth.floor(box.minY) >> 4;
+		int maxY = Mth.floor(box.maxY) >> 4;
+		int minZ = Mth.floor(box.minZ) >> 4;
+		int maxZ = Mth.floor(box.maxZ) >> 4;
+		boolean possible = false;
+		search:
+		for (int cx = minX; cx <= maxX; cx++) {
+			for (int cz = minZ; cz <= maxZ; cz++) {
+				LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
+				if (chunk == null) {
+					continue;
+				}
+				for (int cy = minY; cy <= maxY; cy++) {
+					int index = level.getSectionIndexFromSectionY(cy);
+					if (index < 0 || index >= level.getSectionsCount()) {
+						continue;
+					}
+					LevelChunkSection section = chunk.getSection(index);
+					if (!section.hasOnlyAir() && section.maybeHas(PISTON_PART)) {
+						possible = true;
+						break search;
+					}
+				}
+			}
+		}
+		if (!possible) {
+			return false;
+		}
 		for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(box.minX, box.minY, box.minZ),
 				BlockPos.containing(box.maxX, box.maxY, box.maxZ))) {
 			BlockState state = entity.level().getBlockState(pos);

@@ -10,14 +10,14 @@ Every feature has its own on/off switch, and every command its own permission no
 
 | | |
 |---|---|
-| Version | 1.0.1 |
+| Version | 1.1.0 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
-| Requires | MejtaCore 1.4.0 (any version from 1.3.0 up to, not including, 2.0.0 is accepted) |
+| Requires | MejtaCore 1.5.0 (any version from 1.5.0 up to, not including, 2.0.0 is accepted) |
 | Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.4.0.jar`, `mejtaqol-1.0.1.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.5.0.jar`, `mejtaqol-1.1.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtaqol.json` is created on first start.
 3. Players type `/qol` to see the commands they can use.
 
@@ -50,7 +50,7 @@ Each command is also available as `/mejtaadmin mejtaqol <command>`, in case anot
 | `/anvil` | `workstation.anvil` | Anvil (it never wears out) |
 | `/stonecutter`, `/grindstone`, `/smithing`, `/loom`, `/cartography` | `workstation.<name>` | The matching workstation |
 | `/trash` | `trash` | A chest whose contents are deleted when you close it |
-| `/afk` | `afk` | Mark yourself as away, or back |
+| `/afk` | `afk` | Mark yourself as away, or back. Refused while in combat. |
 | `/r <message>`, `/reply <message>` | `reply` | Private message to the last player you exchanged one with |
 | `/mejtaadmin mejtaqol status` | `admin` | Open requests, searches, AFK players, warps, the spawn point and data scope |
 
@@ -83,7 +83,6 @@ Stored in `config/mejta/mejtaqol.json`. Change them in the file, in MejtaCore's 
 | `teleport.warmup_seconds` | `3` (0–60) | Wait before every teleport. `0` = instant. |
 | `teleport.cancel_on_move` | `true` | Moving more than half a block during the wait cancels it (looking around is fine) |
 | `teleport.cancel_on_damage` | `true` | Taking damage during the wait cancels it |
-| `teleport.combat_seconds` | `10` (0–300) | After hitting or being hit by a player, teleports are refused this long. `0` = off. |
 | `teleport.cross_dimension` | `true` | Allow teleports into another dimension |
 | `tpa.enabled` | `true` | Teleport requests |
 | `tpa.here_enabled` | `true` | `/tpahere` |
@@ -113,8 +112,7 @@ Stored in `config/mejta/mejtaqol.json`. Change them in the file, in MejtaCore's 
 | `enderchest.enabled` | `true` | `/enderchest` and `/ec` |
 | `workstations.crafting`, `.anvil`, `.stonecutter`, `.grindstone`, `.smithing`, `.loom`, `.cartography` | `true` | Each workstation command |
 | `trash.enabled` | `true` | `/trash` |
-| `afk.enabled` | `true` | `/afk` and automatic AFK |
-| `afk.auto_minutes` | `5` (0–120) | Idle minutes before a player is marked AFK. `0` = only `/afk`. |
+| `afk.enabled` | `true` | `/afk`, the AFK broadcast, the `[AFK]` tag and the idle kick |
 | `afk.broadcast` | `true` | Tell everyone when someone goes AFK or comes back (never for vanished players) |
 | `afk.tab_list` | `true` | Show `[AFK]` after AFK players' names in the player list |
 | `afk.kick_minutes` | `0` (0–1440) | Kick players idle this long. `0` = never. |
@@ -130,7 +128,7 @@ Messages use `&` codes: `&0`–`&9`, `&a`–`&f` for colours, `&l` bold, `&o` it
 ## Teleports
 
 `/tpa`, `/home`, `/back`, `/spawn`, `/warp` and `/rtp` share the same rules:
-1. **Combat lock:** after hitting or being hit by a player (also with arrows and other projectiles), teleports are refused for `teleport.combat_seconds`.
+1. **Combat lock:** after hitting or being hit by a player (also with arrows and other projectiles), teleports are refused while MejtaCore says the player is in combat: `combat.tag_seconds` in `mejtacore.json`, 10 seconds by default.
 2. **Cooldown:** per feature, counted from the last successful teleport. Cooldowns are kept across relogs but not across restarts.
 3. **Wait:** the player stands still for `teleport.warmup_seconds`; a countdown is shown above the hotbar. Moving or taking damage cancels it. A new teleport replaces a waiting one.
 4. **Arrival:** the player leaves any bed or vehicle, fall damage is reset, and `/back` remembers where they were.
@@ -157,7 +155,7 @@ It is **experimental** because each try loads, or for new terrain generates, a c
 
 ## AFK
 
-A player counts as active when they look around, walk, chat or interact with blocks, items or entities. Being moved by water or a vehicle does not count. After `afk.auto_minutes` without activity they are marked AFK; any activity ends it. `/afk` sets it by hand. Vanished players' AFK changes are never announced.
+MejtaCore decides who is AFK, so every addon agrees (MejtaSMP's AFK protection uses the same status). A player counts as active when they look around, walk, chat or interact with blocks, items or entities. Being moved by water or a vehicle does not count. After `afk.auto_minutes` (in `mejtacore.json`, 5 by default) without activity they are marked AFK; any activity ends it. `/afk` sets it by hand, but not while in combat, so it cannot be used to escape a fight. MejtaQoL adds the broadcast, the `[AFK]` tag and the idle kick. Vanished players' AFK changes are never announced.
 
 ## Private messages
 
@@ -173,13 +171,13 @@ Nothing logged or published contains IP addresses, chat content or secrets.
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.4.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.5.0 first
 cd ../mejta-qol && ./gradlew build               # compile and run unit tests
 ./gradlew runGameTest                            # headless server game test (about a minute)
 ```
 
-- **Unit tests** cover locations, names and lists, message templates, cooldowns, teleport requests, home and warp books, the random-teleport ring and the AFK clock, and that every setting's default is valid.
-- **The server game test** starts a headless server with MejtaCore and MejtaQoL, so both mixins must apply, and checks with fake players: every command is registered; `/sethome`, `/home` (and its cooldown), `/back` and `/delhome`; `/setwarp`, `/warp` and `/delwarp`; `/tpa` and `/tpaccept`, `/tptoggle`, `/tpahere` and `/tpdeny`, and the request cooldown; the `[AFK]` tag; that `/msg` is remembered for `/r`; the random-teleport safety scan on stone and lava; that a portable crafting grid gives its items back; the spawn point; and that a switched-off feature's commands become unavailable.
+- **Unit tests** cover locations, names and lists, message templates, cooldowns, teleport requests, home and warp books, and the random-teleport ring, and that every setting's default is valid.
+- **The server game test** starts a headless server with MejtaCore and MejtaQoL, so both mixins must apply, and checks with fake players: every command is registered; `/sethome`, `/home` (and its cooldown), `/back` and `/delhome`; `/setwarp`, `/warp` and `/delwarp`; `/tpa` and `/tpaccept`, `/tptoggle`, `/tpahere` and `/tpdeny`, and the request cooldown; the `[AFK]` tag; that a PvP hit locks teleports and `/afk` until combat ends; that `/msg` is remembered for `/r`; the random-teleport safety scan on stone and lava; that a portable crafting grid gives its items back; the spawn point; and that a switched-off feature's commands become unavailable.
 
 Not covered automatically, because fake players cannot open menus and are not in the player list: the chest menus, the timed wait and its cancellation, the AFK broadcast and kick, and `/rtp` end to end. Check these by hand on a test server.
 

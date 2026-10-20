@@ -11,12 +11,6 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
-import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
-import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.fabricmc.fabric.api.event.player.UseItemCallback;
-import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandBuildContext;
@@ -25,8 +19,6 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.storage.LevelResource;
 
 import com.mejta.mejtacore.api.AddonRegistrar;
@@ -121,14 +113,12 @@ public final class MejtaQoL implements MejtaAddon {
 		});
 		ServerPlayerEvents.JOIN.register(player -> {
 			boolean first = Welcome.isFirstJoin(player);
-			afk.onJoin(player);
 			Welcome.onJoin(player, first);
 		});
 		ServerPlayerEvents.LEAVE.register(player -> {
 			teleports.onLeave(player.getUUID());
 			tpa.onLeave(player.getUUID());
 			rtp.onLeave(player.getUUID());
-			afk.onLeave(player.getUUID());
 			homes.forget(player.getUUID());
 			prefs.forget(player.getUUID());
 		});
@@ -148,20 +138,6 @@ public final class MejtaQoL implements MejtaAddon {
 				afk.tick(s);
 			}
 		});
-		// Chatting and interacting count as activity for AFK.
-		ServerMessageEvents.CHAT_MESSAGE.register((message, sender, type) -> afk.activity(sender));
-		UseBlockCallback.EVENT.register((player, level, hand, hit) -> active(player));
-		UseItemCallback.EVENT.register((player, level, hand) -> active(player));
-		UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> active(player));
-		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> active(player));
-		AttackEntityCallback.EVENT.register((player, level, hand, entity, hit) -> active(player));
-	}
-
-	private static InteractionResult active(Player player) {
-		if (player instanceof ServerPlayer sp && afk != null) {
-			afk.activity(sp);
-		}
-		return InteractionResult.PASS;
 	}
 
 	/**
@@ -187,7 +163,6 @@ public final class MejtaQoL implements MejtaAddon {
 		teleports.reset();
 		tpa.reset();
 		rtp.reset();
-		afk.reset();
 		replies.clear();
 		homes.clear();
 		prefs.clear();
@@ -223,7 +198,7 @@ public final class MejtaQoL implements MejtaAddon {
 		s.sendSystemMessage(Component.literal("MejtaQoL").withStyle(ChatFormatting.GOLD));
 		s.sendSystemMessage(Component.literal(" Open teleport requests: " + tpa.requests().size()).withStyle(ChatFormatting.GRAY));
 		s.sendSystemMessage(Component.literal(" Random teleports searching: " + rtp.searching()).withStyle(ChatFormatting.GRAY));
-		s.sendSystemMessage(Component.literal(" AFK players: " + afk.afkCount()).withStyle(ChatFormatting.GRAY));
+		s.sendSystemMessage(Component.literal(" AFK players: " + afk.afkCount(s.getServer())).withStyle(ChatFormatting.GRAY));
 		s.sendSystemMessage(Component.literal(" Warps: " + WarpCommands.book().size()).withStyle(ChatFormatting.GRAY));
 		s.sendSystemMessage(Component.literal(" /setspawn point: " + SpawnCommands.customSpawn(store).map(l -> l.describe()).orElse("not set (world spawn)"))
 				.withStyle(ChatFormatting.GRAY));

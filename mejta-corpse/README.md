@@ -93,7 +93,7 @@ So killing, copying or reloading the entities changes nothing. Every step that m
 
 1. **Death.** The game drops the inventory in one place. MejtaCorpse replaces that step:
    1. The corpse is written as **pending**, holding the items.
-   2. The items leave the inventory, and **the player is saved**.
+   2. The items leave the inventory, and **the player is saved** (only that player, with the game's own save).
    3. The corpse is written as **active**. Only now can it be opened.
 
    If the server stops in between, the corpse stays pending. At the owner's next join, their inventory shows which side was saved. If they still hold the items, the death was never saved and the corpse is deleted. If not, the corpse becomes active. If the corpse or the player cannot be saved, nothing is moved, and the items drop as in vanilla.
@@ -151,6 +151,5 @@ xvfb-run ./gradlew runClientGameTest             # real client on a dedicated se
 ## Limitations
 
 - The corpse is a vanilla mannequin. Its lying direction and look are vanilla's, and it does not turn into a skeleton over time.
-- Saving the player at death saves every online player at that moment, the game's own method. This is a short pause on servers with many players.
 - Items from mods that add their own inventory slots outside the vanilla 41 are dropped by those mods as usual.
 - Experience is not stored in the corpse.

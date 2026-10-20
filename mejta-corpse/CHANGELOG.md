@@ -3,6 +3,7 @@
 ## 1.1.0
 
 - **Visible armour:** the corpse wears the armour it holds, so you can see it. It is a display copy: the items stay in the corpse, killing the body drops nothing, dispensers cannot equip it, and a piece taken from the menu also leaves the body. New setting `display.show_armor` (default on).
+- **Faster deaths:** a death now saves only the dying player, not every online player (with 50 players, that was about 150 file writes per death).
 - **Tests:** a client game test with a real player covers dying, right-clicking the corpse, taking items and the armour on the body.
 
 ## 1.0.0

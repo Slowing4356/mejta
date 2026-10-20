@@ -23,6 +23,7 @@ import com.mejta.mejtacore.api.notify.NotificationService;
 import com.mejta.mejtacore.api.permission.MejtaPermission;
 import com.mejta.mejtacore.api.presence.PresenceService;
 import com.mejta.mejtacore.api.server.Scheduler;
+import com.mejta.mejtacore.api.status.PlayerStatusService;
 import com.mejta.mejtacore.api.server.ServerCommandProvider;
 import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtacore.api.storage.RecordLog;
@@ -35,6 +36,7 @@ import com.mejta.mejtacore.metrics.MetricRegistry;
 import com.mejta.mejtacore.notify.NotificationBus;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
 import com.mejta.mejtacore.presence.Presence;
+import com.mejta.mejtacore.status.PlayerStatus;
 import com.mejta.mejtacore.storage.RecordLogs;
 
 /**
@@ -59,13 +61,17 @@ import com.mejta.mejtacore.storage.RecordLogs;
  * shared audit log ({@link #audit()}), presence for vanish-aware addons ({@link #presence()}), a
  * server-thread scheduler ({@link #scheduler()}), metrics ({@link #metrics()}), server-side menus
  * ({@code com.mejta.mejtacore.api.menu.ServerMenu}), and secret and experimental settings.
+ *
+ * <h2>API version 5 (MejtaCore 1.5.0)</h2>
+ * Shared player status ({@link #status()}): who is AFK and who is in combat, tracked by MejtaCore so
+ * every addon agrees.
  */
 public final class MejtaCoreAPI {
 	/**
 	 * Version of the public API contract. Incremented when the API changes in a way addons may need
 	 * to check for. Addons should prefer a {@code fabric.mod.json} version range on {@code mejtacore}.
 	 */
-	public static final int API_VERSION = 4;
+	public static final int API_VERSION = 5;
 
 	private MejtaCoreAPI() {
 	}
@@ -235,5 +241,10 @@ public final class MejtaCoreAPI {
 	/** Timers, counters and gauges for performance tools such as MejtaPerf. @since API version 4 */
 	public static Metrics metrics() {
 		return MetricRegistry.get();
+	}
+
+	/** Who is AFK and who is in combat. @since API version 5 */
+	public static PlayerStatusService status() {
+		return PlayerStatus.get();
 	}
 }

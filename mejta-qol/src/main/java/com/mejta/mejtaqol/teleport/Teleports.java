@@ -25,7 +25,7 @@ import com.mejta.mejtaqol.util.Durations;
 import com.mejta.mejtaqol.util.Msg;
 
 /**
- * Every MejtaQoL teleport goes through here: the combat lock, the cooldown, the wait (cancelled by
+ * Every MejtaQoL teleport goes through here: the combat lock (MejtaCore's combat status), the cooldown, the wait (cancelled by
  * moving or taking damage), the cross-dimension rule and {@code /back}. Server thread only.
  */
 public final class Teleports {
@@ -80,7 +80,6 @@ public final class Teleports {
 	private final Cooldowns cooldowns = new Cooldowns();
 	private final Map<UUID, Pending> pending = new ConcurrentHashMap<>();
 	private final Map<UUID, Location> back = new ConcurrentHashMap<>();
-	private final Map<UUID, Long> lastCombat = new ConcurrentHashMap<>();
 
 	public Teleports(ConfigHandle config) {
 		this.config = config;
@@ -103,7 +102,7 @@ public final class Teleports {
 			return Optional.empty();
 		}
 		long now = System.currentTimeMillis();
-		long combat = combatRemaining(player.getUUID(), now);
+		long combat = MejtaCoreAPI.status().combatRemainingMillis(player.getUUID());
 		if (combat > 0) {
 			return Optional.of(Msg.error("You are in combat. You can teleport again in " + Durations.format(combat) + "."));
 		}
@@ -250,21 +249,10 @@ public final class Teleports {
 		if (config.get(QolSettings.CANCEL_ON_DAMAGE)) {
 			cancel(victim, "you took damage");
 		}
-		if (source.getEntity() instanceof ServerPlayer attacker && attacker != victim) {
-			long now = System.currentTimeMillis();
-			lastCombat.put(victim.getUUID(), now);
-			lastCombat.put(attacker.getUUID(), now);
+		// MejtaCore puts both players in combat; an attacker's waiting teleport ends here.
+		if (source.getEntity() instanceof ServerPlayer attacker && attacker != victim && MejtaCoreAPI.status().inCombat(attacker.getUUID())) {
 			cancel(attacker, "you are in combat");
 		}
-	}
-
-	long combatRemaining(UUID player, long nowMillis) {
-		int seconds = config.get(QolSettings.COMBAT_SECONDS);
-		Long last = lastCombat.get(player);
-		if (seconds <= 0 || last == null) {
-			return 0;
-		}
-		return Math.max(0, last + seconds * 1000L - nowMillis);
 	}
 
 	public void onLeave(UUID player) {
@@ -275,7 +263,6 @@ public final class Teleports {
 	public void reset() {
 		pending.clear();
 		back.clear();
-		lastCombat.clear();
 		cooldowns.clearAll();
 	}
 }

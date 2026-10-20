@@ -4,14 +4,14 @@ MejtaAC (mod ID `mejtaac`) is a server-side anti-cheat for Fabric servers. It ch
 
 | | |
 |---|---|
-| Version | 1.1.0 (see [CHANGELOG.md](CHANGELOG.md)) |
+| Version | 1.1.1 (see [CHANGELOG.md](CHANGELOG.md)) |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5+, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4). Built and tested against MejtaCore 1.4.0, which is recommended. |
 | Other dependencies | None |
 
 ## Installing
 
-Put MejtaCore, Fabric API and `mejtaac-1.1.0.jar` in the **server's** `mods/` folder and start the server.
+Put MejtaCore, Fabric API and `mejtaac-1.1.1.jar` in the **server's** `mods/` folder and start the server.
 
 | | Dedicated server | Player's client |
 |---|---|---|
@@ -199,7 +199,7 @@ MejtaAC talks to other mods only through MejtaCore, so none of these are require
 
 ```bash
 cd ../mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.4.0 into ~/.m2
-cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-1.1.0.jar, runs unit tests
+cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-1.1.1.jar, runs unit tests
 ./gradlew test                                     # unit tests only (JUnit 6)
 ./gradlew runClientGameTest                        # end-to-end tests with a real client (long)
 ```

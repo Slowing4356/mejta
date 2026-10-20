@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtasmp",
+	"version": "${version}",
+	"name": "MejtaSMP",
+	"description": "Server-side SMP features for MejtaCore: AFK protection, scoreboards and leaderboards, item and XP clumping with piles bigger than a stack, infinite villager trades, one-player sleep, dimension toggles and an account limit.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.mejtasmp.MejtaSMP"
+		]
+	},
+	"mixins": [
+		"mejtasmp.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.5.0 <2.0.0"
+	}
+}

@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtasmp_test",
+	"version": "1.0.0",
+	"name": "MejtaSMP Tests",
+	"description": "Server and client game tests for MejtaSMP. Development only.",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.mejta.mejtasmp.test.MejtaSmpGameTest"
+		],
+		"fabric-client-gametest": [
+			"com.mejta.mejtasmp.test.MejtaSmpClientGameTest"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtasmp": "*"
+	}
+}

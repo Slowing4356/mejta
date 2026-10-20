@@ -25,7 +25,7 @@ public abstract class DeathDropMixin {
 		CorpseManager manager = MejtaCorpse.managerOrNull();
 		if (manager != null && (Object) this instanceof ServerPlayer player) {
 			try {
-				manager.capture(player, CorpseManager.SAVE_ALL);
+				manager.capture(player, CorpseManager.SAVE_PLAYER);
 			} catch (RuntimeException e) {
 				MejtaCorpse.log().error("Corpse creation failed for {}; their items drop instead", player.getGameProfile().name(), e);
 			}

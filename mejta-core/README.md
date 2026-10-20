@@ -15,7 +15,7 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 
 | | |
 |---|---|
-| Version | 1.4.0 (public API version 4) |
+| Version | 1.5.0 (public API version 5) |
 | Minecraft | 26.1.2 (Java Edition) |
 | Fabric Loader | 0.19.5 or newer |
 | Fabric API | 0.155.3+26.1.2 or newer, required |
@@ -26,7 +26,7 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 
 Put these in the server's `mods/` folder and restart:
 
-- `mejtacore-1.4.0.jar`
+- `mejtacore-1.5.0.jar`
 - Fabric API for 26.1.2
 - the Mejta addons you want
 
@@ -114,6 +114,8 @@ Addon nodes are listed in each addon's README. To change a level, run `/mejtaadm
 | `in_game_notifications` | `true` | Show addon notifications (such as alerts) in chat to players with the required permission |
 | `notifications.file_log` | `true` | Write every notification to `mejta-data/mejtacore/notifications.jsonl` |
 | `commands.disabled` | empty | Top-level addon commands not to register, comma-separated. They stay available under `/mejtaadmin <addon>`. Takes effect after `/reload` or a restart. |
+| `afk.auto_minutes` | `5` (0–120) | A player idle this long becomes AFK, for every addon that uses AFK status. `0` = never automatically. |
+| `combat.tag_seconds` | `10` (0–300) | After hurting or being hurt by a player, both are in combat this long (addons refuse teleports, AFK protection and the like). `0` = off. |
 | `debug_logging` | `false` | Log extra diagnostic information |
 | `menu_rows` | `6` (3–6) | Height of the client menu in rows |
 | `menu_sound` | `NORMAL` | Click sound in the client menu: `OFF`, `QUIET` or `NORMAL` |
@@ -134,7 +136,8 @@ There are three ways. All need `mejtacore.config.edit` and take the same path on
 The server runs this menu, so it works without any client mod. Nothing in it can be moved or taken. `/mejtaadmin config` with no arguments opens it too, and `/mejtaadmin config menu <config>` opens one config directly.
 
 - **First page:** the configs you may edit. The permissions file is listed only if you also have `mejtacore.config.permissions`.
-- **A config's page:** one icon per setting, 45 per page. The icon shows the type: dye (on/off), repeater (whole number), clock (decimal), hopper (choice), name tag (text) and tripwire hook (secret). The tooltip shows the key, description, current value, default, range or options, and an **Experimental** marker where it applies.
+- **A config's groups:** a config with more than 18 settings opens on its groups first. Settings are grouped by the part of their key before the first dot, so `homes.max` and `homes.cooldown_seconds` are in **Homes**; keys without a dot are in **General**. Each group icon shows how many settings it holds and how many differ from the default. The client menu (`/mejta`) groups the same way.
+- **A config's (or group's) page:** one icon per setting, 45 per page. The icon shows the type: dye (on/off), repeater (whole number), clock (decimal), hopper (choice), name tag (text) and tripwire hook (secret). The tooltip shows the key, description, current value, default, range or options, and an **Experimental** marker where it applies.
 - **Bottom row:** Back, Previous/Next page, the result of your last change, and Close.
 
 | Type | Left click | Right click | Shift + click | Drop key (Q) |
@@ -193,7 +196,7 @@ dependencies {
 	minecraft "com.mojang:minecraft:26.1.2"
 	implementation "net.fabricmc:fabric-loader:0.19.5"
 	implementation "net.fabricmc.fabric-api:fabric-api:0.155.3+26.1.2"
-	implementation "com.mejta:mejtacore:1.4.0"
+	implementation "com.mejta:mejtacore:1.5.0"
 }
 ```
 
@@ -394,6 +397,9 @@ No click type moves an item, in the menu or the player's inventory below it. Han
 
 - **Presence:** a vanish addon registers a `VisibilityProvider` with `MejtaCoreAPI.presence().registerVisibilityProvider(...)`. Every addon that shows or announces players asks `presence()`: `isHidden(uuid)`, `canSee(viewer, uuid)`, `publiclyOnline(server)`, and `addListener(...)` for public joins and leaves (a staff member's fake quit is reported with `real = false`).
 - **Scheduler:** `MejtaCoreAPI.scheduler().runLater(20, task)` and `runEvery(20, task)` run on the server thread at the end of a tick. Both return a task you can `cancel()`.
+- **Player status (API version 5):** `MejtaCoreAPI.status()` says who is AFK and who is in combat, so every addon agrees.
+  - **AFK:** MejtaCore notices activity itself: looking around, walking (not being carried), chatting and interacting. After `afk.auto_minutes` idle, a player is AFK. Ask with `isAfk(uuid)` and `idleMillis(uuid)`. Set or clear it on request with `setAfk(player, boolean)` (an `/afk` command), report other activity with `markActive(player)`, and listen with `addAfkListener(...)` (cause `IDLE`, `ACTIVITY` or `REQUEST`).
+  - **Combat:** a PvP hit (also with projectiles) puts both players in combat for `combat.tag_seconds`; death ends it. Ask with `inCombat(uuid)` and `combatRemainingMillis(uuid)`.
 - **Metrics:** `metrics().timer(...)`, `counter(...)` and `gauge(...)`, read by tools such as MejtaPerf. Time a hot path with `long t = Metrics.Timer.start(); ... TIMER.stop(t);`. Recording takes no locks. Gauges are read on another thread, so keep them thread-safe. Names use lowercase letters, digits, `.`, `_` and `-`, and must never contain player names.
 
 ## Building and testing
@@ -402,11 +408,11 @@ You need JDK 25 (`JAVA_HOME` pointing at it). From `mejta-core/`:
 
 ```bash
 ./gradlew build                 # compiles and runs the unit tests
-./gradlew publishToMavenLocal   # com.mejta:mejtacore:1.4.0, for addon projects
+./gradlew publishToMavenLocal   # com.mejta:mejtacore:1.5.0, for addon projects
 ./gradlew runClient             # a development client with MejtaCore
 ```
 
-`build/libs/` then holds `mejtacore-1.4.0.jar` (install this one), plus sources and javadoc jars.
+`build/libs/` then holds `mejtacore-1.5.0.jar` (install this one), plus sources and javadoc jars.
 
 **Unit tests** (`./gradlew test`) cover logic that needs no running game: secret storage and masking, the data store (ordering, durability, corrupt files, key validation), the audit hash chain, metrics, the config edit path and menu steps.
 

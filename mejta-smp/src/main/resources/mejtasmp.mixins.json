@@ -1,0 +1,18 @@
+{
+	"required": true,
+	"package": "com.mejta.mejtasmp.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"EndPortalMixin",
+		"EntityRemovalMixin",
+		"ExperienceOrbAccessor",
+		"ExperienceOrbMixin",
+		"ItemEntityAccessor",
+		"ItemEntityMixin",
+		"NetherPortalMixin",
+		"VillagerTradeMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
