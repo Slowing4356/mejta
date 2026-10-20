@@ -21,7 +21,7 @@ on:
         description: Client game tests to run
         type: choice
         default: none
-        options: [ none, all, mejta-core/test-addon, mejta-ac, mejta-utils, mejta-discord, mejta-perf, mejta-corpse ]
+        options: [ none, all, mejta-core/test-addon, mejta-ac, mejta-utils, mejta-discord, mejta-perf, mejta-corpse, mejta-smp ]
 
 permissions:
   contents: read
@@ -64,19 +64,22 @@ jobs:
       - name: MejtaPerf
         working-directory: mejta-perf
         run: bash ./gradlew test build --stacktrace
-      # MejtaQoL's and MejtaCorpse's game tests are headless server tests (about a minute each), so they run
-      # with every build.
+      # MejtaQoL's, MejtaCorpse's and MejtaSMP's server game tests are headless (about a minute each), so they
+      # run with every build.
       - name: MejtaQoL
         working-directory: mejta-qol
         run: bash ./gradlew test build runGameTest --stacktrace
       - name: MejtaCorpse
         working-directory: mejta-corpse
         run: bash ./gradlew test build runGameTest --stacktrace
+      - name: MejtaSMP
+        working-directory: mejta-smp
+        run: bash ./gradlew test build runGameTest --stacktrace
       - name: Collect jars
         if: always()
         run: |
           mkdir -p dist
-          for p in mejta-core mejta-ac mejta-utils mejta-discord mejta-perf mejta-qol mejta-corpse; do
+          for p in mejta-core mejta-ac mejta-utils mejta-discord mejta-perf mejta-qol mejta-corpse mejta-smp; do
             [ -d "$p/build/libs" ] || continue
             find "$p/build/libs" -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -exec cp {} dist/ \;
           done
@@ -103,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: ${{ fromJSON(inputs.game_tests == 'all' && '["mejta-core/test-addon","mejta-ac","mejta-utils","mejta-discord","mejta-perf","mejta-corpse"]' || format('["{0}"]', inputs.game_tests)) }}
+        project: ${{ fromJSON(inputs.game_tests == 'all' && '["mejta-core/test-addon","mejta-ac","mejta-utils","mejta-discord","mejta-perf","mejta-corpse","mejta-smp"]' || format('["{0}"]', inputs.game_tests)) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

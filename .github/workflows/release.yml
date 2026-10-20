@@ -17,7 +17,7 @@ permissions:
 
 env:
   # Released mods; MejtaCore is always built first, since the addons compile against it.
-  RELEASED: mejta-core mejta-ac mejta-utils mejta-discord mejta-perf mejta-qol mejta-corpse
+  RELEASED: mejta-core mejta-ac mejta-utils mejta-discord mejta-perf mejta-qol mejta-corpse mejta-smp
 
 jobs:
   release:
