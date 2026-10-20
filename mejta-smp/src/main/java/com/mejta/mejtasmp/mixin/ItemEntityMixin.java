@@ -37,6 +37,8 @@ public abstract class ItemEntityMixin implements PileHolder {
 	private ItemStack mejtasmp$prototype = ItemStack.EMPTY;
 	@Unique
 	private boolean mejtasmp$labelled;
+	@Unique
+	private int mejtasmp$labelTotal = -1;
 
 	@Override
 	public int mejtasmp$extra() {
@@ -61,6 +63,16 @@ public abstract class ItemEntityMixin implements PileHolder {
 	@Override
 	public void mejtasmp$setLabelled(boolean labelled) {
 		mejtasmp$labelled = labelled;
+	}
+
+	@Override
+	public int mejtasmp$labelTotal() {
+		return mejtasmp$labelTotal;
+	}
+
+	@Override
+	public void mejtasmp$setLabelTotal(int total) {
+		mejtasmp$labelTotal = total;
 	}
 
 	/** Remembers the item type: an emptied stack no longer knows it, but the rest of the pile needs it. */

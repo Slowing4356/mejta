@@ -113,6 +113,9 @@ public final class MejtaUtils implements MejtaAddon {
 			vanish.onJoin(player);
 			freeze.onJoin(player);
 		});
+		// The connection is set up before the join message, the player list update and entity tracking, which
+		// all ask whether the player is vanished: their state is read from disk once here, not once per check.
+		ServerPlayConnectionEvents.INIT.register((handler, server) -> vanish.preload(handler.player.getUUID()));
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> freeze.onLeave(handler.player));
 		// After the leave message (which the leave mixin hides for vanished players) and after the
 		// connection's DISCONNECT, where MejtaCore's presence still sees the player as hidden.

@@ -35,6 +35,8 @@ public final class Piles {
 	private static final int NEVER_PICK_UP = 32767;
 	private static final int UNLIMITED_LIFETIME = -32768;
 	private static final int DESPAWN_AGE = 6000;
+	/** How far up and down merging reaches, in blocks: enough for drops on stairs and slabs. */
+	private static final double VERTICAL_REACH = 0.5;
 
 	private Piles() {
 	}
@@ -50,18 +52,21 @@ public final class Piles {
 		if (config == null || !(entity.level() instanceof ServerLevel)) {
 			return null;
 		}
-		return eligible(entity, config);
+		return eligible(entity, config.get(SmpSettings.DROPS_STACK), config.get(SmpSettings.DROPS_MAX_PILE));
 	}
 
-	static boolean eligible(ItemEntity entity, ConfigHandle config) {
+	/**
+	 * Like vanilla, items that never stack (tools, armour, potions) never merge, so farms full of them cost
+	 * no merge scans.
+	 */
+	static boolean eligible(ItemEntity entity, boolean piles, int cap) {
 		ItemEntityAccessor access = (ItemEntityAccessor) entity;
 		ItemStack stack = entity.getItem();
-		if (!entity.isAlive() || stack.isEmpty() || access.mejtasmp$pickupDelay() == NEVER_PICK_UP
+		if (!entity.isAlive() || stack.isEmpty() || stack.getMaxStackSize() <= 1 || access.mejtasmp$pickupDelay() == NEVER_PICK_UP
 				|| access.mejtasmp$age() == UNLIMITED_LIFETIME || access.mejtasmp$age() >= DESPAWN_AGE) {
 			return false;
 		}
-		return config.get(SmpSettings.DROPS_STACK) ? total(entity) < config.get(SmpSettings.DROPS_MAX_PILE)
-				: stack.getCount() < stack.getMaxStackSize();
+		return piles ? total(entity) < cap : stack.getCount() < stack.getMaxStackSize();
 	}
 
 	/**
@@ -73,18 +78,19 @@ public final class Piles {
 		if (config == null || !(self.level() instanceof ServerLevel level)) {
 			return false;
 		}
-		if (!eligible(self, config)) {
-			return true;
-		}
 		double radius = config.get(SmpSettings.DROPS_MERGE_RADIUS);
 		boolean piles = config.get(SmpSettings.DROPS_STACK);
 		int cap = config.get(SmpSettings.DROPS_MAX_PILE);
-		for (ItemEntity other : level.getEntitiesOfClass(ItemEntity.class, self.getBoundingBox().inflate(radius),
-				o -> o != self && eligible(o, config))) {
+		if (!eligible(self, piles, cap)) {
+			return true;
+		}
+		// Flat like vanilla's merge box (which does not reach up or down at all), but wider.
+		for (ItemEntity other : level.getEntitiesOfClass(ItemEntity.class, self.getBoundingBox().inflate(radius, VERTICAL_REACH, radius),
+				o -> o != self && eligible(o, piles, cap))) {
 			if (self.isRemoved()) {
 				break;
 			}
-			if (other.isRemoved() || !eligible(other, config) || !eligible(self, config)
+			if (other.isRemoved() || !eligible(other, piles, cap) || !eligible(self, piles, cap)
 					|| !Objects.equals(((ItemEntityAccessor) self).mejtasmp$target(), ((ItemEntityAccessor) other).mejtasmp$target())
 					|| !ItemStack.isSameItemSameComponents(self.getItem(), other.getItem())) {
 				continue;
@@ -192,6 +198,10 @@ public final class Piles {
 			if (!pile.mejtasmp$labelled() && entity.hasCustomName()) {
 				return; // a name someone else gave it
 			}
+			if (pile.mejtasmp$labelled() && pile.mejtasmp$labelTotal() == total) {
+				return; // unchanged
+			}
+			pile.mejtasmp$setLabelTotal(total);
 			Component label = Component.empty().append(stack.getHoverName().copy().withStyle(ChatFormatting.WHITE))
 					.append(Component.literal(" \u00d7" + PileMath.format(total)).withStyle(ChatFormatting.YELLOW));
 			if (!label.equals(entity.getCustomName())) {
@@ -200,6 +210,7 @@ public final class Piles {
 			entity.setCustomNameVisible(true);
 			pile.mejtasmp$setLabelled(true);
 		} else if (pile.mejtasmp$labelled()) {
+			pile.mejtasmp$setLabelTotal(-1);
 			entity.setCustomName(null);
 			entity.setCustomNameVisible(false);
 			pile.mejtasmp$setLabelled(false);

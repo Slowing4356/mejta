@@ -1,5 +1,9 @@
 # MejtaUtils changelog
 
+## 1.0.1
+
+- **Faster joins:** a joining player's vanish state is now read from disk once, when their connection is set up. Before, it was read for each check during the join, up to about 100 times with 50 players online.
+
 ## 1.0.0
 
 First release. Requires MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4); built and tested against MejtaCore 1.4.0.

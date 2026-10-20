@@ -3,13 +3,14 @@
 All eight Mejta mods for **Minecraft Java 26.1.2** (Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25).
 - **New:** MejtaSMP.
 - **Updated:** MejtaCore 1.5.0, MejtaQoL 1.1.0 and MejtaCorpse 1.1.0.
-- **Unchanged since v2026.10.2:** MejtaAC, MejtaUtils, MejtaDiscord and MejtaPerf.
+- **Performance updates:** MejtaAC 1.1.1 and MejtaUtils 1.0.1.
+- **Unchanged since v2026.10.2:** MejtaDiscord and MejtaPerf.
 
 | Mod | Version | What it does | Install on |
 |---|---|---|---|
 | **MejtaCore** | 1.5.0 (updated) | Shared platform: settings with in-game editing, permissions, notifications, secrets, data store, audit log, server menus, scheduler, metrics, and shared AFK and combat status. Required by every other mod. | Server (client optional, for the `/mejta` menu) |
-| **MejtaAC** | 1.1.0 | Anti-cheat with latency-compensated movement, combat, vehicle and interaction checks. Starts in `DRY_RUN`: it alerts and records, but never kicks until you switch it to `ENFORCE`. | Server |
-| **MejtaUtils** | 1.0.0 | Staff tools: `/invsee` and `/ecsee` (also offline players), `/status`, `/vanish`, `/freeze`, `/staffmode`. | Server |
+| **MejtaAC** | 1.1.1 (faster) | Anti-cheat with latency-compensated movement, combat, vehicle and interaction checks. Starts in `DRY_RUN`: it alerts and records, but never kicks until you switch it to `ENFORCE`. | Server |
+| **MejtaUtils** | 1.0.1 (faster) | Staff tools: `/invsee` and `/ecsee` (also offline players), `/status`, `/vanish`, `/freeze`, `/staffmode`. | Server |
 | **MejtaDiscord** | 1.0.0 | Anti-cheat alerts and Minecraft chat to Discord webhooks; (experimental) Discord chat to Minecraft. | Server |
 | **MejtaPerf** | 1.0.0 | TPS/MSPT monitor, lag alerts, a sampling profiler and saved reports (`/mperf`). | Server |
 | **MejtaCorpse** | 1.1.0 (updated) | Corpses that keep a dead player's items in a chest menu, wearing their skin and armour. Built so items can never be duplicated. | Server |
@@ -55,6 +56,17 @@ Every addon needs **MejtaCore** and **Fabric API**. MejtaQoL 1.1.0 and MejtaSMP 
   /mejtaadmin config set mejtaqol tpa.cooldown_seconds 3
   /mejtaadmin config set mejtaqol homes.cooldown_seconds 3
   ```
+
+## Performance
+
+Every mod was reviewed for server-thread cost with 50 players in mind, and all are lightweight. These were improved:
+- **MejtaCorpse:** a death saved every online player (about 150 file writes with 50 online); now only the dying player is saved.
+- **MejtaUtils:** a joining player's vanish state was read from disk up to about 100 times; now it is read once.
+- **MejtaAC:**
+  - entity positions for reach and hitbox are recorded only while those checks are on, and only for entities that can be attacked;
+  - the piston check usually reads no blocks at all.
+- **MejtaQoL:** `/rtp` skips ocean columns without loading chunks, and its cooldown starts with the search.
+- **MejtaCore:** notification mutes are read only for players allowed to see the notification, and forgotten when they leave.
 
 ## MejtaCorpse 1.1.0
 

@@ -5,8 +5,8 @@ Server-side Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.19.5+, Fa
 | Mod | Version | What it does |
 |---|---|---|
 | [MejtaCore](mejta-core/README.md) | 1.5.0 | Settings with in-game editing (also from a chest menu for vanilla clients, grouped for large configs), permissions, notifications, secrets, data store, audit log, server menus, scheduler, metrics, and shared AFK and combat status. Required by every addon. |
-| [MejtaAC](mejta-ac/README.md) | 1.1.0 | Anti-cheat with latency-compensated movement, combat, vehicle and interaction checks. Starts in `DRY_RUN`. |
-| [MejtaUtils](mejta-utils/README.md) | 1.0.0 | Staff tools: `/invsee`, `/ecsee`, `/status`, `/vanish`, `/freeze`, `/staffmode`. |
+| [MejtaAC](mejta-ac/README.md) | 1.1.1 | Anti-cheat with latency-compensated movement, combat, vehicle and interaction checks. Starts in `DRY_RUN`. |
+| [MejtaUtils](mejta-utils/README.md) | 1.0.1 | Staff tools: `/invsee`, `/ecsee`, `/status`, `/vanish`, `/freeze`, `/staffmode`. |
 | [MejtaDiscord](mejta-discord/README.md) | 1.0.0 | Anti-cheat alerts and chat to Discord webhooks; (experimental) Discord chat to Minecraft. |
 | [MejtaPerf](mejta-perf/README.md) | 1.0.0 | TPS/MSPT monitor, lag alerts, a sampling profiler and reports (`/mperf`). |
 | [MejtaCorpse](mejta-corpse/README.md) | 1.1.0 | Corpses that keep a dead player's items in a chest menu, wearing their skin and armour. Built so items can never be duplicated. |

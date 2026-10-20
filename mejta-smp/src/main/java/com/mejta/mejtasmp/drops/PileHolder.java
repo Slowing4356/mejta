@@ -19,4 +19,9 @@ public interface PileHolder {
 	boolean mejtasmp$labelled();
 
 	void mejtasmp$setLabelled(boolean labelled);
+
+	/** The pile size the label was last made for (not saved); -1 for none. */
+	int mejtasmp$labelTotal();
+
+	void mejtasmp$setLabelTotal(int total);
 }

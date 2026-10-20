@@ -11,14 +11,14 @@ Players need no client mod. Every menu is a plain chest, and all checks run on t
 
 | | |
 |---|---|
-| Version | 1.0.0 |
+| Version | 1.0.1 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | MejtaCore 1.4.0 (any version from 1.3.0 up to, not including, 2.0.0 is accepted) |
 | Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.4.0.jar`, `mejtautils-1.0.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.5.0.jar`, `mejtautils-1.0.1.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtautils.json` is created on first start.
 
 ## Commands

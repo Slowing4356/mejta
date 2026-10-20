@@ -10,11 +10,15 @@ import java.util.random.RandomGenerator;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
+import net.minecraft.core.QuartPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.BiomeTags;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -28,6 +32,7 @@ import com.mejta.mejtaqol.location.Locations;
 import com.mejta.mejtaqol.teleport.Features;
 import com.mejta.mejtaqol.teleport.Teleports;
 import com.mejta.mejtaqol.util.Cmds;
+import com.mejta.mejtaqol.util.Durations;
 import com.mejta.mejtaqol.util.Msg;
 import com.mejta.mejtaqol.util.Names;
 
@@ -39,6 +44,8 @@ import com.mejta.mejtaqol.util.Names;
 public final class RandomTeleport {
 	/** Blocks scanned downwards from the surface of one column (enough to get below the Nether's roof). */
 	static final int MAX_SCAN = 160;
+	/** Cooldown key of a search; the teleport itself uses the feature's key. */
+	static final String SEARCH_COOLDOWN = "rtp-search";
 
 	private record Search(String dimension, int centerX, int centerZ, int attemptsLeft) {
 	}
@@ -74,6 +81,17 @@ public final class RandomTeleport {
 		if (refused.isPresent()) {
 			player.sendSystemMessage(refused.get());
 			return false;
+		}
+		// A search loads chunks, so the cooldown also counts from its start: a failed or cancelled search
+		// cannot be repeated at once.
+		long now = System.currentTimeMillis();
+		if (!teleports.bypasses(player)) {
+			long wait = teleports.cooldowns().remaining(player.getUUID(), SEARCH_COOLDOWN, config.get(QolSettings.RTP_COOLDOWN), now);
+			if (wait > 0) {
+				player.sendSystemMessage(Msg.error("You can use /rtp again in " + Durations.format(wait) + "."));
+				return false;
+			}
+			teleports.cooldowns().use(player.getUUID(), SEARCH_COOLDOWN, now);
 		}
 		int cx = 0;
 		int cz = 0;
@@ -124,12 +142,24 @@ public final class RandomTeleport {
 		if (!level.getWorldBorder().isWithinBounds(probe)) {
 			return Optional.empty();
 		}
+		if (water(level, column.x(), column.z())) {
+			return Optional.empty(); // asked the generator: no chunk loaded for an ocean or river
+		}
 		level.getChunk(column.x() >> 4, column.z() >> 4);
 		OptionalInt y = safeY(level, column.x(), column.z());
 		if (y.isEmpty()) {
 			return Optional.empty();
 		}
 		return Optional.of(new Location(Locations.dimension(level), column.x() + 0.5, y.getAsInt(), column.z() + 0.5, 0, 0));
+	}
+
+	/**
+	 * Whether the world generator puts an ocean or river at sea level here. Answered from the biome noise,
+	 * without loading or generating the chunk.
+	 */
+	static boolean water(ServerLevel level, int x, int z) {
+		Holder<Biome> biome = level.getUncachedNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(level.getSeaLevel()), QuartPos.fromBlock(z));
+		return biome.is(BiomeTags.IS_OCEAN) || biome.is(BiomeTags.IS_RIVER);
 	}
 
 	/** The feet height of a safe standing spot in the column, scanning down from the surface. */

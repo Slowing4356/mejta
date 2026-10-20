@@ -8,6 +8,7 @@ Requires MejtaCore 1.5.0 or newer, below 2.0.0 (API version 5).
   - `/afk`, the broadcast, the `[AFK]` tag and the idle kick stay in MejtaQoL.
   - `/afk` is now refused while in combat.
 - **Moved settings:** `teleport.combat_seconds` and `afk.auto_minutes` were removed from `mejtaqol.json` and are removed from existing files automatically. Their replacements are `combat.tag_seconds` and `afk.auto_minutes` in `mejtacore.json`, with the same defaults (10 seconds, 5 minutes). If you had changed them, set them again there.
+- **`/rtp` is lighter:** the cooldown now starts when a search starts, so a failed or cancelled search cannot be repeated at once. Columns the world generator puts in an ocean or river are skipped without loading their chunk.
 - **Cooldowns:** `/tpa` and `/home` share the same default cooldown of 3 seconds (`tpa.cooldown_seconds` was 10, `homes.cooldown_seconds` was 5). Existing settings files keep their values.
 
 ## 1.0.1 (not released on its own; included in 1.1.0)

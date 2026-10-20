@@ -22,6 +22,10 @@ public record PlayerStats(UUID id, String name, int kills, int deaths, long play
 		return new PlayerStats(id, name, kills, deaths, ticks, mobKills, streak, bestStreak);
 	}
 
+	public PlayerStats withMobKills(int count) {
+		return new PlayerStats(id, name, kills, deaths, playTicks, count, streak, bestStreak);
+	}
+
 	public PlayerStats killed() {
 		int next = streak + 1;
 		return new PlayerStats(id, name, kills, deaths, playTicks, mobKills, next, Math.max(bestStreak, next));

@@ -3,6 +3,7 @@ package com.mejta.mejtacore.core;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
 
@@ -55,6 +56,7 @@ public final class MejtaCore implements ModInitializer {
 		PlayerStatus.register(coreConfig);
 		NotificationBus.get().registerProvider(new InGameProvider());
 		NotificationBus.get().registerProvider(new FileLogProvider());
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> NotificationBus.get().forget(handler.player.getUUID()));
 		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) ->
 				ServerCommands.register(dispatcher, buildContext));
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> RecordLogs.flushAll(5_000));

@@ -16,8 +16,8 @@ import com.mejta.mejtasmp.mixin.ExperienceOrbAccessor;
 public final class XpClumps {
 	/** Parts of one orb taken in one touch, at most (vanilla orbs of equal value count their parts). */
 	public static final int MAX_PARTS = 10_000;
-	/** Experience one orb may hold after merging. */
-	static final long MAX_VALUE = 1_000_000;
+	/** Experience one orb may hold after merging: the game saves an orb's value as a short. */
+	static final long MAX_VALUE = Short.MAX_VALUE;
 
 	private XpClumps() {
 	}

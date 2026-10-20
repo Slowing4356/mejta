@@ -1,5 +1,12 @@
 # MejtaAC changelog
 
+## 1.1.1
+
+Performance only; checks behave exactly as in 1.1.0.
+
+- **Fewer entities recorded:** the record of where entities were (for reach and hitbox) is kept only while one of those two checks is on. It covers only entities that can be attacked, so items and XP orbs near mob farms are no longer recorded. Each entity is recorded once a tick, even with several players nearby.
+- **Faster piston check:** the per-tick piston check first asks each chunk section whether it can hold a moving piston at all. Usually none can, so no block is read.
+
 ## 1.1.0
 
 Requires MejtaCore 1.3.0 or newer, below 2.0.0 (API version 4). Built and tested against MejtaCore 1.4.0, which is recommended. Every new setting is off or experimental. With the defaults, existing checks behave as in 1.0.0, apart from the `movement.speed` fix below.

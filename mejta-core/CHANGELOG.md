@@ -8,6 +8,7 @@ Addons built for API version 4 keep working.
   - AFK moved here from MejtaQoL: activity (looking around, walking, chatting, interacting) and the idle timer. Addons set or clear AFK on request and listen to changes.
   - A PvP hit puts both players in combat; death ends it.
   - New settings `afk.auto_minutes` (5) and `combat.tag_seconds` (10).
+- **Lighter notifications:** a player's notification mutes are read only for players allowed to see a notification, and forgotten when they leave.
 - **Grouped settings menus:** a config with more than 18 settings now opens on groups, by the part of the key before the first dot. For example, MejtaQoL shows Teleport, Tpa, Homes, Warps, Afk and so on, instead of 49 settings at once. Both `/mejtaadmin config menu` and the client menu (`/mejta`) group this way.
 
 ## 1.4.0 (API version 4)

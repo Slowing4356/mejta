@@ -46,8 +46,9 @@ public final class InGameProvider implements NotificationProvider {
 		Component message = format(notification);
 		server.execute(() -> {
 			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-				if (!NotificationBus.get().isMuted(player.getUUID(), notification.channel())
-						&& PermissionRegistry.check(player.permissions(), audience)) {
+				// Permission first: it is a cheap level check, while a player's mutes are read from disk once.
+				if (PermissionRegistry.check(player.permissions(), audience)
+						&& !NotificationBus.get().isMuted(player.getUUID(), notification.channel())) {
 					player.sendSystemMessage(message);
 				}
 			}

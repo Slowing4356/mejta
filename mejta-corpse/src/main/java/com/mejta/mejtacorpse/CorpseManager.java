@@ -48,6 +48,7 @@ import com.mejta.mejtacorpse.data.CorpseRecord;
 import com.mejta.mejtacorpse.data.CorpseStore;
 import com.mejta.mejtacorpse.data.SlotLayout;
 import com.mejta.mejtacorpse.menu.CorpseMenu;
+import com.mejta.mejtacorpse.mixin.PlayerListInvoker;
 import com.mejta.mejtacorpse.menu.LiveCorpse;
 import com.mejta.mejtacorpse.util.ItemJson;
 import com.mejta.mejtacorpse.world.CorpseEntities;
@@ -72,13 +73,17 @@ public final class CorpseManager {
 		void save(ServerPlayer player);
 	}
 
-	/** The game's own save: every player in the player list, which a dying player always is. */
-	public static final PlayerSaver SAVE_ALL = player -> {
+	/**
+	 * The game's own save of the dying player only (as {@code saveAll} saves each player), so a death
+	 * does not write every online player's files. The player must be in the player list, which a dying
+	 * player always is.
+	 */
+	public static final PlayerSaver SAVE_PLAYER = player -> {
 		PlayerList list = player.level().getServer().getPlayerList();
 		if (list.getPlayer(player.getUUID()) != player) {
 			throw new IllegalStateException(player.getGameProfile().name() + " is not in the player list");
 		}
-		list.saveAll();
+		((PlayerListInvoker) list).mejtacorpse$save(player);
 	};
 
 	static final int BUTTON_INFO = 45;

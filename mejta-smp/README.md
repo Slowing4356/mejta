@@ -48,9 +48,9 @@ Kills, deaths, play time and mob kills come from the game's own statistics; kill
 
 ### Items and experience
 
-- **XP clumps:** experience orbs near each other merge into one orb, whatever their values, like the Clumps mod.
+- **XP clumps:** experience orbs near each other merge into one orb, whatever their values, like the Clumps mod. One orb holds up to 32,767 experience, the most the game can save.
 - **Instant XP pickup:** a player takes a whole orb at once. Mending works as usual.
-- **Wider item merging:** equal dropped items merge from up to `drops.merge_radius` blocks away (vanilla: half a block), like Get It Together, Drops!
+- **Wider item merging:** equal dropped items merge from up to `drops.merge_radius` blocks away (vanilla: half a block), like Get It Together, Drops! As in vanilla, items that never stack (tools, armour, potions) do not merge, so farms full of them cost nothing extra.
 - **Piles (experimental):** dropped items merge into piles bigger than a stack. 1,000 cobblestone from a farm is one item entity instead of 16, with "Cobblestone ×1,000" above it. A player, hopper or mob takes a stack at a time, as from any item. See [How piles never duplicate items](#how-piles-never-duplicate-items).
 
 ### World

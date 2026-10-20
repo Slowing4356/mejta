@@ -20,7 +20,7 @@ import com.mejta.mejtasmp.util.ScopedDataStore;
  */
 public final class StatBook {
 	static final String FOLDER = "stats";
-	/** Play time alone is saved at most this often (5 minutes of it); everything else at once. */
+	/** Play time and mob kills (which a farm raises all the time) are saved at most this often (5 minutes of play); the rest at once. */
 	static final long PLAY_TIME_SAVE_TICKS = 6000;
 
 	private final ScopedDataStore store;
@@ -103,7 +103,7 @@ public final class StatBook {
 	private void put(PlayerStats after) {
 		stats.put(after.id(), after);
 		PlayerStats last = saved.get(after.id());
-		if (last == null || !after.withPlayTicks(last.playTicks()).equals(last)
+		if (last == null || !after.withPlayTicks(last.playTicks()).withMobKills(last.mobKills()).equals(last)
 				|| after.playTicks() - last.playTicks() >= PLAY_TIME_SAVE_TICKS) {
 			save(after);
 		}

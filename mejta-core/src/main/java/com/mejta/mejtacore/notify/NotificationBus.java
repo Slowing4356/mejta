@@ -183,6 +183,11 @@ public final class NotificationBus implements NotificationService {
 
 	// ---------------------------------------------------------------- persistent mutes
 
+	/** A player left: their mutes are read again (from disk) when next needed. */
+	public void forget(UUID player) {
+		muted.remove(player);
+	}
+
 	private Set<String> mutes(UUID player) {
 		return muted.computeIfAbsent(player, this::loadMutes);
 	}

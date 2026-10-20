@@ -1,9 +1,9 @@
 package com.mejta.mejtaac.sync;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -13,8 +13,9 @@ import net.minecraft.world.phys.AABB;
 /**
  * Bounding boxes of entities near players for the last {@value #TICKS} server ticks, so a hit can be
  * judged against where the target was when the client saw it. Only entities within
- * {@value #RADIUS} blocks of a player are tracked; memory is bounded by players × nearby entities
- * × {@value #TICKS}. Server thread only.
+ * {@value #RADIUS} blocks of a player are tracked, and only entities that can be attacked (not items, XP orbs
+ * or the like); an entity near several players is recorded once a tick. Memory is bounded by nearby
+ * entities × {@value #TICKS}. Server thread only.
  */
 public final class EntityHistory {
 	public static final int TICKS = 40;
@@ -31,13 +32,16 @@ public final class EntityHistory {
 		}
 	}
 
-	private final Map<Integer, Track> tracks = new HashMap<>();
+	private final Int2ObjectOpenHashMap<Track> tracks = new Int2ObjectOpenHashMap<>();
 
 	/** End of every server tick: records entities near each player. */
 	public void record(MinecraftServer server, int tick) {
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			for (Entity entity : player.level().getEntities(player, player.getBoundingBox().inflate(RADIUS))) {
-				record(entity.getId(), entity.getBoundingBox(), tick);
+			for (Entity entity : player.level().getEntities(player, player.getBoundingBox().inflate(RADIUS), Entity::isAttackable)) {
+				Track track = tracks.get(entity.getId());
+				if (track == null || track.lastTick != tick) {
+					record(entity.getId(), entity.getBoundingBox(), tick);
+				}
 			}
 		}
 		if (tick % 20 == 0) {
@@ -46,7 +50,11 @@ public final class EntityHistory {
 	}
 
 	public void record(int entityId, AABB box, int tick) {
-		Track track = tracks.computeIfAbsent(entityId, k -> new Track());
+		Track track = tracks.get(entityId);
+		if (track == null) {
+			track = new Track();
+			tracks.put(entityId, track);
+		}
 		int slot = Math.floorMod(tick, TICKS);
 		track.boxes[slot] = box;
 		track.ticks[slot] = tick;
