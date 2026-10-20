@@ -88,7 +88,7 @@ public final class AfkManager {
 		}
 		for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
 			if (MejtaCoreAPI.status().idleMillis(player.getUUID()) >= kick * 60_000L
-					&& !MejtaCoreAPI.hasPermission(player, QolPermissions.AFK_KICK_EXEMPT)) {
+					&& !(config.get(QolSettings.OP_BYPASS) && MejtaCoreAPI.hasPermission(player, QolPermissions.AFK_KICK_EXEMPT))) {
 				player.connection.disconnect(Component.literal(Templates.render(config.get(QolSettings.AFK_KICK_MESSAGE), Map.of())));
 			}
 		}

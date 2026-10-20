@@ -44,7 +44,7 @@ public final class Dimensions {
 			return false;
 		}
 		if (entity instanceof ServerPlayer player) {
-			if (MejtaCoreAPI.hasPermission(player, SmpPermissions.DIMENSION_BYPASS)) {
+			if (SmpPermissions.bypasses(player, SmpPermissions.DIMENSION_BYPASS)) {
 				return false;
 			}
 			long now = System.currentTimeMillis();

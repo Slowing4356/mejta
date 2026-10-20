@@ -89,13 +89,14 @@ public final class Teleports {
 		return cooldowns;
 	}
 
+	/** Whether the player skips the teleport rules: only while {@code op_bypass.enabled} is on. */
 	public boolean bypasses(ServerPlayer player) {
-		return MejtaCoreAPI.hasPermission(player, QolPermissions.TELEPORT_BYPASS);
+		return config.get(QolSettings.OP_BYPASS) && MejtaCoreAPI.hasPermission(player, QolPermissions.TELEPORT_BYPASS);
 	}
 
 	/**
 	 * Why the player may not start a teleport of this feature now (combat lock or cooldown), or empty if
-	 * they may. Players with {@code mejtaqol.teleport.bypass} always may.
+	 * they may. Players who {@link #bypasses} always may.
 	 */
 	public Optional<Component> refusal(ServerPlayer player, Feature feature) {
 		if (bypasses(player)) {
@@ -117,7 +118,7 @@ public final class Teleports {
 
 	/**
 	 * Starts a teleport of {@code player}. Checks the combat lock, cooldown and destination now, then
-	 * waits {@code teleport.warmup_seconds} (none with the bypass permission). Returns false and tells
+	 * waits {@code teleport.warmup_seconds} (none for players who {@link #bypasses}). Returns false and tells
 	 * the player why if it cannot start. A new request replaces the player's waiting one.
 	 */
 	public boolean request(ServerPlayer player, Feature feature, Component label, Target target) {

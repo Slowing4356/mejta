@@ -58,7 +58,7 @@ Kills, deaths, play time and mob kills come from the game's own statistics; kill
 - **Infinite trading:** villagers' and wandering traders' trades never run out.
 - **Sleep:** `sleep.percentage` sets the share of players who must sleep to skip the night. `0` (the default) means one player is enough.
 - **Dimensions:** `dimensions.nether` and `dimensions.end` close portals into that dimension.
-  - Players are told why. Staff with `mejtasmp.dimensions.bypass` may still go.
+  - Players are told why. Staff with `mejtasmp.dimensions.bypass` may still go, if `op_bypass.enabled` is on.
   - No portal is built on the other side.
   - The way back out of a dimension stays open, and commands still work.
 - **Locator bar:** hidden by default (`dimensions.locator_bar`).
@@ -89,9 +89,9 @@ Change their levels in `config/mejta/mejtacore.permissions.json`.
 |---|---|---|
 | `mejtasmp.sidebar` | 0 (everyone) | `/sb` and seeing the sidebar |
 | `mejtasmp.leaderboard` | 0 (everyone) | `/leaderboard` |
-| `mejtasmp.dimensions.bypass` | 3 (admins) | Using portals into a closed dimension |
-| `mejtasmp.antialt.bypass` | 2 (moderators) | Never refused by the account limit, and not counted in it |
-| `mejtasmp.antialt.alerts` | 2 (moderators) | Told when the account limit refuses someone |
+| `mejtasmp.dimensions.bypass` | 3 (admins) | Only while `op_bypass.enabled` is on: using portals into a closed dimension |
+| `mejtasmp.antialt.bypass` | 1 (moderators) | Only while `op_bypass.enabled` is on: never refused by the account limit, and not counted in it |
+| `mejtasmp.antialt.alerts` | 1 (moderators) | Told when the account limit refuses someone |
 | `mejtasmp.admin` | 3 (admins) | `status` |
 
 ## Settings
@@ -100,6 +100,7 @@ Stored in `config/mejta/mejtasmp.json`. Change them in the file, in MejtaCore's 
 
 | Key | Default | Meaning |
 |---|---|---|
+| `op_bypass.enabled` | `false` | Let `mejtasmp.dimensions.bypass` and `mejtasmp.antialt.bypass` work. Off: operators follow the dimension toggles and the account limit like everyone else. |
 | `afk_protection.enabled` | `true` | AFK players cannot be hurt by other players, unless in combat |
 | `afk_protection.from_mobs` | `false` | Also protect AFK players from mobs |
 | `afk_protection.notify_attacker` | `true` | Tell a player who hits an AFK player that they are protected |

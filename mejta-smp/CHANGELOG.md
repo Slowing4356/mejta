@@ -1,5 +1,9 @@
 # MejtaSMP changelog
 
+## 1.0.1
+
+- **Operators follow the rules:** bypass permissions (`mejtasmp.dimensions.bypass` and `mejtasmp.antialt.bypass`) now only apply while the new setting `op_bypass.enabled` is on. It is off by default, so operators cannot enter a closed dimension and count towards the account limit like everyone else.
+
 ## 1.0.0
 
 First release. Requires MejtaCore 1.5.0 or newer, below 2.0.0 (API version 5).

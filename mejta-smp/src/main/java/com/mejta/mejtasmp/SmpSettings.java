@@ -95,6 +95,11 @@ public final class SmpSettings {
 	public static final Setting<LocatorBar> LOCATOR_BAR = Setting.enumeration("dimensions.locator_bar", LocatorBar.HIDDEN)
 			.describedAs("The locator bar that shows where other players are: shown, hidden, or left as the game rule says");
 
+	// ---------------------------------------------------------------- operators
+	public static final Setting<Boolean> OP_BYPASS = Setting.bool("op_bypass.enabled", false)
+			.describedAs("Let mejtasmp.dimensions.bypass use portals to closed dimensions and mejtasmp.antialt.bypass skip the account limit"
+					+ " (operators by default). Off: operators follow the rules like everyone else");
+
 	// ---------------------------------------------------------------- anti-alt
 	public static final Setting<Boolean> ANTIALT = Setting.bool("antialt.enabled", true)
 			.describedAs("Limit how many accounts may play from one internet address. Addresses are stored only as salted hashes, never shown or logged");
@@ -107,7 +112,8 @@ public final class SmpSettings {
 			.describedAs("Shown to a player who is refused. & colour codes allowed");
 
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
-			.add(AFK_PROTECTION, AFK_PROTECTION_MOBS, AFK_PROTECTION_NOTICE,
+			.add(OP_BYPASS,
+					AFK_PROTECTION, AFK_PROTECTION_MOBS, AFK_PROTECTION_NOTICE,
 					SIDEBAR_ENABLED, SIDEBAR_DEFAULT, SIDEBAR_TITLE, TAB_SCORE, LEADERBOARD,
 					XP_CLUMP, XP_CLUMP_RADIUS, XP_INSTANT,
 					DROPS_MERGE_RADIUS, DROPS_STACK, DROPS_MAX_PILE, DROPS_SHOW_COUNT,

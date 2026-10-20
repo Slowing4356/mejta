@@ -68,8 +68,8 @@ All nodes start with `mejtaqol.`. Change their levels in `config/mejta/mejtacore
 | `setspawn`, `warps.manage` | 3 | Set the spawn point; create and delete warps |
 | `enderchest`, `trash`, `afk`, `reply` | 0 | The matching command |
 | `workstation.crafting`, `.anvil`, `.stonecutter`, `.grindstone`, `.smithing`, `.loom`, `.cartography` | 0 | The matching workstation |
-| `afk.kick_exempt` | 1 | Never kicked for being idle |
-| `teleport.bypass` | 1 | Teleport without waiting, cooldowns, the combat lock or the cross-dimension rule; send requests to players who refuse them |
+| `afk.kick_exempt` | 1 | Only while `op_bypass.enabled` is on: never kicked for being idle |
+| `teleport.bypass` | 1 | Only while `op_bypass.enabled` is on: teleport without waiting, cooldowns, the combat lock or the cross-dimension rule; send requests to players who refuse them |
 | `admin` | 3 | `/mejtaadmin mejtaqol status` |
 
 To make a command a perk, raise its level: for example `mejtaqol.workstation.anvil` to `MODERATORS`. MejtaCore's permissions are based on operator levels; per-player groups need a permissions mod that MejtaCore does not yet support.
@@ -80,6 +80,7 @@ Stored in `config/mejta/mejtaqol.json`. Change them in the file, in MejtaCore's 
 
 | Key | Default | Meaning |
 |---|---|---|
+| `op_bypass.enabled` | `false` | Let `mejtaqol.teleport.bypass` and `mejtaqol.afk.kick_exempt` work. Off: operators follow the teleport rules and the idle kick like everyone else. |
 | `teleport.warmup_seconds` | `3` (0–60) | Wait before every teleport. `0` = instant. |
 | `teleport.cancel_on_move` | `true` | Moving more than half a block during the wait cancels it (looking around is fine) |
 | `teleport.cancel_on_damage` | `true` | Taking damage during the wait cancels it |
@@ -133,7 +134,7 @@ Messages use `&` codes: `&0`–`&9`, `&a`–`&f` for colours, `&l` bold, `&o` it
 3. **Wait:** the player stands still for `teleport.warmup_seconds`; a countdown is shown above the hotbar. Moving or taking damage cancels it. A new teleport replaces a waiting one.
 4. **Arrival:** the player leaves any bed or vehicle, fall damage is reset, and `/back` remembers where they were.
 
-The destination is checked when the teleport is asked for and again when the wait ends: a home deleted, a warp removed or a `/tpa` partner who left in between cancels it with a message. Players with `mejtaqol.teleport.bypass` skip steps 1 to 3.
+The destination is checked when the teleport is asked for and again when the wait ends: a home deleted, a warp removed or a `/tpa` partner who left in between cancels it with a message. Operators follow these rules too. Turn on `op_bypass.enabled` to let players with `mejtaqol.teleport.bypass` skip steps 1 to 3.
 
 `/tpa` and `/tpahere` only find players the sender may see: vanished staff (MejtaUtils, or any mod using MejtaCore's presence service) are neither suggested nor found. Requests from or to a player who leaves are dropped silently.
 

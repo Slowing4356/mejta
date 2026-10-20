@@ -17,6 +17,8 @@ import net.minecraft.network.chat.PlayerChatMessage;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.server.players.PlayerList;
 import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -164,11 +166,29 @@ public class MejtaQolGameTest {
 		helper.assertTrue(MejtaQoL.teleports().refusal(a, Features.HOME).map(m -> m.getString().contains("combat")).orElse(false),
 				Component.literal("teleports are refused in combat"));
 		helper.assertTrue(!MejtaQoL.afk().toggle(b) && !MejtaCoreAPI.status().isAfk(B_ID), Component.literal("/afk is refused in combat"));
+		operatorsFollowTheRules(helper, a);
 		ServerLivingEntityEvents.AFTER_DEATH.invoker().afterDeath(a, level.damageSources().generic());
 		ServerLivingEntityEvents.AFTER_DEATH.invoker().afterDeath(b, level.damageSources().generic());
 		helper.assertTrue(!MejtaCoreAPI.status().inCombat(A_ID) && !MejtaCoreAPI.status().inCombat(B_ID)
 				&& MejtaQoL.teleports().refusal(a, Features.HOME).map(m -> !m.getString().contains("combat")).orElse(true),
 				Component.literal("death ends combat"));
+	}
+
+	/** Operators have mejtaqol.teleport.bypass, but it only applies while op_bypass.enabled is on. Call while a is in combat. */
+	private static void operatorsFollowTheRules(GameTestHelper helper, ServerPlayer a) {
+		ConfigHandle config = MejtaQoL.config();
+		PlayerList players = a.level().getServer().getPlayerList();
+		boolean bypass = config.get(QolSettings.OP_BYPASS);
+		players.op(a.nameAndId(), Optional.of(LevelBasedPermissionSet.OWNER), Optional.empty());
+		try {
+			config.set(QolSettings.OP_BYPASS, false);
+			helper.assertTrue(MejtaQoL.teleports().refusal(a, Features.HOME).isPresent(), Component.literal("an operator is refused in combat by default"));
+			config.set(QolSettings.OP_BYPASS, true);
+			helper.assertTrue(MejtaQoL.teleports().refusal(a, Features.HOME).isEmpty(), Component.literal("an operator bypasses with op_bypass.enabled on"));
+		} finally {
+			config.set(QolSettings.OP_BYPASS, bypass);
+			players.deop(a.nameAndId());
+		}
 	}
 
 	private static void replies(GameTestHelper helper, ServerPlayer a, ServerPlayer b) {
