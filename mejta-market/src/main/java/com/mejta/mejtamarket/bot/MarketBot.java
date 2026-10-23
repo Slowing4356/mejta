@@ -20,6 +20,7 @@ import net.minecraft.world.item.ItemStack;
 
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtamarket.MarketService;
+import com.mejta.mejtamarket.MejtaMarket;
 import com.mejta.mejtamarket.MarketSettings;
 import com.mejta.mejtamarket.data.BuyOrder;
 import com.mejta.mejtamarket.data.Lot;
@@ -48,10 +49,13 @@ public final class MarketBot {
 	static final int MAX_MATCHES = 5;
 	/** At most this many restocks wait at once. */
 	static final int MAX_RESTOCKS = 4;
+	/** While below {@code bot.min_listings}, the bot lists something this often (ticks). */
+	static final int SHELF_TICKS = 600;
 
 	private final MarketService market;
 	private final RandomGenerator random = RandomGenerator.getDefault();
 	private int ticksLeft = -1;
+	private int shelfTicks;
 	private final Map<String, Restock> restocks = new LinkedHashMap<>();
 
 	public MarketBot(MarketService market) {
@@ -61,6 +65,10 @@ public final class MarketBot {
 	/** Called every server tick. */
 	public void tick(MinecraftServer server) {
 		tickRestocks(server);
+		if (++shelfTicks >= SHELF_TICKS) {
+			shelfTicks = 0;
+			tickShelf(server);
+		}
 		if (ticksLeft < 0) {
 			reschedule();
 		}
@@ -74,8 +82,24 @@ public final class MarketBot {
 		double chance = BotPolicy.activity(activePlayers(server), market.config().get(MarketSettings.BOT_FULL_PLAYERS),
 				market.config().get(MarketSettings.BOT_MAX_PLAYERS));
 		if (random.nextDouble() < chance) {
-			act();
+			act().ifPresent(what -> MejtaMarket.log().info("{} {}", market.botName(), what));
 		}
+	}
+
+	/** Keeps a few of the bot's listings on sale, so a new or quiet market is never empty. */
+	private void tickShelf(MinecraftServer server) {
+		if (!market.config().get(MarketSettings.BOT_ENABLED) || market.closedReason().isPresent()
+				|| market.store().listedBy(PriceBook.BOT).size() >= market.config().get(MarketSettings.BOT_MIN_LISTINGS)) {
+			return;
+		}
+		double chance = BotPolicy.activity(activePlayers(server), market.config().get(MarketSettings.BOT_FULL_PLAYERS),
+				market.config().get(MarketSettings.BOT_MAX_PLAYERS));
+		long now = System.currentTimeMillis();
+		List<String> listable = listableItems(now);
+		if (listable.isEmpty() || random.nextDouble() >= chance) {
+			return;
+		}
+		list(pickByDemand(listable, now), now).ifPresent(what -> MejtaMarket.log().info("{} {}", market.botName(), what));
 	}
 
 	private void reschedule() {

@@ -45,9 +45,9 @@ public final class MarketSettings {
 	public static final Setting<String> BOT_NAME = Setting.string("bot.name", "Market Trader")
 			.validatedBy(s -> !s.isBlank() && s.length() <= 32)
 			.describedAs("Name the bot's listings and buy orders are shown with");
-	public static final Setting<Integer> BOT_INTERVAL_MIN = Setting.integer("bot.interval_min_minutes", 4, 1, 1440)
+	public static final Setting<Integer> BOT_INTERVAL_MIN = Setting.integer("bot.interval_min_minutes", 2, 1, 1440)
 			.describedAs("Shortest time between two bot actions, in minutes");
-	public static final Setting<Integer> BOT_INTERVAL_MAX = Setting.integer("bot.interval_max_minutes", 12, 1, 1440)
+	public static final Setting<Integer> BOT_INTERVAL_MAX = Setting.integer("bot.interval_max_minutes", 6, 1, 1440)
 			.describedAs("Longest time between two bot actions, in minutes (a random time in between is picked)");
 	public static final Setting<Integer> BOT_FULL_PLAYERS = Setting.integer("bot.full_activity_players", 3, 0, 500)
 			.describedAs("Up to this many players online, the bot is fully active");
@@ -65,6 +65,8 @@ public final class MarketSettings {
 			.describedAs("Most items of one kind the bot sells per day");
 	public static final Setting<Integer> BOT_MAX_LISTINGS = Setting.integer("bot.max_listings", 12, 0, 200)
 			.describedAs("Listings the bot keeps on sale at most");
+	public static final Setting<Integer> BOT_MIN_LISTINGS = Setting.integer("bot.min_listings", 6, 0, 200)
+			.describedAs("While the bot has fewer listings than this, it lists something about every 30 seconds, so the market is never empty");
 	public static final Setting<Integer> BOT_MAX_ORDERS = Setting.integer("bot.max_orders", 6, 0, 100)
 			.describedAs("Buy orders the bot keeps open at most");
 
@@ -80,7 +82,7 @@ public final class MarketSettings {
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, LISTING_MAX, LISTING_HOURS, MIN_PRICE, MAX_PRICE, LISTING_FEE, SALES_TAX, ORDERS_ENABLED, ORDERS_MAX, ORDERS_HOURS,
 					ORDERS_MAX_AMOUNT, ANNOUNCE_SALES, AUDIT_TRADES, BOT_ENABLED, BOT_NAME, BOT_INTERVAL_MIN, BOT_INTERVAL_MAX, BOT_FULL_PLAYERS,
-					BOT_MAX_PLAYERS, BOT_BUY_FACTOR, BOT_SELL_FACTOR, BOT_DAILY_BUDGET, BOT_BUDGET_CAP, BOT_DAILY_STOCK, BOT_MAX_LISTINGS,
+					BOT_MAX_PLAYERS, BOT_BUY_FACTOR, BOT_SELL_FACTOR, BOT_DAILY_BUDGET, BOT_BUDGET_CAP, BOT_DAILY_STOCK, BOT_MIN_LISTINGS, BOT_MAX_LISTINGS,
 					BOT_MAX_ORDERS, PRICE_HISTORY_DAYS, PRICE_MIN_SAMPLES, PRICE_MAX_DAILY_CHANGE, PRICE_BAND)
 			.build();
 
