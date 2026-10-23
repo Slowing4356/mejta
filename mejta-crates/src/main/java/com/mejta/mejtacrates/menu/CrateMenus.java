@@ -73,7 +73,7 @@ public final class CrateMenus {
 				} else if (!MejtaCrates.config().get(CrateSettings.OPEN_FROM_MENU)) {
 					click.player().sendSystemMessage(Component.literal("Open crates at their crate block.").withStyle(ChatFormatting.GRAY));
 				} else {
-					click.menu().close();
+					// No close first: the spin replaces this menu (keeping the cursor), or the menu stays with the new key count.
 					tell(click.player(), current, service.openVirtual(click.player(), current, true));
 				}
 			});
@@ -135,7 +135,6 @@ public final class CrateMenus {
 		}, click -> {
 			if (MejtaCrates.config().get(CrateSettings.OPEN_FROM_MENU)) {
 				service.store().crate(crate.id()).ifPresent(c -> {
-					click.menu().close();
 					tell(click.player(), c, service.openVirtual(click.player(), c, true));
 				});
 			}

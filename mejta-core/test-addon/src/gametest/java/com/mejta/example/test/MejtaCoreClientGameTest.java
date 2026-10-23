@@ -1043,6 +1043,12 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("1.9: the last page shows the rest and no next page", waitUntil(ctx, () -> slotName(ctx, 0).equals("Entry 19"))
 				&& ctx.computeOnClient(mc -> mc.player.containerMenu.getSlot(2).getItem().isEmpty()
 						&& MenuIcons.isFiller(mc.player.containerMenu.getSlot(14).getItem())));
+		double[] mouse = ctx.computeOnClient(mc -> new double[] {mc.mouseHandler.xpos(), mc.mouseHandler.ypos()});
+		int replacedId = ctx.computeOnClient(mc -> mc.player.containerMenu.containerId);
+		openPagedMenu(server, me);
+		check("1.9: a menu opened over another keeps the cursor where it was", waitUntil(ctx, () -> ctx.computeOnClient(mc ->
+				mc.screen instanceof AbstractContainerScreen<?> && mc.player.containerMenu.containerId != replacedId))
+				&& ctx.computeOnClient(mc -> mc.mouseHandler.xpos() == mouse[0] && mc.mouseHandler.ypos() == mouse[1]));
 		clickContainerSlot(ctx, 17, 0);
 		check("1.9: Close closes it", waitUntil(ctx, () -> ctx.computeOnClient(mc -> mc.screen == null)));
 	}
