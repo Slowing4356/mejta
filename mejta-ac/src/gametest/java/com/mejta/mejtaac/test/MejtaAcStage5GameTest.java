@@ -90,6 +90,9 @@ public final class MejtaAcStage5GameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext ctx) {
+		if (GameTestScope.skipUnlessFull(LOG, "stage 5")) {
+			return;
+		}
 		ConfigHandle config = config();
 		config.set(AcSettings.DECAY_PER_MINUTE, 0.0);
 		config.set(AcSettings.LOG_LEVEL, AcSettings.LogLevel.VERBOSE);

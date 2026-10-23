@@ -99,6 +99,9 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext ctx) {
+		if (GameTestScope.skipUnlessFull(LOG, "stage 4")) {
+			return;
+		}
 		pureLogicChecks();
 
 		ConfigHandle config = config();

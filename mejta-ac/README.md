@@ -215,7 +215,7 @@ cd ../mejta-ac && ./gradlew build                 # build/libs/mejtaac-1.1.1.jar
 | `MejtaAcStage5GameTest` | Jump and boat fly under latency |
 | `MejtaAcStage6GameTest` | Elytra, horse and camel riding, and every mitigation action, under latency |
 
-The latency suites run a non-op client on a dedicated server through a test-only network delay in two profiles: none, and 300 ms with jitter and 1.5 s freezes (the worst case). In each profile, legitimate play with real input must produce **zero** flags, and crafted cheats must be caught. Each suite writes a results table to `build/run/clientGameTest/mejtaac-stage<N>-latency.md`.
+The latency suites run a non-op client on a dedicated server through a test-only network delay in two profiles: none, and 300 ms with jitter and 1.5 s freezes (the worst case). A normal run covers only the newest checks (stage 6: elytra, horses, mitigation) in the worst-case profile; the older stages 4 and 5 and the second profile run only with `./gradlew runClientGameTest -PfullGameTests` (in CI: tick **full** in the manual run). Unit tests still cover every check. In each profile, legitimate play with real input must produce **zero** flags, and crafted cheats must be caught. Each suite writes a results table to `build/run/clientGameTest/mejtaac-stage<N>-latency.md`.
 
 ## Limitations
 

@@ -133,7 +133,8 @@ public final class MejtaAcStage6GameTest implements FabricClientGameTest {
 				connection.getClientLevel().waitForChunksRender();
 				Arena arena = buildArena(ctx, server);
 				LatencySimulator simulator = ctx.computeOnClient(LatencySimulator::install);
-				for (Profile profile : PROFILES) {
+				// Only the worst case by default; both profiles in full runs.
+				for (Profile profile : GameTestScope.FULL ? PROFILES : PROFILES.subList(PROFILES.size() - 1, PROFILES.size())) {
 					runProfile(ctx, server, arena, simulator, profile);
 				}
 				simulator.set(0, 0);

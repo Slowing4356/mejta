@@ -19,6 +19,10 @@ on:
         type: choice
         default: none
         options: [ none, all, mejta-core/test-addon, mejta-ac, mejta-utils, mejta-discord, mejta-perf, mejta-corpse, mejta-smp ]
+      full:
+        description: Also run the suites of older checks (MejtaAC stages 4 and 5, every latency profile)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -160,7 +164,7 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
       - name: Client game test
         working-directory: ${{ matrix.project }}
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" bash ./gradlew runClientGameTest --stacktrace
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" bash ./gradlew runClientGameTest ${{ inputs.full && '-PfullGameTests' || '' }} --stacktrace
       - name: Name the log artifact
         if: always()
         id: name
