@@ -108,7 +108,8 @@ public final class Teleports {
 			return Optional.of(Msg.error("You are in combat. You can teleport again in " + Durations.format(combat) + "."));
 		}
 		if (feature.cooldown() != null) {
-			long wait = cooldowns.remaining(player.getUUID(), feature.id(), config.get(feature.cooldown()), now);
+			int cooldown = QolSettings.forRank(config, feature.cooldown(), player.getUUID());
+			long wait = cooldowns.remaining(player.getUUID(), feature.id(), cooldown, now);
 			if (wait > 0) {
 				return Optional.of(Msg.error("You can use /" + feature.id() + " again in " + Durations.format(wait) + "."));
 			}

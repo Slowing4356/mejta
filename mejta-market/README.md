@@ -9,13 +9,13 @@ An auction house for Fabric servers, as a MejtaCore addon (mod ID `mejtamarket`)
 
 | | |
 |---|---|
-| Version | 1.0.0 |
-| Requires | MejtaCore 1.8.0 or newer, below 2.0.0 (API version 6), an economy addon (MejtaEconomy), Fabric API |
+| Version | 1.2.0 |
+| Requires | MejtaCore 1.10.0 or newer, below 2.0.0 (API version 8), an economy addon (MejtaEconomy), Fabric API |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5+, Java 25 |
 
 ## Installing
 
-Put `mejtamarket-1.1.1.jar` next to `mejtacore-1.9.0.jar`, `mejtaeconomy-1.0.0.jar` and Fabric API in the server's `mods/` folder. Settings appear in `config/mejta/mejtamarket.json`, the bot's price list in `config/mejta/mejtamarket-prices.json`.
+Put `mejtamarket-1.2.0.jar` next to `mejtacore-1.10.0.jar`, `mejtaeconomy-1.0.0.jar` and Fabric API in the server's `mods/` folder. Settings appear in `config/mejta/mejtamarket.json`, the bot's price list in `config/mejta/mejtamarket-prices.json`.
 
 ## Using the market
 
@@ -125,7 +125,8 @@ Stored in `config/mejta/mejtamarket.json`. Change them in the file, in MejtaCore
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | The market is open. Off: nobody can list, buy or fill, but everyone can still collect. |
-| `listing.max_per_player` | `10` (1–200) | Listings a player may have on sale at once |
+| `listing.max_per_player` | `10` (1–200) | Listings a Member (a player without a rank) may have on sale at once |
+| `listing.max_per_player_bronze`, `_silver`, `_gold` | `13`, `16`, `20` (1–200) | The same for Bronze, Silver and Gold players ([MejtaCore ranks](../mejta-core/README.md#ranks)) |
 | `listing.duration_hours` | `48` (1–720) | Hours a listing stays on sale |
 | `listing.min_price` | `1` | Lowest price of a listing, or of one item in a buy order |
 | `listing.max_price` | `10000000` | Highest price of a listing or a whole buy order |

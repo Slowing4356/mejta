@@ -46,10 +46,31 @@ public final class CoreSettings {
 	public static final Setting<Integer> COMBAT_TAG_SECONDS = Setting.integer("combat.tag_seconds", 10, 0, 300)
 			.describedAs("After hurting or being hurt by a player, both are in combat this many seconds (addons refuse teleports, AFK protection and the like). 0 = off");
 
+	/** @since 1.10.0 */
+	public static final Setting<Integer> RANKS_PLAYTIME_HOURS = Setting.integer("ranks.playtime_hours", 50, 0, 10_000)
+			.describedAs("A Member who has played this many hours earns the Bronze rank by themselves. 0 = only staff give ranks");
+	/** @since 1.10.0 */
+	public static final Setting<Boolean> RANKS_SHOW_PREFIX = Setting.bool("ranks.show_prefix", true)
+			.describedAs("Show rank prefixes before names in chat, the tab list and above heads (one scoreboard team per rank; "
+					+ "players already in another team keep it)");
+	/** @since 1.10.0 */
+	public static final Setting<String> RANKS_PREFIX_BRONZE = prefix("bronze", "&6[Bronze]");
+	/** @since 1.10.0 */
+	public static final Setting<String> RANKS_PREFIX_SILVER = prefix("silver", "&7[Silver]");
+	/** @since 1.10.0 */
+	public static final Setting<String> RANKS_PREFIX_GOLD = prefix("gold", "&e[Gold]");
+
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(DEBUG_LOGGING, SHOW_ADDON_IDS, MENU_SOUND, SERVER_MENU_SCREENS, IN_GAME_NOTIFICATIONS, NOTIFICATIONS_FILE_LOG,
-					DISABLED_COMMANDS, AFK_AUTO_MINUTES, COMBAT_TAG_SECONDS)
+					DISABLED_COMMANDS, AFK_AUTO_MINUTES, COMBAT_TAG_SECONDS,
+					RANKS_PLAYTIME_HOURS, RANKS_SHOW_PREFIX, RANKS_PREFIX_BRONZE, RANKS_PREFIX_SILVER, RANKS_PREFIX_GOLD)
 			.build();
+
+	private static Setting<String> prefix(String rank, String defaultValue) {
+		return Setting.string("ranks." + rank + ".prefix", defaultValue)
+				.validatedBy(text -> text.length() <= 48 && text.indexOf('\n') < 0)
+				.describedAs("Shown before the names of " + rank + " players (ranks.show_prefix); & colour codes allowed");
+	}
 
 	private CoreSettings() {
 	}

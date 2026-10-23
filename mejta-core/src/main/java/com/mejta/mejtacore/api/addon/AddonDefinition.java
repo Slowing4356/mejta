@@ -31,7 +31,7 @@ public final class AddonDefinition {
 	public static final Pattern ID_PATTERN = Pattern.compile("[a-z][a-z0-9_-]{0,63}");
 
 	/** IDs that would collide with MejtaCore's own command and file names. */
-	public static final Set<String> RESERVED_IDS = Set.of("mejtacore", "mejta", "core", "gui", "help", "addons", "config", "about");
+	public static final Set<String> RESERVED_IDS = Set.of("mejtacore", "mejta", "core", "gui", "help", "addons", "config", "about", "rank");
 
 	private final String id;
 	private final String name;

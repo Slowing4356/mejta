@@ -22,6 +22,7 @@ import com.mejta.mejtacore.api.economy.EconomyService;
 import com.mejta.mejtacore.api.metrics.Metrics;
 import com.mejta.mejtacore.api.notify.NotificationService;
 import com.mejta.mejtacore.api.permission.MejtaPermission;
+import com.mejta.mejtacore.api.rank.RankService;
 import com.mejta.mejtacore.api.presence.PresenceService;
 import com.mejta.mejtacore.api.server.Scheduler;
 import com.mejta.mejtacore.api.status.PlayerStatusService;
@@ -37,6 +38,7 @@ import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.metrics.MetricRegistry;
 import com.mejta.mejtacore.notify.NotificationBus;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
+import com.mejta.mejtacore.ranks.Ranks;
 import com.mejta.mejtacore.presence.Presence;
 import com.mejta.mejtacore.status.PlayerStatus;
 import com.mejta.mejtacore.storage.RecordLogs;
@@ -76,13 +78,18 @@ import com.mejta.mejtacore.storage.RecordLogs;
  * A shared look for chest menus: {@code PagedMenu} lists any number of entries over pages with a Back,
  * page, info and Close bar; {@code ServerMenu.Builder} gains {@code backButton}, {@code closeButton} and
  * {@code fillEmpty}; {@code MenuIcons} gains {@code filler}, {@code back}, {@code close} and {@code page}.
+ *
+ * <h2>API version 8 (MejtaCore 1.10.0)</h2>
+ * Per-player ranks ({@link #ranks()}): Member, Bronze, Silver and Gold, set by staff or earned by playtime.
+ * {@code MejtaPermission#grantedFrom} gives a node to every player from a rank up, and {@code hasPermission}
+ * checks ranks as well as operator levels.
  */
 public final class MejtaCoreAPI {
 	/**
 	 * Version of the public API contract. Incremented when the API changes in a way addons may need
 	 * to check for. Addons should prefer a {@code fabric.mod.json} version range on {@code mejtacore}.
 	 */
-	public static final int API_VERSION = 7;
+	public static final int API_VERSION = 8;
 
 	private MejtaCoreAPI() {
 	}
@@ -160,11 +167,13 @@ public final class MejtaCoreAPI {
 
 	/** Whether the command source has {@code permission} (console and command blocks: per their level). */
 	public static boolean hasPermission(CommandSourceStack source, MejtaPermission permission) {
-		return PermissionRegistry.check(source.permissions(), permission);
+		ServerPlayer player = source.getPlayer();
+		return PermissionRegistry.check(source.permissions(), player == null ? null : player.getUUID(), permission);
 	}
 
+	/** By operator level, or (since API version 8) by the player's rank. */
 	public static boolean hasPermission(ServerPlayer player, MejtaPermission permission) {
-		return PermissionRegistry.check(player.permissions(), permission);
+		return PermissionRegistry.check(player.permissions(), player.getUUID(), permission);
 	}
 
 	/**
@@ -174,7 +183,8 @@ public final class MejtaCoreAPI {
 	 * @since API version 4
 	 */
 	public static boolean hasPermission(MinecraftServer server, NameAndId profile, MejtaPermission permission) {
-		return PermissionRegistry.checkLevel(server.getProfilePermissions(profile).level(), permission);
+		return PermissionRegistry.checkLevel(server.getProfilePermissions(profile).level(), permission)
+				|| PermissionRegistry.byRank(profile.id(), permission);
 	}
 
 	/** For Brigadier: {@code Commands.literal("x").requires(MejtaCoreAPI.requires(MY_PERMISSION))}. */
@@ -267,5 +277,14 @@ public final class MejtaCoreAPI {
 	 */
 	public static EconomyService economy() {
 		return Economy.get();
+	}
+
+	/**
+	 * Players' ranks (Member, Bronze, Silver, Gold): what rank a player has, values per rank and rank prefixes.
+	 *
+	 * @since API version 8
+	 */
+	public static RankService ranks() {
+		return Ranks.get();
 	}
 }

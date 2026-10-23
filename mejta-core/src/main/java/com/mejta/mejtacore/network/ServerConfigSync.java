@@ -107,7 +107,7 @@ public final class ServerConfigSync {
 		boolean permissionsFile = PermissionRegistry.check(permissions, PermissionRegistry.CONFIG_PERMISSIONS);
 		List<ConfigHandle> out = new ArrayList<>();
 		for (ConfigHandle handle : MejtaCore.configs().all()) {
-			if (permissionsFile || !handle.id().equals(PermissionRegistry.CONFIG_ID)) {
+			if (permissionsFile || !PermissionRegistry.isPermissionsConfig(handle.id())) {
 				out.add(handle);
 			}
 		}

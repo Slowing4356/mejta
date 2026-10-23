@@ -1,7 +1,14 @@
 package com.mejta.mejtaqol;
 
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import com.mejta.mejtacore.api.MejtaCoreAPI;
+import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.ConfigSpec;
 import com.mejta.mejtacore.api.config.Setting;
+import com.mejta.mejtacore.api.rank.Rank;
 import com.mejta.mejtaqol.rtp.RtpMath;
 import com.mejta.mejtaqol.util.Names;
 import com.mejta.mejtaqol.util.Templates;
@@ -40,7 +47,16 @@ public final class QolSettings {
 	public static final Setting<Boolean> HOMES_ENABLED = Setting.bool("homes.enabled", true)
 			.describedAs("/sethome, /home, /delhome and /homes");
 	public static final Setting<Integer> HOMES_MAX = Setting.integer("homes.max", 3, 0, 100)
-			.describedAs("Homes a player may have");
+			.describedAs("Homes a Member (a player without a rank) may have");
+	/** @since 1.3.0 */
+	public static final Setting<Integer> HOMES_MAX_BRONZE = Setting.integer("homes.max_bronze", 5, 0, 100)
+			.describedAs("Homes a Bronze player may have");
+	/** @since 1.3.0 */
+	public static final Setting<Integer> HOMES_MAX_SILVER = Setting.integer("homes.max_silver", 6, 0, 100)
+			.describedAs("Homes a Silver player may have");
+	/** @since 1.3.0 */
+	public static final Setting<Integer> HOMES_MAX_GOLD = Setting.integer("homes.max_gold", 7, 0, 100)
+			.describedAs("Homes a Gold player may have");
 	public static final Setting<Integer> HOMES_MAX_EXTRA = Setting.integer("homes.max_extra", 10, 0, 100)
 			.describedAs("Homes a player with mejtaqol.homes.extra may have");
 	public static final Setting<Integer> HOMES_COOLDOWN = Setting.integer("homes.cooldown_seconds", 3, 0, 3600)
@@ -91,7 +107,16 @@ public final class QolSettings {
 	public static final Setting<Integer> RTP_ATTEMPTS = Setting.integer("rtp.max_attempts", 8, 1, 32)
 			.describedAs("Places tried before giving up (one per server tick)");
 	public static final Setting<Integer> RTP_COOLDOWN = Setting.integer("rtp.cooldown_seconds", 300, 0, 86_400)
-			.describedAs("Seconds between two /rtp uses");
+			.describedAs("Seconds between two /rtp uses of a Member (a player without a rank)");
+	/** @since 1.3.0 */
+	public static final Setting<Integer> RTP_COOLDOWN_BRONZE = Setting.integer("rtp.cooldown_seconds_bronze", 240, 0, 86_400)
+			.describedAs("Seconds between two /rtp uses of a Bronze player");
+	/** @since 1.3.0 */
+	public static final Setting<Integer> RTP_COOLDOWN_SILVER = Setting.integer("rtp.cooldown_seconds_silver", 180, 0, 86_400)
+			.describedAs("Seconds between two /rtp uses of a Silver player");
+	/** @since 1.3.0 */
+	public static final Setting<Integer> RTP_COOLDOWN_GOLD = Setting.integer("rtp.cooldown_seconds_gold", 120, 0, 86_400)
+			.describedAs("Seconds between two /rtp uses of a Gold player");
 
 	// ---------------------------------------------------------------- portable containers
 	public static final Setting<Boolean> ENDERCHEST_ENABLED = Setting.bool("enderchest.enabled", true)
@@ -152,16 +177,32 @@ public final class QolSettings {
 			.add(OP_BYPASS,
 					WARMUP_SECONDS, CANCEL_ON_MOVE, CANCEL_ON_DAMAGE, CROSS_DIMENSION,
 					TPA_ENABLED, TPAHERE_ENABLED, TPA_TIMEOUT, TPA_COOLDOWN,
-					HOMES_ENABLED, HOMES_MAX, HOMES_MAX_EXTRA, HOMES_COOLDOWN, HOMES_BLOCKED_DIMENSIONS, HOMES_MENU,
+					HOMES_ENABLED, HOMES_MAX, HOMES_MAX_BRONZE, HOMES_MAX_SILVER, HOMES_MAX_GOLD, HOMES_MAX_EXTRA, HOMES_COOLDOWN, HOMES_BLOCKED_DIMENSIONS, HOMES_MENU,
 					BACK_ENABLED, BACK_ON_DEATH, BACK_COOLDOWN,
 					SPAWN_ENABLED, SPAWN_COOLDOWN, SPAWN_ON_FIRST_JOIN,
 					WARPS_ENABLED, WARPS_COOLDOWN, WARPS_MENU,
 					RTP_ENABLED, RTP_MIN_RADIUS, RTP_MAX_RADIUS, RTP_CENTER, RTP_DIMENSIONS, RTP_ATTEMPTS, RTP_COOLDOWN,
+					RTP_COOLDOWN_BRONZE, RTP_COOLDOWN_SILVER, RTP_COOLDOWN_GOLD,
 					ENDERCHEST_ENABLED, WORKBENCH_ENABLED, ANVIL_ENABLED, STONECUTTER_ENABLED, GRINDSTONE_ENABLED, SMITHING_ENABLED,
 					LOOM_ENABLED, CARTOGRAPHY_ENABLED, TRASH_ENABLED,
 					AFK_ENABLED, AFK_BROADCAST, AFK_TAB_LIST, AFK_KICK_MINUTES, AFK_KICK_MESSAGE,
 					REPLY_ENABLED, MOTD_ENABLED, MOTD_TEXT, FIRST_JOIN_TEXT, DEATH_COORDINATES)
 			.build();
+
+	/** Settings that have one value per rank: the Member setting, then Bronze, Silver and Gold. */
+	private static final Map<Setting<Integer>, List<Setting<Integer>>> BY_RANK = Map.of(
+			HOMES_MAX, List.of(HOMES_MAX_BRONZE, HOMES_MAX_SILVER, HOMES_MAX_GOLD),
+			RTP_COOLDOWN, List.of(RTP_COOLDOWN_BRONZE, RTP_COOLDOWN_SILVER, RTP_COOLDOWN_GOLD));
+
+	/**
+	 * The value of {@code setting} for the player's rank (MejtaCore's ranks): for {@link #HOMES_MAX} a Gold player gets
+	 * {@link #HOMES_MAX_GOLD}. Settings without values per rank are simply read.
+	 */
+	public static int forRank(ConfigHandle config, Setting<Integer> setting, UUID player) {
+		List<Setting<Integer>> ranked = BY_RANK.get(setting);
+		Rank rank = ranked == null ? Rank.MEMBER : MejtaCoreAPI.ranks().rank(player);
+		return config.get(rank == Rank.MEMBER ? setting : ranked.get(rank.ordinal() - 1));
+	}
 
 	private QolSettings() {
 	}

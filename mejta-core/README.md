@@ -4,6 +4,7 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 
 - **Settings** with validation, one JSON file per addon in `config/mejta/`. Server staff can edit them in-game, even from a vanilla client (`/mejtaadmin config menu`).
 - **Permissions** based on operator levels, adjustable per node. No permissions mod needed.
+- **Ranks** (Member, Bronze, Silver, Gold) per player, set by staff or a donation store, with Bronze also earned by playtime. Addons give perks by rank, and any permission node can be given from a rank up.
 - **Commands**: server commands under `/mejtaadmin`, top-level addon commands such as `/invsee`, and client commands under `/mejta`.
 - **Notifications** to staff chat, a local file log and provider mods such as MejtaDiscord.
 - **Secret settings** (tokens, webhook URLs) that are never sent to clients, shown or logged.
@@ -16,7 +17,7 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 
 | | |
 |---|---|
-| Version | 1.9.0 (public API version 7) |
+| Version | 1.10.0 (public API version 8) |
 | Minecraft | 26.1.2 (Java Edition) |
 | Fabric Loader | 0.19.5 or newer |
 | Fabric API | 0.155.3+26.1.2 or newer, required |
@@ -47,6 +48,8 @@ Settings files appear in `config/mejta/`. In single-player, put the same jars in
 |---|---|
 | `config/mejta/mejtacore.json` | MejtaCore's own settings (see [Settings](#settings)) |
 | `config/mejta/mejtacore.permissions.json` | Required operator level for each permission node |
+| `config/mejta/mejtacore.rankperms.json` | Lowest rank that has each addon permission node, whatever the operator level (`OFF`: no rank) |
+| `mejta-data/mejtacore/store/ranks/<uuid>.json` | Each player's rank, if one is stored |
 | `config/mejta/<addon id>.json` | One file per addon |
 | `config/mejta/secrets/<addon id>.json` | Values of secret settings. Readable only by the server's user on Linux and macOS. |
 | `mejta-data/<addon id>/` | Runtime data addons record, such as anti-cheat history. Each log has a size cap and retention period. |
@@ -75,6 +78,10 @@ These run on the server and work from any client. They act on the server's files
 | `/mejtaadmin config reload` | `mejtacore.admin` | Re-reads every config file from disk. Invalid values fall back to defaults and are reported. |
 | `/mejtaadmin audit recent [count]` | `mejtacore.admin` | Shows the newest audit entries (default 10, at most 50) |
 | `/mejtaadmin audit verify` | `mejtacore.admin` | Checks the audit log's hash chain and reports the first changed, removed or reordered line |
+| `/mejtaadmin rank list` | `mejtacore.ranks.manage` | Every player with a rank |
+| `/mejtaadmin rank get <player>` | `mejtacore.ranks.manage` | A player's rank and whether staff set it or playtime earned it |
+| `/mejtaadmin rank set <player> <member\|bronze\|silver\|gold>` | `mejtacore.ranks.manage` (console: always) | Sets the rank, also for offline players who have joined before. Use it as a donation store's or crate reward's command. |
+| `/mejtaadmin rank clear <player>` | `mejtacore.ranks.manage` | Removes the stored rank: the player is a Member again and may earn Bronze by playtime |
 | `/mejtaadmin <addon> ...` | set by the addon | Server subcommands added by addons |
 | `/<command>`, e.g. `/invsee` | set by the addon | Top-level commands added by addons. Each is also available as `/mejtaadmin <addon> <command>`. |
 
@@ -104,8 +111,17 @@ Permissions use Minecraft's operator levels: `ALL` (0), `MODERATORS` (1), `GAMEM
 | `mejtacore.config.edit` | `ADMINS` (3) | Viewing and changing the server's settings (menu or `config get/set/reset`), and seeing config-change notifications |
 | `mejtacore.config.permissions` | `OWNERS` (4) | Also changing the permission levels themselves (needs `mejtacore.config.edit` too) |
 | `mejtacore.config.secrets` | `OWNERS` (4) | Changing secret settings with `config set` (needs `mejtacore.config.edit` too) |
+| `mejtacore.ranks.manage` | `ADMINS` (3) | `/mejtaadmin rank`, and seeing rank changes in chat |
 
 Addon nodes are listed in each addon's README. To change a level, run `/mejtaadmin config set mejtacore.permissions <node> <LEVEL>` (for example `mejtaac.alerts MODERATORS`), or edit `config/mejta/mejtacore.permissions.json` and run `/mejtaadmin config reload`. A new level applies to permission checks at once. Command suggestions update when the player rejoins. Without `mejtacore.config.permissions`, the permissions file is hidden from Server Settings, the chest menu and `config get/set`, so nobody can raise their own level.
+
+### Ranks
+
+Every player is a **Member**. Staff, the console or a donation store give **Bronze**, **Silver** or **Gold** with `/mejtaadmin rank set <player> <rank>`; each rank keeps the perks of the ones below it. A Member who has played `ranks.playtime_hours` (default 50) earns Bronze by themselves, so friends who don't donate get there too. Playtime only gives Bronze to players with nothing stored: setting someone to `member` keeps them there, `rank clear` lets playtime count again.
+
+Ranks belong to the account, not to one game mode. Each addon decides what a rank gives there (MejtaQoL: more homes and a shorter `/rtp` cooldown; MejtaMarket: more listings). Keep perks to comfort and looks: nothing a rank gives should make a player stronger than others.
+
+**Perk commands by rank.** `config/mejta/mejtacore.rankperms.json` has one entry per addon permission node: the lowest rank that has it whatever the operator level, or `OFF`. For example `/mejtaadmin config set mejtacore.rankperms mejtaqol.workstation.anvil BRONZE` gives the portable anvil to Bronze and up while it stays an operator command for everyone else. Like the permissions file, it is only editable remotely with `mejtacore.config.permissions`. A rank change resends the player's commands at once.
 
 ## Settings
 
@@ -122,6 +138,9 @@ Addon nodes are listed in each addon's README. To change a level, run `/mejtaadm
 | `menu_sound` | `NORMAL` | Click sound in the client menu: `OFF`, `QUIET` or `NORMAL` |
 | `menus_as_screens` | `false` | Show addon menus from the server (homes, warps, the auction house, staff panels) as MejtaCore screens instead of the chests everyone else sees |
 | `show_addon_ids` | `false` | Show addon IDs and sources in client menu tooltips |
+| `ranks.playtime_hours` | `50` (0–10000) | A Member who has played this many hours earns Bronze. `0` = only staff give ranks. |
+| `ranks.show_prefix` | `true` | Show rank prefixes before names in chat, the tab list and above heads. Uses one scoreboard team per rank (`mejta_rank_1_gold` and so on, so Gold sorts first in the tab list); a player already in another team keeps it and shows no prefix. Rank teammates don't see each other while invisible. |
+| `ranks.bronze.prefix`, `ranks.silver.prefix`, `ranks.gold.prefix` | `&6[Bronze]`, `&7[Silver]`, `&e[Gold]` | The rank's prefix; `&` colour and format codes allowed (`&&` for a plain `&`) |
 
 The last three only matter on a client with MejtaCore.
 
@@ -457,7 +476,9 @@ To see the error players get without MejtaCore: `cd test-addon && ./gradlew runC
 
 ## Known limitations
 
-- Permissions are operator levels only. There is no per-player node assignment (for example through LuckPerms).
+- Permissions are operator levels plus the four ranks. There is no per-player node assignment (for example through LuckPerms).
+- Ranks are stored per server. Game modes on separate servers behind a proxy don't share them yet.
+- `/mejtaadmin rank set` needs a player the server knows (joined before, or found by name online); a donation for someone who never joined has to wait until they join.
 - `mejtacore.config.edit` covers every config except the permissions file. There is no per-addon edit permission.
 - The settings editor shows the server's settings only if the server has MejtaCore 1.2 or newer, and doesn't show the Experimental marker for them (the chest menu and `config get` do). With a client older than 1.6.0, `/mejtaadmin config` opens the chest menu.
 - An in-game change rewrites the whole config file, so run `config reload` after editing a file by hand.

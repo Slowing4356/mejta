@@ -44,6 +44,7 @@ import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.menu.ConfigServerMenu;
 import com.mejta.mejtacore.network.ServerConfigSync;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
+import com.mejta.mejtacore.ranks.RankCommands;
 
 /**
  * Server-side command namespace {@code /mejtaadmin}. Kept separate from the client-only {@code /mejta}
@@ -134,7 +135,8 @@ public final class ServerCommands {
 								.requires(MejtaCoreAPI.requires(PermissionRegistry.CONFIG_EDIT))
 								.then(Commands.argument("config", StringArgumentType.word()).suggests(CONFIG_IDS)
 										.then(Commands.argument("key", StringArgumentType.word()).suggests(SETTING_KEYS)
-												.executes(ctx -> edit(ctx, ConfigEditing.Op.RESET))))));
+												.executes(ctx -> edit(ctx, ConfigEditing.Op.RESET))))))
+				.then(RankCommands.build());
 
 		Map<String, List<ServerCommandProvider>> snapshot;
 		synchronized (PROVIDERS) {
@@ -258,6 +260,9 @@ public final class ServerCommands {
 			}
 			line(source, "/" + ROOT + " config reset <config> <key>", "restore a setting's default");
 		}
+		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.RANKS_MANAGE)) {
+			line(source, "/" + ROOT + " rank", "see and set players' ranks (member, bronze, silver, gold)");
+		}
 		synchronized (PROVIDERS) {
 			for (String addonId : PROVIDERS.keySet()) {
 				if (MejtaCoreAPI.isAddonActive(addonId)) {
@@ -293,6 +298,9 @@ public final class ServerCommands {
 			line(source, "/" + ROOT + " config get <config> [key]", "show settings");
 			line(source, "/" + ROOT + " config set <config> <key> <value>", "change a setting (saved immediately)");
 			line(source, "/" + ROOT + " config reset <config> <key>", "restore a setting's default");
+		}
+		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.RANKS_MANAGE)) {
+			line(source, "/" + ROOT + " rank", "see and set players' ranks (member, bronze, silver, gold)");
 		}
 		return 1;
 	}

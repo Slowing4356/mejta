@@ -257,7 +257,7 @@ public final class MarketService {
 			player.sendSystemMessage(Msg.error(bad.get()));
 			return Optional.empty();
 		}
-		int max = config.get(MarketSettings.LISTING_MAX);
+		int max = MarketSettings.listingMax(config, player.getUUID());
 		if (store.listedBy(player.getUUID()).size() >= max) {
 			player.sendSystemMessage(Msg.error("You already have " + max + " listings on sale. Cancel one or wait until one sells."));
 			return Optional.empty();

@@ -86,7 +86,8 @@ public final class RandomTeleport {
 		// cannot be repeated at once.
 		long now = System.currentTimeMillis();
 		if (!teleports.bypasses(player)) {
-			long wait = teleports.cooldowns().remaining(player.getUUID(), SEARCH_COOLDOWN, config.get(QolSettings.RTP_COOLDOWN), now);
+			int cooldown = QolSettings.forRank(config, QolSettings.RTP_COOLDOWN, player.getUUID());
+			long wait = teleports.cooldowns().remaining(player.getUUID(), SEARCH_COOLDOWN, cooldown, now);
 			if (wait > 0) {
 				player.sendSystemMessage(Msg.error("You can use /rtp again in " + Durations.format(wait) + "."));
 				return false;

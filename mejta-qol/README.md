@@ -10,14 +10,14 @@ Every feature has its own on/off switch, and every command its own permission no
 
 | | |
 |---|---|
-| Version | 1.2.0 |
+| Version | 1.3.0 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
-| Requires | MejtaCore 1.9.0 (any version from 1.9.0 up to, not including, 2.0.0 is accepted) |
+| Requires | MejtaCore 1.10.0 (any version from 1.10.0 up to, not including, 2.0.0 is accepted) |
 | Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.9.0.jar`, `mejtaqol-1.2.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.10.0.jar`, `mejtaqol-1.3.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtaqol.json` is created on first start.
 3. Players type `/qol` to see the commands they can use.
 
@@ -72,7 +72,7 @@ All nodes start with `mejtaqol.`. Change their levels in `config/mejta/mejtacore
 | `teleport.bypass` | 1 | Only while `op_bypass.enabled` is on: teleport without waiting, cooldowns, the combat lock or the cross-dimension rule; send requests to players who refuse them |
 | `admin` | 3 | `/mejtaadmin mejtaqol status` |
 
-To make a command a perk, raise its level: for example `mejtaqol.workstation.anvil` to `MODERATORS`. MejtaCore's permissions are based on operator levels; per-player groups need a permissions mod that MejtaCore does not yet support.
+**Ranks.** MejtaCore's ranks (Member, Bronze, Silver, Gold) give more homes and a shorter `/rtp` cooldown, set per rank below. To make a command a rank perk, raise its level and give it to a rank in `mejtacore.rankperms.json`: for example `mejtaqol.workstation.anvil` to `MODERATORS` and `BRONZE`, and Bronze players and up keep `/anvil`.
 
 ## Settings
 
@@ -90,8 +90,9 @@ Stored in `config/mejta/mejtaqol.json`. Change them in the file, in MejtaCore's 
 | `tpa.timeout_seconds` | `60` (10–600) | Unanswered requests expire after this |
 | `tpa.cooldown_seconds` | `3` (0–3600) | Time between two requests from one player |
 | `homes.enabled` | `true` | Homes |
-| `homes.max` | `3` (0–100) | Homes per player |
-| `homes.max_extra` | `10` (0–100) | Homes per player with `homes.extra` |
+| `homes.max` | `3` (0–100) | Homes of a Member (a player without a rank) |
+| `homes.max_bronze`, `homes.max_silver`, `homes.max_gold` | `5`, `6`, `7` (0–100) | Homes of a Bronze, Silver or Gold player ([MejtaCore ranks](../mejta-core/README.md#ranks)) |
+| `homes.max_extra` | `10` (0–100) | Homes of a player with `homes.extra`, if more than their rank gives |
 | `homes.cooldown_seconds` | `3` (0–3600) | Time between two `/home` teleports |
 | `homes.blocked_dimensions` | empty | Dimensions where `/sethome` is refused, comma-separated (`the_end` means `minecraft:the_end`) |
 | `homes.menu` | `true` | `/homes` opens a chest menu; off: a chat list |
@@ -109,7 +110,8 @@ Stored in `config/mejta/mejtaqol.json`. Change them in the file, in MejtaCore's 
 | `rtp.center` | `spawn` | `spawn` (the world spawn) or `x,z` |
 | `rtp.dimensions` | `minecraft:overworld` | Where `/rtp` works, comma-separated |
 | `rtp.max_attempts` | `8` (1–32) | Places tried before giving up, one per tick |
-| `rtp.cooldown_seconds` | `300` (0–86400) | Time between two `/rtp` uses |
+| `rtp.cooldown_seconds` | `300` (0–86400) | Time between two `/rtp` uses of a Member |
+| `rtp.cooldown_seconds_bronze`, `_silver`, `_gold` | `240`, `180`, `120` (0–86400) | The same for Bronze, Silver and Gold players |
 | `enderchest.enabled` | `true` | `/enderchest` and `/ec` |
 | `workstations.crafting`, `.anvil`, `.stonecutter`, `.grindstone`, `.smithing`, `.loom`, `.cartography` | `true` | Each workstation command |
 | `trash.enabled` | `true` | `/trash` |
@@ -172,7 +174,7 @@ Nothing logged or published contains IP addresses, chat content or secrets.
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.9.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.10.0 first
 cd ../mejta-qol && ./gradlew build               # compile and run unit tests
 ./gradlew runGameTest                            # headless server game test (about a minute)
 ```

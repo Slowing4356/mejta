@@ -1,5 +1,11 @@
 # MejtaQoL changelog
 
+## 1.3.0
+
+Requires MejtaCore 1.10.0 or newer, below 2.0.0 (API version 8).
+
+- **Rank perks:** players with a MejtaCore rank get more homes (`homes.max_bronze`, `_silver`, `_gold`: 5, 6 and 7, Members keep `homes.max`, 3) and a shorter `/rtp` cooldown (`rtp.cooldown_seconds_bronze`, `_silver`, `_gold`: 4, 3 and 2 minutes, Members 5). `homes.extra` still gives `homes.max_extra` when that is more.
+
 ## 1.2.0
 
 Requires MejtaCore 1.9.0 or newer, below 2.0.0 (API version 7).

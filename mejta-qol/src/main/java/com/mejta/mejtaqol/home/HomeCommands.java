@@ -77,8 +77,9 @@ public final class HomeCommands {
 	}
 
 	public static int maxHomes(ServerPlayer player) {
-		return MejtaQoL.config().get(MejtaCoreAPI.hasPermission(player, QolPermissions.HOMES_EXTRA)
-				? QolSettings.HOMES_MAX_EXTRA : QolSettings.HOMES_MAX);
+		int byRank = QolSettings.forRank(MejtaQoL.config(), QolSettings.HOMES_MAX, player.getUUID());
+		return MejtaCoreAPI.hasPermission(player, QolPermissions.HOMES_EXTRA)
+				? Math.max(byRank, MejtaQoL.config().get(QolSettings.HOMES_MAX_EXTRA)) : byRank;
 	}
 
 	public static int setHome(ServerPlayer player, String rawName) {
