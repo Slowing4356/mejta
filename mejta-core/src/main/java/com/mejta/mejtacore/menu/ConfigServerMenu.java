@@ -97,6 +97,7 @@ public final class ConfigServerMenu {
 				p -> openList(p, session, current - 1), p -> openList(p, session, current + 1), null);
 		return ButtonMenu.open(player, menu.validWhile(p -> MejtaCoreAPI.hasPermission(p, PermissionRegistry.CONFIG_EDIT))
 				.refreshEvery(20)
+				.fillEmpty()
 				.build());
 	}
 
@@ -151,6 +152,7 @@ public final class ConfigServerMenu {
 		// Re-checked on every click and refresh: a revoked permission (or a lost permissions-file grant) closes it.
 		return ButtonMenu.open(player, menu.validWhile(p -> ServerConfigSync.editable(p.permissions(), configId).isPresent())
 				.refreshEvery(10)
+				.fillEmpty()
 				.build());
 	}
 
@@ -182,6 +184,7 @@ public final class ConfigServerMenu {
 				p -> openList(p, session, 0), "All configs");
 		return ButtonMenu.open(player, menu.validWhile(p -> ServerConfigSync.editable(p.permissions(), configId).isPresent())
 				.refreshEvery(20)
+				.fillEmpty()
 				.build());
 	}
 
@@ -367,16 +370,13 @@ public final class ConfigServerMenu {
 	private static void navigation(ServerMenu.Builder menu, Session session, int page, int pages, Opener previous, Opener next,
 			Opener back, String backTo) {
 		if (back != null) {
-			menu.button(SLOT_BACK, () -> MenuIcons.of(Items.ARROW, Component.literal("Back").withStyle(ChatFormatting.YELLOW),
-					MenuIcons.line(backTo)), click -> back.open(click.player()));
+			menu.backButton(SLOT_BACK, backTo.toLowerCase(java.util.Locale.ROOT), back::open);
 		}
 		if (page > 0) {
-			menu.button(SLOT_PREVIOUS, () -> MenuIcons.of(Items.SPECTRAL_ARROW, Component.literal("Previous Page").withStyle(ChatFormatting.YELLOW)),
-					click -> previous.open(click.player()));
+			menu.button(SLOT_PREVIOUS, () -> MenuIcons.page(false, page, pages), click -> previous.open(click.player()));
 		}
 		if (page < pages - 1) {
-			menu.button(SLOT_NEXT, () -> MenuIcons.of(Items.SPECTRAL_ARROW, Component.literal("Next Page").withStyle(ChatFormatting.YELLOW)),
-					click -> next.open(click.player()));
+			menu.button(SLOT_NEXT, () -> MenuIcons.page(true, page + 2, pages), click -> next.open(click.player()));
 		}
 		menu.icon(SLOT_INFO, () -> MenuIcons.of(Items.PAPER,
 				Component.literal(pages > 1 ? "Page " + (page + 1) + " / " + pages : "Server Settings").withStyle(ChatFormatting.WHITE),
@@ -384,8 +384,7 @@ public final class ConfigServerMenu {
 						Component.empty(),
 						Component.literal("Changes are checked, saved and").withStyle(ChatFormatting.DARK_GRAY),
 						Component.literal("logged by the server at once.").withStyle(ChatFormatting.DARK_GRAY))));
-		menu.button(SLOT_CLOSE, () -> MenuIcons.of(Items.BARRIER, Component.literal("Close").withStyle(ChatFormatting.RED)),
-				click -> click.menu().close());
+		menu.closeButton(SLOT_CLOSE);
 	}
 
 	// ---------------------------------------------------------------- text helpers

@@ -116,6 +116,8 @@ public final class VanishCommands {
 							vanish.setVanished(player, to, MejtaCoreAPI.actor(player));
 							click.menu().refresh();
 						})
+				.closeButton(22)
+				.fillEmpty()
 				.validWhile(p -> MejtaCoreAPI.hasPermission(p, UtilsPermissions.VANISH))
 				.open(player);
 	}

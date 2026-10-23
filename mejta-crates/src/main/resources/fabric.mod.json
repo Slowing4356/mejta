@@ -19,6 +19,6 @@
 		"minecraft": "~26.1.2",
 		"java": ">=25",
 		"fabric-api": "*",
-		"mejtacore": ">=1.8.0 <2.0.0"
+		"mejtacore": ">=1.9.0 <2.0.0"
 	}
 }

@@ -1,5 +1,11 @@
 # MejtaSMP changelog
 
+## 1.1.0
+
+Requires MejtaCore 1.9.0 or newer, below 2.0.0 (API version 7).
+
+- **Sidebar and leaderboard menus** use MejtaCore's shared look: gray panes in the empty slots and the standard Close button.
+
 ## 1.0.1
 
 - **Operators follow the rules:** bypass permissions (`mejtasmp.dimensions.bypass` and `mejtasmp.antialt.bypass`) now only apply while the new setting `op_bypass.enabled` is on. It is off by default, so operators cannot enter a closed dimension and count towards the account limit like everyone else.

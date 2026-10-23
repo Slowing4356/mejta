@@ -11,14 +11,14 @@ Players need no client mod. Every menu is a plain chest, and all checks run on t
 
 | | |
 |---|---|
-| Version | 1.0.1 |
+| Version | 1.1.0 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
-| Requires | MejtaCore 1.4.0 (any version from 1.3.0 up to, not including, 2.0.0 is accepted) |
+| Requires | MejtaCore 1.9.0 (any version from 1.9.0 up to, not including, 2.0.0 is accepted) |
 | Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.8.0.jar`, `mejtautils-1.0.2.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.9.0.jar`, `mejtautils-1.1.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtautils.json` is created on first start.
 
 ## Commands
@@ -124,7 +124,7 @@ Online players are shown live: the menu works on the player's real inventory, no
 - **Staff mode:** while you are in staff mode, every inspection menu is view-only. Players in staff mode cannot have their inventory or ender chest edited.
 - **Audit:** each open, edit session and refusal is written to MejtaCore's audit log.
 
-The status panel is a refreshing chest menu (a screen for staff with MejtaCore 1.7+ on their client). A server cannot add a permanent on-screen overlay to an unmodded client.
+The status panel is a refreshing chest menu (staff with MejtaCore on their client can choose to see it as a screen). A server cannot add a permanent on-screen overlay to an unmodded client.
 
 ## Offline inventories
 
@@ -202,7 +202,7 @@ Nothing published contains IP addresses, chat content or secrets.
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.8.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.9.0 first
 cd ../mejta-utils && ./gradlew build             # compile and run unit tests
 ./gradlew runClientGameTest                      # client game test
 ```

@@ -1,5 +1,12 @@
 # MejtaQoL changelog
 
+## 1.2.0
+
+Requires MejtaCore 1.9.0 or newer, below 2.0.0 (API version 7).
+
+- **Homes and warps menus have pages:** every home and warp is in the menu now (it used to stop at 45), with MejtaCore's shared bar along the bottom (previous and next page, an info icon, Close) and gray panes around it. The chest is just big enough for the list. Deleting a home brings you back to the page you were on.
+- Clearer icons: the location, then the clicks in colour (yellow to teleport, red to delete).
+
 ## 1.1.1
 
 - **Operators follow the teleport rules:** the wait, cooldowns and combat lock were skipped for every operator, because operators have `mejtaqol.teleport.bypass`. Bypass permissions (`mejtaqol.teleport.bypass` and `mejtaqol.afk.kick_exempt`) now only apply while the new setting `op_bypass.enabled` is on. It is off by default, so operators follow the rules like everyone else.
