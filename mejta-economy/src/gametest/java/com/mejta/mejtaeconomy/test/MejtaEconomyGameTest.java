@@ -32,6 +32,7 @@ public class MejtaEconomyGameTest {
 		for (String name : List.of("balance", "bal", "pay", "baltop", "eco")) {
 			helper.assertTrue(server.getCommands().getDispatcher().getRoot().getChild(name) != null, Component.literal("/" + name + " is registered"));
 		}
+		helper.assertTrue(server.getCommands().getDispatcher().getRoot().getChild("eco").getChild("menu") != null, Component.literal("/eco menu is registered"));
 
 		List<String> changes = new ArrayList<>();
 		eco.addListener((player, oldBalance, newBalance, source, reason) -> changes.add(player + ":" + oldBalance + ">" + newBalance));

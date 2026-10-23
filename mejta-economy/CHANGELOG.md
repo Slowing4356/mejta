@@ -1,5 +1,9 @@
 # MejtaEconomy changelog
 
+## 1.1.0
+
+- **Balance menu for staff:** `/eco menu` lists every account (online players first, with their balance); click one to give or take 1, 10, 100, 1,000 or 10,000 with one click, set an exact amount, reset to 0 (shift-click) or see the history. `/eco menu <player>` opens a player directly, also one who never joined. Needs `mejtaeconomy.admin`; every change is audited and logged like `/eco give|take|set`.
+
 ## 1.0.0
 
 First release. Requires MejtaCore 1.8.0 or newer, below 2.0.0 (API version 6).
