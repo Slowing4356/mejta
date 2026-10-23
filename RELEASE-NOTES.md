@@ -42,7 +42,7 @@ Every addon needs **MejtaCore** and **Fabric API**. MejtaQoL and MejtaSMP need M
 
 - **Release workflow:** builds every jar from the tagged commit and runs the unit tests.
 - **Every CI build:** the headless server game tests of MejtaQoL, MejtaCorpse and MejtaSMP. MejtaCorpse's now cover backups: a death is backed up, cannot be restored while its corpse exists, asks to confirm, puts the items back in their slots and is restored only once.
-- **Client game tests** of every project (manual CI run on `main` before tagging), including the new settings editor, the `/mejta` menu and menu screens in MejtaCore's test addon. MejtaAC's normal run now covers only its newest checks (stage 6) in the worst-case latency profile; unit tests still cover every check.
+- **Client game tests** of the new features only, in their pull requests: MejtaCore's test addon covers the settings editor, the `/mejta` menu and menu screens. MejtaAC's normal client run now covers only its newest checks (stage 6) in the worst-case latency profile; unit tests still cover every check.
 
 ## Known limitations
 

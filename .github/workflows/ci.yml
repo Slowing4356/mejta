@@ -3,7 +3,8 @@
 # in its own job, against the MejtaCore it published.
 #
 # The client game tests (a real client against a dedicated server, under a virtual display) only run on demand:
-# Actions > CI > Run workflow, then choose "all" or one project. Run them before tagging a release.
+# Actions > CI > Run workflow, then choose one project (or "all"). Run them for the projects a change touches, in its
+# pull request; a release does not rerun them for every project.
 name: CI
 
 on:
