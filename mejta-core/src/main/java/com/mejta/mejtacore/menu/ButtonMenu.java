@@ -56,6 +56,12 @@ public final class ButtonMenu extends AbstractContainerMenu implements ServerMen
 			case 5 -> MenuType.GENERIC_9x5;
 			default -> MenuType.GENERIC_9x6;
 		};
+		if (player.containerMenu != player.inventoryMenu) {
+			// Replace the open container without telling the client it closed: the client then swaps one screen for
+			// the next and the cursor stays where it was, instead of being re-centred as when a screen opens from
+			// the game. The old menu's removed() (and so its onClose) still runs here.
+			player.doCloseContainer();
+		}
 		return player.openMenu(new SimpleMenuProvider(
 				(containerId, inventory, p) -> new ButtonMenu(type, containerId, inventory, definition, player),
 				definition.title())).isPresent();
