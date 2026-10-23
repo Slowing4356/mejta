@@ -18,6 +18,7 @@ import com.mejta.mejtacore.api.addon.AddonDefinition;
 import com.mejta.mejtacore.api.addon.AddonInfo;
 import com.mejta.mejtacore.api.audit.AuditActor;
 import com.mejta.mejtacore.api.audit.AuditService;
+import com.mejta.mejtacore.api.economy.EconomyService;
 import com.mejta.mejtacore.api.metrics.Metrics;
 import com.mejta.mejtacore.api.notify.NotificationService;
 import com.mejta.mejtacore.api.permission.MejtaPermission;
@@ -31,6 +32,7 @@ import com.mejta.mejtacore.api.storage.RecordLogOptions;
 import com.mejta.mejtacore.commands.ServerCommands;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.core.TickScheduler;
+import com.mejta.mejtacore.economy.Economy;
 import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.metrics.MetricRegistry;
 import com.mejta.mejtacore.notify.NotificationBus;
@@ -65,13 +67,17 @@ import com.mejta.mejtacore.storage.RecordLogs;
  * <h2>API version 5 (MejtaCore 1.5.0)</h2>
  * Shared player status ({@link #status()}): who is AFK and who is in combat, tracked by MejtaCore so
  * every addon agrees.
+ *
+ * <h2>API version 6 (MejtaCore 1.8.0)</h2>
+ * One shared economy ({@link #economy()}), like Vault: an economy addon provides the accounts, and
+ * shops, crates and auction houses use them without depending on it.
  */
 public final class MejtaCoreAPI {
 	/**
 	 * Version of the public API contract. Incremented when the API changes in a way addons may need
 	 * to check for. Addons should prefer a {@code fabric.mod.json} version range on {@code mejtacore}.
 	 */
-	public static final int API_VERSION = 5;
+	public static final int API_VERSION = 6;
 
 	private MejtaCoreAPI() {
 	}
@@ -246,5 +252,15 @@ public final class MejtaCoreAPI {
 	/** Who is AFK and who is in combat. @since API version 5 */
 	public static PlayerStatusService status() {
 		return PlayerStatus.get();
+	}
+
+	/**
+	 * The shared economy: balances, payments and formatting. An economy addon such as MejtaEconomy
+	 * provides it; check {@link EconomyService#isAvailable()} first.
+	 *
+	 * @since API version 6
+	 */
+	public static EconomyService economy() {
+		return Economy.get();
 	}
 }

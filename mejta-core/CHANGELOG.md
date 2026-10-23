@@ -1,5 +1,15 @@
 # MejtaCore changelog
 
+## 1.8.0 (API version 6)
+
+Addons built for API version 5 keep working; they only need `mejtacore_version=1.8.0` to compile in this repository.
+
+- **A shared economy** (`MejtaCoreAPI.economy()`, package `com.mejta.mejtacore.api.economy`), like Vault. MejtaCore defines the API and an economy addon (MejtaEconomy) registers the one `EconomyProvider` that keeps the accounts. Shops, crates and auction houses call `EconomyService` and never depend on the economy addon.
+  - Amounts are `long`s in minor units (`1050` is `10.50` with two decimals), so prices add up exactly. `parse` reads player input (`12.5`, `1,000`, `2k`) and `format` prints amounts in the server's style.
+  - `deposit`, `withdraw` and an all-or-nothing `transfer` return an `EconomyResult` (success, insufficient funds, balance limit, invalid amount, no account, no provider, failed) with the new balance and a message for players. Deposits work for offline players. Each call names the addon and a reason, for the economy's transaction log.
+  - `balance`, `has`, `hasAccount`, `ensureAccount`, `top` and listeners for every balance change.
+  - Without an economy addon `isAvailable()` is false and every change returns `NO_PROVIDER`. MejtaCore checks amounts, catches a failing provider's exceptions (nothing is changed then) and reports them under Problems.
+
 ## 1.7.0 (API version 5)
 
 The public API is unchanged in use, so every addon keeps working without a rebuild.

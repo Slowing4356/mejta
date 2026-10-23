@@ -412,7 +412,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 
 	private void permissionConfigChecks(Path configDir) {
 		String file = read(configDir.resolve(PermissionRegistry.CONFIG_ID + ".json"));
-		check("API_VERSION is 5", MejtaCoreAPI.API_VERSION == 5);
+		check("API_VERSION is 6", MejtaCoreAPI.API_VERSION == 6);
 		Setting<String> choice = Setting.choice("pick", "b", List.of("a", "b", "c"));
 		check("choice setting accepts its options only", choice.isValid("c") && !choice.isValid("d") && choice.options().size() == 3);
 		check("enum setting lists its constants as options", ExampleAddon.MODE.options().equals(List.of("NORMAL", "FAST", "SILENT")));
