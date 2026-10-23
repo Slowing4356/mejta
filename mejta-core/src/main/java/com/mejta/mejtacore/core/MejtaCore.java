@@ -21,6 +21,8 @@ import com.mejta.mejtacore.notify.InGameProvider;
 import com.mejta.mejtacore.notify.NotificationBus;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
 import com.mejta.mejtacore.presence.Presence;
+import com.mejta.mejtacore.ranks.RankTeams;
+import com.mejta.mejtacore.ranks.Ranks;
 import com.mejta.mejtacore.status.PlayerStatus;
 import com.mejta.mejtacore.storage.RecordLogs;
 
@@ -55,6 +57,8 @@ public final class MejtaCore implements ModInitializer {
 		TickScheduler.register();
 		Presence.register();
 		PlayerStatus.register(coreConfig);
+		Ranks.register(coreConfig);
+		RankTeams.register(coreConfig);
 		NotificationBus.get().registerProvider(new InGameProvider());
 		NotificationBus.get().registerProvider(new FileLogProvider());
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> NotificationBus.get().forget(handler.player.getUUID()));

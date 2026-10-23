@@ -221,7 +221,8 @@ public final class MarketMenus {
 					MenuIcons.line("Bought, unsold and ordered items wait here"));
 		}, click -> collection(click.player()));
 		menu.button(MY_LISTINGS, () -> MenuIcons.of(Items.NAME_TAG, Component.literal("Your listings").withStyle(ChatFormatting.AQUA),
-				MenuIcons.line(market.store().listedBy(player.getUUID()).size() + " of " + market.config().get(MarketSettings.LISTING_MAX) + " on sale")),
+				MenuIcons.line(market.store().listedBy(player.getUUID()).size() + " of "
+						+ MarketSettings.listingMax(market.config(), player.getUUID()) + " on sale")),
 				click -> myListings(click.player()));
 		if (market.config().get(MarketSettings.ORDERS_ENABLED)) {
 			menu.button(ORDERS, () -> MenuIcons.of(Items.WRITABLE_BOOK, Component.literal("Buy orders").withStyle(ChatFormatting.AQUA),

@@ -1,5 +1,16 @@
 # MejtaCore changelog
 
+## 1.10.0 (API version 8)
+
+Addons built for API version 7 keep working; they only need `mejtacore_version=1.10.0` to compile in this repository.
+
+- **Ranks** (`MejtaCoreAPI.ranks()`, package `com.mejta.mejtacore.api.rank`): every player is a Member, and staff, the console or a donation store give Bronze, Silver or Gold with `/mejtaadmin rank set <player> <rank>` (also `list`, `get` and `clear`; permission `mejtacore.ranks.manage`). Works for offline players, is written to the audit log and shown to staff.
+  - **Playtime:** a Member who has played `ranks.playtime_hours` (default 50, `0` = off) earns Bronze, checked on join and once a minute.
+  - **Prefixes** (`ranks.<rank>.prefix`, `&` colour codes) before names in chat, the tab list and above heads, through one scoreboard team per rank (`ranks.show_prefix`, on by default). Players in another team keep it.
+  - `RankService.byRank(player, member, bronze, silver, gold)` picks a value per rank, e.g. a home limit, and `RankListener` hears every change.
+- **Permissions by rank:** `MejtaPermission#grantedFrom(Rank)` gives a node to every player from a rank up, and `config/mejta/mejtacore.rankperms.json` lets server owners change that per node (`OFF`, `BRONZE`, `SILVER`, `GOLD`). `MejtaCoreAPI.hasPermission` now checks the rank too, also for offline players. Core's own nodes are never given by rank, and the file is only editable remotely with `mejtacore.config.permissions`. A rank change resends the player's commands.
+- `rank` is now a reserved addon ID.
+
 ## 1.9.0 (API version 7)
 
 Addons built for API version 6 keep working; they only need `mejtacore_version=1.9.0` to compile in this repository.

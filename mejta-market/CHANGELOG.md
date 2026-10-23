@@ -1,5 +1,11 @@
 # MejtaMarket changelog
 
+## 1.2.0
+
+Requires MejtaCore 1.10.0 or newer, below 2.0.0 (API version 8).
+
+- **Rank perks:** players with a MejtaCore rank may have more listings on sale at once: `listing.max_per_player_bronze`, `_silver` and `_gold` (13, 16 and 20; Members keep `listing.max_per_player`, 10). Fees, prices and the bot are the same for everyone.
+
 ## 1.1.0
 
 - **Search on a sign:** the menu's search button (and `/ah search` without text) opens a sign to type the search on, on vanilla clients too. Right click the button to clear a search. An empty result says when the bot will bring the item.

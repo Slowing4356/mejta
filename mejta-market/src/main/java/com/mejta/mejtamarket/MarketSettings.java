@@ -1,5 +1,9 @@
 package com.mejta.mejtamarket;
 
+import java.util.UUID;
+
+import com.mejta.mejtacore.api.MejtaCoreAPI;
+import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.ConfigSpec;
 import com.mejta.mejtacore.api.config.Setting;
 
@@ -13,7 +17,16 @@ public final class MarketSettings {
 			.describedAs("The auction house and buy orders are open. Off: nobody can list, buy or fill, but everyone can still collect");
 
 	public static final Setting<Integer> LISTING_MAX = Setting.integer("listing.max_per_player", 10, 1, 200)
-			.describedAs("Listings a player may have on sale at once");
+			.describedAs("Listings a Member (a player without a rank) may have on sale at once");
+	/** @since 1.2.0 */
+	public static final Setting<Integer> LISTING_MAX_BRONZE = Setting.integer("listing.max_per_player_bronze", 13, 1, 200)
+			.describedAs("Listings a Bronze player may have on sale at once");
+	/** @since 1.2.0 */
+	public static final Setting<Integer> LISTING_MAX_SILVER = Setting.integer("listing.max_per_player_silver", 16, 1, 200)
+			.describedAs("Listings a Silver player may have on sale at once");
+	/** @since 1.2.0 */
+	public static final Setting<Integer> LISTING_MAX_GOLD = Setting.integer("listing.max_per_player_gold", 20, 1, 200)
+			.describedAs("Listings a Gold player may have on sale at once");
 	public static final Setting<Integer> LISTING_HOURS = Setting.integer("listing.duration_hours", 48, 1, 720)
 			.describedAs("Hours a listing stays on sale; unsold items then go back to the seller's collection box");
 	public static final Setting<Integer> MIN_PRICE = Setting.integer("listing.min_price", 1, 0, 1_000_000)
@@ -78,11 +91,16 @@ public final class MarketSettings {
 			.describedAs("A reference price stays between the price list's price divided by this and multiplied by it");
 
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
-			.add(ENABLED, LISTING_MAX, LISTING_HOURS, MIN_PRICE, MAX_PRICE, LISTING_FEE, SALES_TAX, ORDERS_ENABLED, ORDERS_MAX, ORDERS_HOURS,
+			.add(ENABLED, LISTING_MAX, LISTING_MAX_BRONZE, LISTING_MAX_SILVER, LISTING_MAX_GOLD, LISTING_HOURS, MIN_PRICE, MAX_PRICE, LISTING_FEE, SALES_TAX, ORDERS_ENABLED, ORDERS_MAX, ORDERS_HOURS,
 					ORDERS_MAX_AMOUNT, ANNOUNCE_SALES, AUDIT_TRADES, BOT_ENABLED, BOT_NAME, BOT_INTERVAL_MIN, BOT_INTERVAL_MAX, BOT_FULL_PLAYERS,
 					BOT_MAX_PLAYERS, BOT_BUY_FACTOR, BOT_SELL_FACTOR, BOT_DAILY_BUDGET, BOT_BUDGET_CAP, BOT_DAILY_STOCK, BOT_MAX_LISTINGS,
 					BOT_MAX_ORDERS, PRICE_HISTORY_DAYS, PRICE_MIN_SAMPLES, PRICE_MAX_DAILY_CHANGE, PRICE_BAND)
 			.build();
+
+	/** Listings the player may have on sale at once, by their MejtaCore rank. */
+	public static int listingMax(ConfigHandle config, UUID player) {
+		return config.get(MejtaCoreAPI.ranks().byRank(player, LISTING_MAX, LISTING_MAX_BRONZE, LISTING_MAX_SILVER, LISTING_MAX_GOLD));
+	}
 
 	private MarketSettings() {
 	}

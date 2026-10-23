@@ -18,6 +18,9 @@ public final class ConfigNames {
 		if (config.id().equals(PermissionRegistry.CONFIG_ID)) {
 			return "Permissions";
 		}
+		if (config.id().equals(PermissionRegistry.RANK_CONFIG_ID)) {
+			return "Rank permissions";
+		}
 		return MejtaCoreAPI.getAddon(config.id()).map(AddonInfo::name).orElse(config.id());
 	}
 }
