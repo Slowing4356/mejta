@@ -11,14 +11,14 @@ It is server-side only: players need no mod.
 
 | | |
 |---|---|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
 | Requires | MejtaCore 1.8.0 or newer, below 2.0.0 (API version 6) |
 | Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.9.0.jar`, `mejtaeconomy-1.0.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.9.0.jar`, `mejtaeconomy-1.1.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtaeconomy.json` is created on first start; every setting can also be changed in game in MejtaCore's settings editor (`/mejta config mejtaeconomy`, or `/mejtaadmin config` without client mods).
 
 Only one economy addon can be active. If another one registered first, MejtaEconomy fails to initialize and says so in `/mejtacore addons`.
@@ -33,6 +33,7 @@ Only one economy addon can be active. If another one registered first, MejtaEcon
 | `/baltop [page]` | `mejtaeconomy.baltop` | The richest players, the money in circulation and your rank |
 | `/eco history` | `mejtaeconomy.history` | Your last 10 transactions: payments, sales, purchases, with the addon behind each |
 | `/eco history <player>` | `mejtaeconomy.admin` | Anyone's last 10 transactions |
+| `/eco menu [player]` | `mejtaeconomy.admin` | A chest menu to edit balances: every account (online players first), then per player buttons to give or take 1 to 10,000, set an exact amount, reset to 0 (shift-click) and see the history |
 | `/eco give <player> <amount>` | `mejtaeconomy.admin` | Add money (creates the account of a player who has a known profile but never joined) |
 | `/eco take <player> <amount>` | `mejtaeconomy.admin` | Remove money; refused if the player has less |
 | `/eco set <player> <amount>` | `mejtaeconomy.admin` | Set the balance (`0` allowed) |
@@ -54,7 +55,7 @@ Change their levels in `config/mejta/mejtacore.permissions.json`.
 | `mejtaeconomy.pay` | everyone | `/pay` |
 | `mejtaeconomy.baltop` | everyone | `/baltop` |
 | `mejtaeconomy.history` | everyone | `/eco history` (own) |
-| `mejtaeconomy.admin` | admins (level 3) | `/eco give|take|set|reset|status`, anyone's history |
+| `mejtaeconomy.admin` | admins (level 3) | `/eco menu`, `/eco give|take|set|reset|status`, anyone's history |
 
 ## Settings
 
