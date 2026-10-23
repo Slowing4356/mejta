@@ -103,6 +103,8 @@ jobs:
             tasks: test build runGameTest
           - project: mejta-market
             tasks: test build runGameTest
+          - project: mejta-crates
+            tasks: test build runGameTest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

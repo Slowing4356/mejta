@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtacrates",
+	"version": "${version}",
+	"name": "MejtaCrates",
+	"description": "Server-side crates for MejtaCore: keys (virtual or physical, given by staff, the console or a donation store), weighted rewards of items, commands and money, an opening animation and a preview. Built so keys and rewards can never be duplicated.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.mejtacrates.MejtaCrates"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.8.0 <2.0.0"
+	}
+}
