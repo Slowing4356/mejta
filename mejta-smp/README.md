@@ -18,7 +18,7 @@ It is server-side only: menus are plain chests and the sidebar is a vanilla scor
 
 ## Installing
 
-1. Put `mejtacore-1.7.0.jar`, `mejtasmp-1.0.1.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.8.0.jar`, `mejtasmp-1.0.1.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtasmp.json` is created on first start.
 3. Change settings in MejtaCore's settings menu (`/mejtaadmin config menu mejtasmp`). The settings are grouped there: AFK protection, Scoreboard, XP, Drops, Villagers, Sleep, Dimensions and Antialt.
 
@@ -151,7 +151,7 @@ On a singleplayer or LAN world it is kept per world.
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.7.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.8.0 first
 cd ../mejta-smp && ./gradlew build               # compile and run unit tests
 ./gradlew runGameTest                            # headless server game test
 xvfb-run ./gradlew runClientGameTest             # real client on a dedicated server (needs a display)
