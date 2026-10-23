@@ -254,6 +254,8 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		closeMenu(ctx);
 		check("Escape closes the editor and saves", !core.isDirty()
 				&& read(configDir.resolve("mejtacore.json")).contains("\"show_addon_ids\": true"));
+		check("and returns to the menu it was opened from", waitForMenu(ctx, "MejtaCore"));
+		closeMenu(ctx);
 	}
 
 	private void addonSettingsChecks(ClientGameTestContext ctx, Path configDir) {
@@ -1278,6 +1280,10 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	}
 
 	private static void chat(ClientGameTestContext ctx, String command) {
+		// Chat only opens in game, so close whatever screens (and the menus they return to) are still open.
+		for (int i = 0; i < 5 && ctx.computeOnClient(mc -> mc.screen != null); i++) {
+			closeMenu(ctx);
+		}
 		ctx.getInput().pressKey(options -> options.keyChat);
 		ctx.waitForScreen(ChatScreen.class);
 		ctx.getInput().typeChars(command);
