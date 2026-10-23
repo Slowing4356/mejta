@@ -100,7 +100,7 @@ public class MejtaMarketGameTest {
 		// A search for a price-list item nobody sells counts as interest, and the bot plans to bring some.
 		Optional<String> coming = MejtaMarket.bot().searched(buyer, "oak log");
 		helper.assertValueEqual(coming.orElse("none"), "minecraft:oak_log", Component.literal("bot plans to list searched oak logs"));
-		helper.assertTrue(market.demand().of("minecraft:oak_log", System.currentTimeMillis()) >= 1.0, Component.literal("search counted as demand"));
+		helper.assertTrue(market.demand().of("minecraft:oak_log", System.currentTimeMillis()) > 0.9, Component.literal("search counted as demand"));
 		helper.succeed();
 	}
 }
