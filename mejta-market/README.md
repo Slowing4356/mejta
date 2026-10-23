@@ -15,7 +15,7 @@ An auction house for Fabric servers, as a MejtaCore addon (mod ID `mejtamarket`)
 
 ## Installing
 
-Put `mejtamarket-1.1.0.jar` next to `mejtacore-1.9.0.jar`, `mejtaeconomy-1.0.0.jar` and Fabric API in the server's `mods/` folder. Settings appear in `config/mejta/mejtamarket.json`, the bot's price list in `config/mejta/mejtamarket-prices.json`.
+Put `mejtamarket-1.1.1.jar` next to `mejtacore-1.9.0.jar`, `mejtaeconomy-1.0.0.jar` and Fabric API in the server's `mods/` folder. Settings appear in `config/mejta/mejtamarket.json`, the bot's price list in `config/mejta/mejtamarket-prices.json`.
 
 ## Using the market
 
@@ -58,7 +58,7 @@ Both leave the economy, so trading slowly drains money instead of creating it.
 
 On a server with two players, a market without anyone else to trade with is dead. The bot ("Market Trader") is that someone else, built so it cannot be farmed and cannot flood the economy with money.
 
-**What it does.** Every 4 to 12 minutes (at random), it may do one small thing:
+**What it does.** It keeps at least 6 listings on sale (`bot.min_listings`), listing something about every 30 seconds while it has fewer, so a new or quiet market is never empty. Besides that, every 2 to 6 minutes (at random), it may do one small thing:
 
 - **buy a player's listing** that costs at most 75 % of the item's market price;
 - **sell into a player's buy order** that pays at least 115 % of the market price;
@@ -139,7 +139,7 @@ Stored in `config/mejta/mejtamarket.json`. Change them in the file, in MejtaCore
 | `audit.trades` | `true` | Record every trade in MejtaCore's audit log too |
 | `bot.enabled` | `true` | The market bot is active |
 | `bot.name` | `Market Trader` | The bot's name in the market |
-| `bot.interval_min_minutes`, `bot.interval_max_minutes` | `4`, `12` | Time between two bot actions, picked at random in between |
+| `bot.interval_min_minutes`, `bot.interval_max_minutes` | `2`, `6` | Time between two bot actions, picked at random in between |
 | `bot.full_activity_players` | `3` | Up to this many active players, the bot always acts |
 | `bot.max_players` | `10` | From this many active players, the bot stops |
 | `bot.buy_factor` | `0.75` (0.1–0.95) | The bot pays at most this share of the market price |
@@ -147,6 +147,7 @@ Stored in `config/mejta/mejtamarket.json`. Change them in the file, in MejtaCore
 | `bot.daily_budget` | `5000` | Money per day the bot may spend (the only money it adds) |
 | `bot.budget_cap` | `20000` | Most money it can save up |
 | `bot.daily_stock_per_item` | `128` | Most items of one kind it sells per day |
+| `bot.min_listings` | `6` | While the bot has fewer listings, it lists something about every 30 seconds |
 | `bot.max_listings`, `bot.max_orders` | `12`, `6` | Listings and buy orders it keeps open at most |
 | `prices.history_days` | `14` | Days of player trades used for market prices |
 | `prices.min_samples` | `3` | Samples needed before trades count |
