@@ -28,7 +28,7 @@ Every addon needs **MejtaCore** and **Fabric API**. MejtaEconomy, MejtaMarket an
 3. Start the server. Settings are in `config/mejta/` (MejtaMarket's price list in `mejtamarket-prices.json`); existing settings are kept. MejtaCrates creates an example crate on first start.
 4. See each mod's README for commands, permissions and settings.
 
-`SHA256SUMS.txt` lists the checksum of every jar.
+`SHA256SUMS.txt` lists the checksum of every jar and of `mejta-<tag>.zip`, which holds all of them.
 
 ## MejtaCore 1.8.0: shared economy
 

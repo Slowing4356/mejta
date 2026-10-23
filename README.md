@@ -31,7 +31,7 @@ cd ../mejta-ac && ./gradlew build   # jar in build/libs/
 
 - **CI** (`.github/workflows/ci.yml`) builds every project and runs the unit tests on pushes to `main` and on pull requests: MejtaCore first, then the addons side by side, each in its own job. MejtaQoL's, MejtaCorpse's, MejtaSMP's, MejtaEconomy's, MejtaMarket's and MejtaCrates' headless server game tests run there too.
 - **Client game tests** (a real client joins a dedicated server under a virtual display) run on demand, in parallel per project: **Actions > CI > Run workflow**, then pick one project (or `all`). Run them for the projects whose features changed, in the pull request that changes them; a release does not repeat them for everything.
-- **Releases** (`.github/workflows/release.yml`): pushing a tag such as `v2026.10.1` builds and tests the mods again and publishes a GitHub release with their jars, `SHA256SUMS.txt` and [`RELEASE-NOTES.md`](RELEASE-NOTES.md). An existing release for the tag is updated instead.
+- **Releases** (`.github/workflows/release.yml`): pushing a tag such as `v2026.10.1` builds and tests the mods again and publishes a GitHub release with their jars, all of them in one `mejta-<tag>.zip`, `SHA256SUMS.txt` and [`RELEASE-NOTES.md`](RELEASE-NOTES.md). An existing release for the tag is updated instead.
 
 ## Repository rules
 
