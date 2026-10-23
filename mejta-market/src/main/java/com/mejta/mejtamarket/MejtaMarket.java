@@ -20,6 +20,7 @@ import com.mejta.mejtacore.api.storage.RecordLogOptions;
 import com.mejta.mejtamarket.bot.MarketBot;
 import com.mejta.mejtamarket.data.MarketStore;
 import com.mejta.mejtamarket.menu.MarketMenus;
+import com.mejta.mejtamarket.menu.SignInput;
 import com.mejta.mejtamarket.price.PriceFile;
 import com.mejta.mejtamarket.util.ScopedDataStore;
 
@@ -59,8 +60,8 @@ public final class MejtaMarket implements MejtaAddon {
 					store = new ScopedDataStore(MejtaCoreAPI.dataStore(ID));
 					market = new MarketService(config, new MarketStore(store),
 							MejtaCoreAPI.recordLog(ID, "trades", new RecordLogOptions(5L << 20, 10, 365)));
-					menus = new MarketMenus(market);
 					bot = new MarketBot(market);
+					menus = new MarketMenus(market, bot);
 					priceFile = new PriceFile(FabricLoader.getInstance().getConfigDir().resolve("mejta").resolve(ID + "-prices.json"), log);
 					MarketCommands.register(market, menus, bot, priceFile);
 					registerEvents();
@@ -98,7 +99,10 @@ public final class MejtaMarket implements MejtaAddon {
 				market.onJoin(player);
 			}
 		});
-		ServerPlayerEvents.LEAVE.register(player -> MarketMenus.forget(player.getUUID()));
+		ServerPlayerEvents.LEAVE.register(player -> {
+			MarketMenus.forget(player.getUUID());
+			SignInput.forget(player.getUUID());
+		});
 	}
 
 	/** Integrated servers (singleplayer, LAN) keep a market per world; a dedicated server uses the keys as they are. */

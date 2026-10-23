@@ -3,7 +3,8 @@
 	"package": "com.mejta.mejtamarket.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
-		"PlayerListInvoker"
+		"PlayerListInvoker",
+		"SignUpdateMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

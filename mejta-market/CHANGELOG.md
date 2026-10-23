@@ -1,5 +1,11 @@
 # MejtaMarket changelog
 
+## 1.1.0
+
+- **Search on a sign:** the menu's search button (and `/ah search` without text) opens a sign to type the search on, on vanilla clients too. Right click the button to clear a search. An empty result says when the bot will bring the item.
+- **Sell from the menu:** the help button is now a sell button showing what you hold and its market price; click it (or use `/ah sell` without a price) to type a price on a sign.
+- **The bot follows demand:** searches are remembered per item (fading over 6 hours, one count per player every 10 minutes). The bot lists wanted items more often, and lists an item someone searched for that nobody sells within a minute, telling them. At its listing limit it withdraws its least wanted listing first. Budget, stock and price rules are unchanged.
+
 ## 1.0.0
 
 First release. Requires MejtaCore 1.8.0 or newer, below 2.0.0 (API version 6), and an economy addon such as MejtaEconomy.

@@ -22,8 +22,8 @@ Put `mejtamarket-1.0.0.jar` next to `mejtacore-1.8.0.jar`, `mejtaeconomy-1.0.0.j
 | Command | Permission | What it does |
 |---|---|---|
 | `/ah` (or `/market`) | `mejtamarket.use` | Opens the auction house |
-| `/ah search <text>` | `mejtamarket.use` | Opens it showing only matches (item name, ID or seller; `iron pick` finds iron pickaxes) |
-| `/ah sell <price> [amount]` | `mejtamarket.sell` | Lists what you hold in your main hand (or `amount` of it) for `price` in all, e.g. `/ah sell 2k 32` |
+| `/ah search [text]` | `mejtamarket.use` | Opens it showing only matches (item name, ID or seller; `iron pick` finds iron pickaxes). Without text, a sign opens to type the search on. |
+| `/ah sell [price] [amount]` | `mejtamarket.sell` | Lists what you hold in your main hand (or `amount` of it) for `price` in all, e.g. `/ah sell 2k 32`. Without a price, a sign opens to type it on, showing the market price. |
 | `/ah order <amount> <price each> [item]` | `mejtamarket.orders` | Places a buy order, e.g. `/ah order 64 5 oak_log`. Holding the item, leave out its name. The money is set aside now. |
 | `/ah orders` | `mejtamarket.use` | Buy orders you can sell into |
 | `/ah collect` | `mejtamarket.use` | Your collection box |
@@ -33,7 +33,9 @@ Put `mejtamarket-1.0.0.jar` next to `mejtacore-1.8.0.jar`, `mejtaeconomy-1.0.0.j
 
 Prices accept what the economy reads: `50`, `12.5`, `2k`.
 
-**The auction house menu** shows 45 listings per page, each with its price (and price per item), seller, time left and market price. The bottom row has: previous page, **category** (left/right click to switch: blocks, ores and minerals, farming and food, mob drops, tools and weapons, armour, redstone, potions and enchanting, other), **search**, **sort** (newest, cheapest or most expensive per item), the **collection box**, **your listings**, **buy orders**, help and next page.
+**The auction house menu** shows 45 listings per page, each with its price (and price per item), seller, time left and market price. The bottom row has: previous page, **category** (left/right click to switch: blocks, ores and minerals, farming and food, mob drops, tools and weapons, armour, redstone, potions and enchanting, other), **search** (click to type on a sign, right click to clear), **sort** (newest, cheapest or most expensive per item), the **collection box**, **your listings**, **buy orders**, **sell** (shows what you hold and its market price; click to type a price on a sign) and next page.
+
+The search and price signs work on vanilla clients: the sign only exists for you, and the block is restored when you are done. If nothing matches a search for an item on the price list, the menu says the market bot will bring some; it usually does within a minute (see below).
 
 - **Buying:** click a listing and confirm. The items go to your inventory, or to your collection box if it is full.
 - **Cancelling:** click your own listing and confirm; the items go to your collection box. The listing fee is not refunded.
@@ -62,6 +64,8 @@ On a server with two players, a market without anyone else to trade with is dead
 - **sell into a player's buy order** that pays at least 115 % of the market price;
 - **list** a quarter stack to a full stack of an item for 115 % of its market price;
 - **place a buy order** for an item at 75 % of its market price.
+
+**It follows demand.** Every search is remembered per item (one count per player and item every 10 minutes; interest halves every 6 hours). The bot lists items players looked for more often, up to nine times as often as an item nobody searches for. When someone searches for a price-list item that nobody sells and the bot still has stock of it today, the bot lists some within 20 to 60 seconds (if it would be active at the current player count) and tells that player, with a button to show it. If it is at its listing limit, it first withdraws its least wanted listing. Demand is saved in the market data, so it survives restarts.
 
 With up to 3 players online (`bot.full_activity_players`, not counting AFK or vanished players) it always acts; from 10 (`bot.max_players`) it stops; in between it acts less and less often. It only trades items on the **price list**, and only plain items.
 
@@ -173,4 +177,4 @@ cd ../mejta-market && ./gradlew build          # jar in build/libs/, runs the un
 ./gradlew runGameTest                           # headless server test with fake players and a test economy
 ```
 
-Unit tests cover fees, categories and search, market prices (samples, the daily limit, the band, outliers), the bot's prices, activity and budget, and the stored records. The game test lists, buys, fills a buy order, refuses a listing whose save fails and lets the bot buy a listing, checking every item and coin after each step.
+Unit tests cover fees, categories and search, market prices (samples, the daily limit, the band, outliers), the bot's prices, activity and budget, search demand, and the stored records. The game test lists, buys, fills a buy order, refuses a listing whose save fails, lets the bot buy a listing and records a search as demand, checking every item and coin after each step.
