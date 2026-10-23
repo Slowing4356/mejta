@@ -1,5 +1,14 @@
 # MejtaCorpse changelog
 
+## 1.2.0
+
+- **Death backups:** the items of each player's last 10 deaths are kept (`backup.per_player`, 0 to 100; `backup.keep_days` deletes older ones), with what then happened to the corpse: who took how many items, or whether it expired.
+- **Restore:** staff can give a death's items back after its corpse is gone, with `/corpse backups <player>` and `/corpse restore <player> <id>`.
+  - Guarded against duplication: only once the corpse is gone, each backup only once (marked on disk before anything is given), and only after a confirmation that warns when the owner already took items back.
+  - New permissions `mejtacorpse.restore` (admins) and `mejtacorpse.restore.self` (owners; needed to restore your own deaths).
+  - Audited (`corpse.restore`), logged and announced to staff; the player is told (`backup.notify_owner`).
+- The new settings are in MejtaCore's settings editor under **Backup**.
+
 ## 1.1.0
 
 - **Visible armour:** the corpse wears the armour it holds, so you can see it. It is a display copy: the items stay in the corpse, killing the body drops nothing, dispensers cannot equip it, and a piece taken from the menu also leaves the body. New setting `display.show_armor` (default on).

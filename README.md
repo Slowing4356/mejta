@@ -9,7 +9,7 @@ Server-side Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.19.5+, Fa
 | [MejtaUtils](mejta-utils/README.md) | 1.0.2 | Staff tools: `/invsee`, `/ecsee`, `/status`, `/vanish`, `/freeze`, `/staffmode`. |
 | [MejtaDiscord](mejta-discord/README.md) | 1.0.0 | Anti-cheat alerts and chat to Discord webhooks; (experimental) Discord chat to Minecraft. |
 | [MejtaPerf](mejta-perf/README.md) | 1.0.0 | TPS/MSPT monitor, lag alerts, a sampling profiler and reports (`/mperf`). |
-| [MejtaCorpse](mejta-corpse/README.md) | 1.1.0 | Corpses that keep a dead player's items in a chest menu, wearing their skin and armour. Built so items can never be duplicated. |
+| [MejtaCorpse](mejta-corpse/README.md) | 1.2.0 | Corpses that keep a dead player's items in a chest menu, wearing their skin and armour, with backups of the last deaths that staff can restore. Built so items can never be duplicated. |
 | [MejtaQoL](mejta-qol/README.md) | 1.1.1 | Player commands: `/tpa`, homes, warps, `/spawn`, `/back`, `/rtp`, `/ec`, portable workstations, `/trash`, AFK and `/r`. Every feature can be switched off. |
 | [MejtaSMP](mejta-smp/README.md) | 1.0.1 | SMP features: AFK protection, sidebar and leaderboards, item and XP clumping with piles bigger than a stack, infinite trades, one-player sleep, Nether/End toggles, locator bar off and an account limit. |
 

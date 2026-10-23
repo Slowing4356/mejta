@@ -24,6 +24,7 @@ import com.mejta.mejtacore.api.MejtaAddon;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.addon.AddonDefinition;
 import com.mejta.mejtacore.api.config.ConfigHandle;
+import com.mejta.mejtacorpse.data.BackupStore;
 import com.mejta.mejtacorpse.data.CorpseRecord;
 import com.mejta.mejtacorpse.data.CorpseStore;
 import com.mejta.mejtacorpse.util.ScopedDataStore;
@@ -54,7 +55,7 @@ public final class MejtaCorpse implements MejtaAddon {
 					config = ctx.config().orElseThrow();
 					log = ctx.logger();
 					store = new ScopedDataStore(MejtaCoreAPI.dataStore(ID));
-					manager = new CorpseManager(config, new CorpseStore(store));
+					manager = new CorpseManager(config, new CorpseStore(store), new BackupStore(store));
 					CorpseCommands.register();
 					MejtaCoreAPI.registerServerCommands(ID, (root, buildContext) -> root
 							.then(Commands.literal("status")
