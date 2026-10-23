@@ -14,6 +14,7 @@ import com.mojang.authlib.GameProfile;
 
 import net.fabricmc.fabric.api.entity.FakePlayer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -36,10 +37,12 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import com.mejta.mejtacore.api.storage.DataStore;
+import com.mejta.mejtacorpse.CorpseBackups;
 import com.mejta.mejtacorpse.CorpseManager;
 import com.mejta.mejtacorpse.MejtaCorpse;
 import com.mejta.mejtacorpse.data.CorpseRecord;
 import com.mejta.mejtacorpse.data.CorpseStore;
+import com.mejta.mejtacorpse.data.DeathBackup;
 import com.mejta.mejtacorpse.data.SlotLayout;
 import com.mejta.mejtacorpse.menu.CorpseMenu;
 import com.mejta.mejtacorpse.menu.LiveCorpse;
@@ -115,7 +118,10 @@ public class MejtaCorpseGameTest {
 			helper.assertTrue(((LivingEntity) level.getEntity(repaired.body())).getItemBySlot(EquipmentSlot.HEAD).is(Items.IRON_HELMET),
 					Component.literal("new body wears the helmet"));
 
+			helper.assertValueEqual(manager.backups().restore(level.getServer().createCommandSourceStack(), owner, repaired.id(), true),
+					CorpseBackups.Outcome.CORPSE_EXISTS, Component.literal("no restore while the corpse exists"));
 			menuMovesEachItemOnce(helper, level, manager, owner, repaired);
+			backupRestoresOnce(helper, level, manager, owner, repaired);
 			failedWriteMovesNothing(helper, level, owner);
 			unfinishedDeathIsResolvedAtJoin(helper, level, manager, owner);
 			fakePlayerDeathFallsBackToDrops(helper, level, manager, other);
@@ -178,6 +184,32 @@ public class MejtaCorpseGameTest {
 		helper.assertValueEqual(count(inv, Items.COBBLESTONE), 64, Component.literal("exactly 64 cobblestone"));
 		helper.assertValueEqual(count(inv, Items.IRON_HELMET), 1, Component.literal("exactly 1 helmet"));
 		helper.assertValueEqual(count(inv, Items.SHIELD), 1, Component.literal("exactly 1 shield"));
+		inv.clearContent();
+	}
+
+	/**
+	 * The death above was backed up. Once its corpse is gone, staff can restore it into the owner's
+	 * inventory after confirming, and only once.
+	 */
+	private static void backupRestoresOnce(GameTestHelper helper, ServerLevel level, CorpseManager manager, ServerPlayer owner,
+			CorpseRecord corpse) {
+		CorpseBackups backups = manager.backups();
+		DeathBackup backup = backups.store().find(OWNER, corpse.id()).orElseThrow();
+		helper.assertValueEqual(backup.items().size(), 4, Component.literal("four stacks backed up"));
+		helper.assertValueEqual(backup.takenByOwner(), 71, Component.literal("the backup knows the owner took everything back"));
+		CommandSourceStack console = level.getServer().createCommandSourceStack();
+		Inventory inv = owner.getInventory();
+		inv.clearContent();
+		helper.assertValueEqual(backups.restore(console, owner, corpse.id(), false), CorpseBackups.Outcome.NEEDS_CONFIRM,
+				Component.literal("a restore asks to confirm first"));
+		helper.assertTrue(inv.isEmpty(), Component.literal("nothing given before confirming"));
+		helper.assertValueEqual(backups.restore(console, owner, corpse.id(), true), CorpseBackups.Outcome.RESTORED, Component.literal("restored"));
+		helper.assertValueEqual(inv.getItem(0).getCount(), 5, Component.literal("diamonds back in their slot"));
+		helper.assertTrue(inv.getItem(39).is(Items.IRON_HELMET), Component.literal("helmet back on the head"));
+		helper.assertTrue(backups.store().find(OWNER, corpse.id()).orElseThrow().restored().isPresent(), Component.literal("marked restored on disk"));
+		helper.assertValueEqual(backups.restore(console, owner, corpse.id(), true), CorpseBackups.Outcome.ALREADY_RESTORED,
+				Component.literal("a backup is restored only once"));
+		helper.assertValueEqual(count(inv, Items.DIAMOND), 5, Component.literal("still exactly 5 diamonds"));
 		inv.clearContent();
 	}
 

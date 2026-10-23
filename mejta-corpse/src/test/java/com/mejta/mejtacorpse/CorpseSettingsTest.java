@@ -20,9 +20,10 @@ class CorpseSettingsTest {
 			assertTrue(keys.add(s.key()), "duplicate " + s.key());
 			assertFalse(s.description().isBlank(), s.key());
 		}
-		assertEquals(11, keys.size(), "a setting was added or removed: update the README's settings table");
+		assertEquals(14, keys.size(), "a setting was added or removed: update the README's settings table");
 		assertEquals(-1, CorpseSettings.PUBLIC_AFTER_MINUTES.defaultValue(), "only the owner by default");
 		assertEquals(0, CorpseSettings.EXPIRE_MINUTES.defaultValue(), "corpses never expire by default");
 		assertTrue(CorpseSettings.SHOW_ARMOR.defaultValue(), "corpses show their armour by default");
+		assertEquals(10, CorpseSettings.BACKUP_PER_PLAYER.defaultValue(), "the last 10 deaths are backed up by default");
 	}
 }

@@ -13,7 +13,12 @@ public final class CorpsePermissions {
 	public static final MejtaPermission ADMIN = MejtaPermission.of("mejtacorpse.admin", PermissionLevel.ADMINS)
 			.describedAs("List any player's corpses, open them from anywhere and teleport to them (/corpse list|open|tp)");
 
-	public static final MejtaPermission[] ALL = {USE, OPEN_ANY, ADMIN};
+	public static final MejtaPermission RESTORE = MejtaPermission.of("mejtacorpse.restore", PermissionLevel.ADMINS)
+			.describedAs("List players' death backups and give a backup's items back to its owner once its corpse is gone (audited; each backup once)");
+	public static final MejtaPermission RESTORE_SELF = MejtaPermission.of("mejtacorpse.restore.self", PermissionLevel.OWNERS)
+			.describedAs("Restore your own death backups too (with mejtacorpse.restore)");
+
+	public static final MejtaPermission[] ALL = {USE, OPEN_ANY, ADMIN, RESTORE, RESTORE_SELF};
 
 	private CorpsePermissions() {
 	}

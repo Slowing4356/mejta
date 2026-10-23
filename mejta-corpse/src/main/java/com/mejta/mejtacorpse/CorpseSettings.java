@@ -34,10 +34,16 @@ public final class CorpseSettings {
 			.describedAs("Tell a player where their corpse is when they die");
 	public static final Setting<Boolean> AUDIT_LOOTING = Setting.bool("audit.looting", true)
 			.describedAs("Record in MejtaCore's audit log when someone other than the owner takes items from a corpse");
+	public static final Setting<Integer> BACKUP_PER_PLAYER = Setting.integer("backup.per_player", 10, 0, 100)
+			.describedAs("Deaths per player whose items are backed up, so staff can restore them after the corpse is gone (oldest go first). 0 = no new backups");
+	public static final Setting<Integer> BACKUP_KEEP_DAYS = Setting.integer("backup.keep_days", 0, 0, 3650)
+			.describedAs("Days after which a death backup is deleted (checked when its owner dies or joins). 0 = only newer deaths replace it");
+	public static final Setting<Boolean> BACKUP_NOTIFY_OWNER = Setting.bool("backup.notify_owner", true)
+			.describedAs("Tell a player when staff restore the items of one of their deaths");
 
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
 			.add(ENABLED, PUBLIC_AFTER_MINUTES, OWNER_REMOTE_OPEN, MAX_DISTANCE, EXPIRE_MINUTES, EXPIRE_ACTION, SHOW_SKIN, SHOW_NAME,
-					SHOW_ARMOR, DEATH_MESSAGE, AUDIT_LOOTING)
+					SHOW_ARMOR, DEATH_MESSAGE, AUDIT_LOOTING, BACKUP_PER_PLAYER, BACKUP_KEEP_DAYS, BACKUP_NOTIFY_OWNER)
 			.build();
 
 	private CorpseSettings() {

@@ -44,8 +44,10 @@ import com.mejta.mejtacore.api.menu.MenuIcons;
 import com.mejta.mejtacore.api.notify.Notification;
 import com.mejta.mejtacore.api.notify.Severity;
 import com.mejta.mejtacorpse.data.Access;
+import com.mejta.mejtacorpse.data.BackupStore;
 import com.mejta.mejtacorpse.data.CorpseRecord;
 import com.mejta.mejtacorpse.data.CorpseStore;
+import com.mejta.mejtacorpse.data.DeathBackup;
 import com.mejta.mejtacorpse.data.SlotLayout;
 import com.mejta.mejtacorpse.menu.CorpseMenu;
 import com.mejta.mejtacorpse.mixin.PlayerListInvoker;
@@ -92,19 +94,25 @@ public final class CorpseManager {
 
 	private final ConfigHandle config;
 	private final CorpseStore store;
+	private final CorpseBackups backups;
 	private final Map<String, LiveCorpse> live = new HashMap<>();
 	/** Corpse entities MejtaCorpse itself removes: their removal must not trigger a repair. */
 	private final Set<UUID> ownRemovals = ConcurrentHashMap.newKeySet();
 	private final Set<String> repairs = ConcurrentHashMap.newKeySet();
 	private volatile MinecraftServer server;
 
-	public CorpseManager(ConfigHandle config, CorpseStore store) {
+	public CorpseManager(ConfigHandle config, CorpseStore store, BackupStore backupStore) {
 		this.config = config;
 		this.store = store;
+		this.backups = new CorpseBackups(config, backupStore, store);
 	}
 
 	public CorpseStore store() {
 		return store;
+	}
+
+	public CorpseBackups backups() {
+		return backups;
 	}
 
 	// ---------------------------------------------------------------- death
@@ -181,6 +189,7 @@ public final class CorpseManager {
 			MejtaCorpse.log().error("Could not activate corpse {}; it is completed when {} next joins", pending.id(), pending.ownerName(), e);
 			return;
 		}
+		backups.take(active);
 		spawnEntities(srv, active);
 	}
 
@@ -215,6 +224,7 @@ public final class CorpseManager {
 				MejtaCorpse.log().info("Completed corpse {} of {}", corpse.id(), corpse.ownerName());
 			}
 		}
+		backups.pruneOld(player.getUUID());
 	}
 
 	// ---------------------------------------------------------------- opening
@@ -354,8 +364,12 @@ public final class CorpseManager {
 	public void closed(CorpseMenu menu, Player player) {
 		LiveCorpse lc = menu.corpse();
 		CorpseRecord r = lc.record();
-		if (menu.taken() > 0 && !r.owner().equals(player.getUUID()) && config.get(CorpseSettings.AUDIT_LOOTING)
-				&& player instanceof ServerPlayer sp) {
+		boolean owner = r.owner().equals(player.getUUID());
+		if (menu.taken() > 0) {
+			backups.record(r, owner ? DeathBackup.Kind.TAKEN_BY_OWNER : DeathBackup.Kind.TAKEN_BY_OTHER, player.getGameProfile().name(),
+					menu.taken(), "");
+		}
+		if (menu.taken() > 0 && !owner && config.get(CorpseSettings.AUDIT_LOOTING) && player instanceof ServerPlayer sp) {
 			audit("corpse.loot", sp, r, Map.of("items_taken", menu.taken()));
 		}
 		if (lc.removeViewer() > 0 || lc.broken()) {
@@ -526,6 +540,7 @@ public final class CorpseManager {
 				}
 			}
 			finish(corpse);
+			backups.record(corpse, DeathBackup.Kind.EXPIRED, "", stacks.stream().mapToInt(ItemStack::getCount).sum(), drop ? "dropped" : "deleted");
 			MejtaCoreAPI.audit().record(AuditEntry.builder(MejtaCorpse.ID, "corpse.expire")
 					.actor(AuditActor.system(MejtaCorpse.ID))
 					.target(corpse.owner(), corpse.ownerName())
@@ -540,8 +555,12 @@ public final class CorpseManager {
 	// ---------------------------------------------------------------- text
 
 	static String where(CorpseRecord r) {
-		String dim = r.dimension().startsWith("minecraft:") ? r.dimension().substring(10) : r.dimension();
-		return (long) Math.floor(r.x()) + ", " + (long) Math.floor(r.y()) + ", " + (long) Math.floor(r.z()) + " (" + dim + ")";
+		return where(r.dimension(), r.x(), r.y(), r.z());
+	}
+
+	static String where(String dimension, double x, double y, double z) {
+		String dim = dimension.startsWith("minecraft:") ? dimension.substring(10) : dimension;
+		return (long) Math.floor(x) + ", " + (long) Math.floor(y) + ", " + (long) Math.floor(z) + " (" + dim + ")";
 	}
 
 	static String minutes(long millis) {
