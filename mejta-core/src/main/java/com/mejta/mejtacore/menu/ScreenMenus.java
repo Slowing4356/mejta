@@ -126,7 +126,7 @@ public final class ScreenMenus {
 			return;
 		}
 		ServerMenu.Button button = session.definition.buttons().get(payload.slot());
-		MenuClick.Type type = clickType(payload.type());
+		MenuClick.Type type = clickType(payload.clickType());
 		if (button == null || type == null) {
 			return;
 		}

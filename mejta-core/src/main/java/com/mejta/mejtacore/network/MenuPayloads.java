@@ -91,14 +91,14 @@ public final class MenuPayloads {
 		}
 	}
 
-	/** Client to server: an icon was clicked. {@code type} is a {@code MenuClick.Type} name. */
-	public record ClickMenu(int session, int slot, String type) implements CustomPacketPayload {
+	/** Client to server: an icon was clicked. {@code clickType} is a {@code MenuClick.Type} name. */
+	public record ClickMenu(int session, int slot, String clickType) implements CustomPacketPayload {
 		public static final Type<ClickMenu> TYPE = new Type<>(Identifier.fromNamespaceAndPath("mejtacore", "click_menu"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, ClickMenu> CODEC = StreamCodec.of(
 				(buf, p) -> {
 					buf.writeVarInt(p.session);
 					buf.writeVarInt(p.slot);
-					buf.writeUtf(p.type, 32);
+					buf.writeUtf(p.clickType, 32);
 				},
 				buf -> new ClickMenu(buf.readVarInt(), buf.readVarInt(), buf.readUtf(32)));
 
