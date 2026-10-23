@@ -1,6 +1,7 @@
 # Publishes a GitHub release when a tag such as `v2026.10.0` is pushed. The mods listed in RELEASED are built
 # and unit-tested again from the tagged commit and their jars attached; the release notes are RELEASE-NOTES.md.
-# Game tests are not repeated here: run them first (Actions > CI > Run workflow).
+# Game tests are not repeated here: new features get their client game tests in their pull request
+# (Actions > CI > Run workflow, for the projects they change).
 name: Release
 
 on:

@@ -18,7 +18,7 @@ Players need no client mod. Every menu is a plain chest, and all checks run on t
 
 ## Installing
 
-1. Put `mejtacore-1.5.0.jar`, `mejtautils-1.0.1.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.7.0.jar`, `mejtautils-1.0.2.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtautils.json` is created on first start.
 
 ## Commands
@@ -202,7 +202,7 @@ Nothing published contains IP addresses, chat content or secrets.
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.4.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.7.0 first
 cd ../mejta-utils && ./gradlew build             # compile and run unit tests
 ./gradlew runClientGameTest                      # client game test
 ```

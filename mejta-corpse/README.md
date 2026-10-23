@@ -18,7 +18,7 @@ It is server-side only: the corpse is a vanilla mannequin and the menu is a vani
 
 ## Installing
 
-1. Put `mejtacore-1.4.0.jar`, `mejtacorpse-1.2.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.7.0.jar`, `mejtacorpse-1.2.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtacorpse.json` is created on first start.
 
 With the `keepInventory` game rule on, players keep their items and no corpse appears. Items with Curse of Vanishing disappear as in vanilla. Experience drops as in vanilla.
@@ -146,7 +146,7 @@ Backups are kept per world on singleplayer and LAN worlds, like corpses.
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.4.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.7.0 first
 cd ../mejta-corpse && ./gradlew build            # compile and run unit tests
 ./gradlew runGameTest                            # headless server game test
 xvfb-run ./gradlew runClientGameTest             # real client on a dedicated server (needs a display)

@@ -17,7 +17,7 @@ Every feature has its own on/off switch, and every command its own permission no
 
 ## Installing
 
-1. Put `mejtacore-1.5.0.jar`, `mejtaqol-1.1.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.7.0.jar`, `mejtaqol-1.1.1.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtaqol.json` is created on first start.
 3. Players type `/qol` to see the commands they can use.
 
@@ -172,7 +172,7 @@ Nothing logged or published contains IP addresses, chat content or secrets.
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.5.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.7.0 first
 cd ../mejta-qol && ./gradlew build               # compile and run unit tests
 ./gradlew runGameTest                            # headless server game test (about a minute)
 ```
