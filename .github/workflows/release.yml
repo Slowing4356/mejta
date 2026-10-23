@@ -1,5 +1,6 @@
 # Publishes a GitHub release when a tag such as `v2026.10.0` is pushed. The mods listed in RELEASED are built
-# and unit-tested again from the tagged commit and their jars attached; the release notes are RELEASE-NOTES.md.
+# and unit-tested again from the tagged commit and their jars attached, also all together in one mejta-<tag>.zip;
+# the release notes are RELEASE-NOTES.md.
 # Game tests are not repeated here: new features get their client game tests in their pull request
 # (Actions > CI > Run workflow, for the projects they change).
 name: Release
@@ -24,6 +25,8 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,17 +49,17 @@ jobs:
           for p in $RELEASED; do
             find "$p/build/libs" -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -exec cp {} dist/ \;
           done
-          (cd dist && sha256sum *.jar > SHA256SUMS.txt)
+          # Every jar in one zip as well, for installing everything at once.
+          (cd dist && zip -q -X "mejta-$TAG.zip" *.jar && sha256sum *.jar "mejta-$TAG.zip" > SHA256SUMS.txt)
           ls -l dist
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag || github.ref_name }}
-        # A release made by hand on GitHub for the same tag is reused: its notes are replaced and the jars attached.
+        # A release made by hand on GitHub for the same tag is reused: its notes are replaced and the jars and zip attached.
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release edit "$TAG" --title "Mejta $TAG" --notes-file RELEASE-NOTES.md
-            gh release upload "$TAG" dist/*.jar dist/SHA256SUMS.txt --clobber
+            gh release upload "$TAG" dist/*.jar dist/*.zip dist/SHA256SUMS.txt --clobber
           else
-            gh release create "$TAG" dist/*.jar dist/SHA256SUMS.txt --title "Mejta $TAG" --notes-file RELEASE-NOTES.md --verify-tag
+            gh release create "$TAG" dist/*.jar dist/*.zip dist/SHA256SUMS.txt --title "Mejta $TAG" --notes-file RELEASE-NOTES.md --verify-tag
           fi
