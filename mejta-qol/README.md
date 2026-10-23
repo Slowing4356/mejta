@@ -2,7 +2,7 @@
 
 MejtaQoL (mod ID `mejtaqol`) adds everyday player commands to a server running **MejtaCore**:
 - teleport requests (`/tpa`, `/tpahere`) and `/back`;
-- homes, warps, `/spawn` and random teleport (`/rtp`), with chest menus for homes and warps;
+- homes, warps, `/spawn` and random teleport (`/rtp`), with menus for homes and warps (chests, or screens for players with MejtaCore 1.7+);
 - your own ender chest, workstations and a trash bin anywhere (`/ec`, `/craft`, `/anvil`, `/trash`...);
 - AFK status, `/r` for private messages, a join greeting and your death coordinates.
 

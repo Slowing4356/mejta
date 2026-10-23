@@ -14,6 +14,7 @@ import com.mejta.mejtacore.commands.ServerCommands;
 import com.mejta.mejtacore.config.ConfigManager;
 import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.logging.MejtaLog;
+import com.mejta.mejtacore.menu.ScreenMenus;
 import com.mejta.mejtacore.network.ServerConfigSync;
 import com.mejta.mejtacore.notify.FileLogProvider;
 import com.mejta.mejtacore.notify.InGameProvider;
@@ -61,6 +62,7 @@ public final class MejtaCore implements ModInitializer {
 				ServerCommands.register(dispatcher, buildContext));
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> RecordLogs.flushAll(5_000));
 		ServerConfigSync.register();
+		ScreenMenus.register();
 
 		for (EntrypointContainer<MejtaAddon> container : loader.getEntrypointContainers(ADDON_ENTRYPOINT, MejtaAddon.class)) {
 			String modId = container.getProvider().getMetadata().getId();

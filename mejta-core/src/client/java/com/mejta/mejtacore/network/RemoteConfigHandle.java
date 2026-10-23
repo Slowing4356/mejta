@@ -23,7 +23,7 @@ import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.network.ConfigPayloads.EditConfig;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteConfig;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteSetting;
-import com.mejta.mejtacore.ui.ChestMenuScreen;
+import com.mejta.mejtacore.ui.MenuStatus;
 
 /**
  * A server config as seen by a client, usable everywhere a {@link ConfigHandle} is (in particular the
@@ -215,7 +215,7 @@ final class RemoteConfigHandle implements ConfigHandle {
 			canSend = false; // not connected
 		}
 		if (!canSend) {
-			ChestMenuScreen.showStatus(Component.literal("Not sent: you are not connected to a server that accepts setting changes")
+			MenuStatus.show(Component.literal("Not sent: you are not connected to a server that accepts setting changes")
 					.withStyle(ChatFormatting.RED));
 			return false;
 		}

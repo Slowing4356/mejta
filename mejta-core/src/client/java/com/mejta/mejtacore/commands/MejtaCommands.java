@@ -2,8 +2,11 @@ package com.mejta.mejtacore.commands;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.CommandNode;
@@ -11,6 +14,7 @@ import com.mojang.brigadier.tree.CommandNode;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -20,7 +24,8 @@ import com.mejta.mejtacore.api.addon.AddonInfo;
 import com.mejta.mejtacore.api.client.ClientCommandProvider;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.logging.Diagnostics;
-import com.mejta.mejtacore.ui.CoreMenus;
+import com.mejta.mejtacore.network.RemoteConfigs;
+import com.mejta.mejtacore.ui.MainMenuScreen;
 import com.mejta.mejtacore.ui.ScreenOpener;
 import com.mejta.mejtacore.ui.SettingsScreen;
 
@@ -51,7 +56,10 @@ public final class MejtaCommands {
 				.then(ClientCommands.literal("about").executes(MejtaCommands::about))
 				.then(ClientCommands.literal("config")
 						.executes(MejtaCommands::openSettings)
-						.then(ClientCommands.literal("reload").executes(MejtaCommands::reloadConfig)));
+						.then(ClientCommands.literal("reload").executes(MejtaCommands::reloadConfig))
+						.then(ClientCommands.argument("config", StringArgumentType.word())
+								.suggests((ctx, builder) -> SharedSuggestionProvider.suggest(configIds(), builder))
+								.executes(ctx -> openConfig(ctx, StringArgumentType.getString(ctx, "config")))));
 
 		addonCommands.forEach((addonId, providers) -> {
 			LiteralArgumentBuilder<FabricClientCommandSource> addonRoot = ClientCommands.literal(addonId);
@@ -71,13 +79,30 @@ public final class MejtaCommands {
 	}
 
 	private static int openMenu(CommandContext<FabricClientCommandSource> ctx) {
-		ScreenOpener.open(CoreMenus::mainMenu);
+		ScreenOpener.open(() -> new MainMenuScreen(null));
 		return 1;
 	}
 
 	private static int openSettings(CommandContext<FabricClientCommandSource> ctx) {
 		ScreenOpener.open(() -> new SettingsScreen(null, null, true));
 		return 1;
+	}
+
+	/** {@code /mejta config <config>}: the editor on one config, the server's copy while on a server that has it. */
+	private static int openConfig(CommandContext<FabricClientCommandSource> ctx, String configId) {
+		if (!configIds().contains(configId)) {
+			ctx.getSource().sendError(Component.literal("No config '" + configId + "'. Known: " + String.join(", ", configIds())));
+			return 0;
+		}
+		ScreenOpener.open(() -> new SettingsScreen(null, configId, true));
+		return 1;
+	}
+
+	private static List<String> configIds() {
+		Set<String> ids = new TreeSet<>();
+		MejtaCore.configs().all().forEach(config -> ids.add(config.id()));
+		RemoteConfigs.configs().forEach(config -> ids.add(config.id()));
+		return List.copyOf(ids);
 	}
 
 	private static int help(CommandContext<FabricClientCommandSource> ctx, String root) {
@@ -88,6 +113,7 @@ public final class MejtaCommands {
 		line(source, "/" + root + " help", "show this list");
 		line(source, "/" + root + " addons", "list registered addons");
 		line(source, "/" + root + " config", "open the settings editor");
+		line(source, "/" + root + " config <config>", "open the settings editor on one config");
 		line(source, "/" + root + " config reload", "reload all configuration files");
 		line(source, "/" + root + " about", "version and framework information");
 
@@ -132,7 +158,7 @@ public final class MejtaCommands {
 		}
 		long problems = Diagnostics.entries().stream().filter(e -> e.level() == Diagnostics.Level.ERROR).count();
 		if (problems > 0) {
-			source.sendFeedback(Component.literal("  " + problems + " error(s) recorded, see Installed Addons > Problems in the menu or the log.")
+			source.sendFeedback(Component.literal("  " + problems + " error(s) recorded, see Problems in the /mejta menu or the log.")
 					.withStyle(ChatFormatting.YELLOW));
 		}
 		return addons.size();

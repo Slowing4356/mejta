@@ -17,8 +17,10 @@ public final class CoreSettings {
 			.describedAs("Show addon IDs and sources in menu tooltips");
 	public static final Setting<MenuSound> MENU_SOUND = Setting.enumeration("menu_sound", MenuSound.NORMAL)
 			.describedAs("Click sound when using MejtaCore menus");
-	public static final Setting<Integer> MENU_ROWS = Setting.integer("menu_rows", 6, 3, 6)
-			.describedAs("Height of MejtaCore menus in rows (3-6)");
+	/** @since 1.7.0 */
+	public static final Setting<Boolean> SERVER_MENU_SCREENS = Setting.bool("server_menu_screens", true)
+			.describedAs("Show addon menus from the server (homes, warps, leaderboards, staff panels...) as MejtaCore screens "
+					+ "instead of chests. Only used by a client with MejtaCore; players without it always get chests");
 
 	public static final Setting<Boolean> IN_GAME_NOTIFICATIONS = Setting.bool("in_game_notifications", true)
 			.describedAs("Show addon notifications (e.g. alerts) in chat to players with the required permission");
@@ -40,7 +42,7 @@ public final class CoreSettings {
 			.describedAs("After hurting or being hurt by a player, both are in combat this many seconds (addons refuse teleports, AFK protection and the like). 0 = off");
 
 	public static final ConfigSpec SPEC = ConfigSpec.builder(1)
-			.add(DEBUG_LOGGING, SHOW_ADDON_IDS, MENU_SOUND, MENU_ROWS, IN_GAME_NOTIFICATIONS, NOTIFICATIONS_FILE_LOG,
+			.add(DEBUG_LOGGING, SHOW_ADDON_IDS, MENU_SOUND, SERVER_MENU_SCREENS, IN_GAME_NOTIFICATIONS, NOTIFICATIONS_FILE_LOG,
 					DISABLED_COMMANDS, AFK_AUTO_MINUTES, COMBAT_TAG_SECONDS)
 			.build();
 

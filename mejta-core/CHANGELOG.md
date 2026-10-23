@@ -1,5 +1,18 @@
 # MejtaCore changelog
 
+## 1.7.0 (API version 5)
+
+The public API is unchanged in use, so every addon keeps working without a rebuild.
+
+- **Addon menus as screens.** Every `ServerMenu` (MejtaQoL homes and warps, MejtaSMP sidebar and leaderboards, MejtaUtils vanish and status panels, confirmations) now opens as a MejtaCore screen for players with MejtaCore 1.7+ on their client: a card per icon with its name and first lore line, the rest on hover, in the chest's order. Clicks (left, right, shift, middle) go to the server as before; the server still checks `validWhile`, refreshes and runs `onClose` once. Players without MejtaCore still get the chest, and `/mejtaadmin config menu` is always a chest.
+  - New client setting `server_menu_screens` (default on), also switchable from the `/mejta` overview. The client tells the server its choice on joining and when it changes.
+  - New network messages `mejtacore:open_menu`, `close_menu` (server to client) and `click_menu`, `menu_closed`, `menu_preference` (client to server), only exchanged with clients that have them. A player clicks at most 20 times a second.
+  - `ServerMenu.Button.clickable()` tells icons added with `icon(...)` apart from buttons.
+- **A new `/mejta` menu** in the settings editor's style replaces the chest-textured one: a sidebar with **Overview**, one page per addon, **Problems** and **About**. The overview has Settings, This Computer (on a server), the Server Menus switch, a card per addon and the addons' own actions. An addon's page shows its version, status and failure reason, dependencies, Settings (and This Computer's Copy when the server has the same config) and its actions.
+- **Addon pages** opened with `MenuContext.openPage` or `MejtaCoreClientAPI.openPage` are drawn as cards too and scroll instead of paging. `null` entries are skipped.
+- **`/mejta config <config>`** opens the editor on one config (with suggestions).
+- Removed the `menu_rows` setting: menus scroll now. An old value in `mejtacore.json` is kept but unused.
+
 ## 1.6.0 (API version 5)
 
 The public API is unchanged, so every addon keeps working.

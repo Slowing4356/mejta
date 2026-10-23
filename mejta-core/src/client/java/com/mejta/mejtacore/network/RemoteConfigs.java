@@ -20,7 +20,8 @@ import com.mejta.mejtacore.network.ConfigPayloads.OpenSettings;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteConfig;
 import com.mejta.mejtacore.network.ConfigPayloads.RequestConfigs;
 import com.mejta.mejtacore.network.ConfigPayloads.ServerConfigs;
-import com.mejta.mejtacore.ui.ChestMenuScreen;
+import com.mejta.mejtacore.ui.CardScreen;
+import com.mejta.mejtacore.ui.MenuStatus;
 import com.mejta.mejtacore.ui.ScreenOpener;
 import com.mejta.mejtacore.ui.SettingsScreen;
 
@@ -100,11 +101,11 @@ public final class RemoteConfigs {
 	 */
 	static void showResult(Minecraft client, boolean ok, String message) {
 		if (ok) {
-			ChestMenuScreen.showStatus(Component.literal("Saved on the server: " + message).withStyle(ChatFormatting.GREEN));
+			MenuStatus.show(Component.literal("Saved on the server: " + message).withStyle(ChatFormatting.GREEN));
 			return;
 		}
 		Component text = Component.literal("Server refused the change: " + message).withStyle(ChatFormatting.RED);
-		ChestMenuScreen.showStatus(text);
+		MenuStatus.show(text);
 		if (client.player != null) {
 			client.gui.getChat().addClientSystemMessage(Component.literal("[MejtaCore] ").withStyle(ChatFormatting.DARK_GRAY).append(text));
 		}
@@ -134,9 +135,7 @@ public final class RemoteConfigs {
 				MejtaLog.CORE.warn("Server uses config protocol {}, this client {}; remote settings disabled",
 						payload.protocol(), ConfigPayloads.PROTOCOL);
 			}
-			if (Minecraft.getInstance().screen instanceof ChestMenuScreen menu) {
-				menu.refresh();
-			}
+			refreshOpenMenu();
 			return;
 		}
 		synchronized (RemoteConfigs.class) {
@@ -152,7 +151,12 @@ public final class RemoteConfigs {
 			handles.clear();
 			handles.putAll(next);
 		}
-		if (Minecraft.getInstance().screen instanceof ChestMenuScreen menu) {
+		refreshOpenMenu();
+	}
+
+	/** Menus show the server's state (e.g. the main menu's "+ 3 of the server's configs"): redraw the open one. */
+	private static void refreshOpenMenu() {
+		if (Minecraft.getInstance().screen instanceof CardScreen menu) {
 			menu.refresh();
 		}
 	}

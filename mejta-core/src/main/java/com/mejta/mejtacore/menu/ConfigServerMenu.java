@@ -30,7 +30,8 @@ import com.mejta.mejtacore.network.ServerConfigSync;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
 
 /**
- * {@code /mejtaadmin config menu}: the server's settings as a chest menu built with {@link ServerMenu}, so
+ * {@code /mejtaadmin config menu}: the server's settings as a chest menu built with {@link ServerMenu} (always a chest, also for
+ * clients with MejtaCore, which get the settings editor from {@code /mejtaadmin config} instead), so
  * it works for players without any mod. Nothing in it can be moved.
  *
  * <p>Every change goes through {@link ServerConfigSync#applyAsPlayer} like the client's Server Settings:
@@ -94,9 +95,9 @@ public final class ConfigServerMenu {
 		}
 		navigation(menu, session, current, pages,
 				p -> openList(p, session, current - 1), p -> openList(p, session, current + 1), null);
-		return menu.validWhile(p -> MejtaCoreAPI.hasPermission(p, PermissionRegistry.CONFIG_EDIT))
+		return ButtonMenu.open(player, menu.validWhile(p -> MejtaCoreAPI.hasPermission(p, PermissionRegistry.CONFIG_EDIT))
 				.refreshEvery(20)
-				.open(player);
+				.build());
 	}
 
 	private static ItemStack configIcon(ConfigHandle handle) {
@@ -148,9 +149,9 @@ public final class ConfigServerMenu {
 				group == null ? p -> openList(p, session, 0) : p -> openConfig(p, session, configId, 0),
 				group == null ? "All configs" : "All groups of " + shorten(name, 24));
 		// Re-checked on every click and refresh: a revoked permission (or a lost permissions-file grant) closes it.
-		return menu.validWhile(p -> ServerConfigSync.editable(p.permissions(), configId).isPresent())
+		return ButtonMenu.open(player, menu.validWhile(p -> ServerConfigSync.editable(p.permissions(), configId).isPresent())
 				.refreshEvery(10)
-				.open(player);
+				.build());
 	}
 
 	private static boolean reopenSettings(ServerPlayer player, Session session, String configId, String group, int page) {
@@ -179,9 +180,9 @@ public final class ConfigServerMenu {
 		navigation(menu, session, current, pages,
 				p -> openConfig(p, session, configId, current - 1), p -> openConfig(p, session, configId, current + 1),
 				p -> openList(p, session, 0), "All configs");
-		return menu.validWhile(p -> ServerConfigSync.editable(p.permissions(), configId).isPresent())
+		return ButtonMenu.open(player, menu.validWhile(p -> ServerConfigSync.editable(p.permissions(), configId).isPresent())
 				.refreshEvery(20)
-				.open(player);
+				.build());
 	}
 
 	private static ItemStack groupIcon(ConfigHandle handle, String group) {
