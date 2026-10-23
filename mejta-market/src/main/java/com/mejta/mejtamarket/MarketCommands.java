@@ -74,7 +74,14 @@ public final class MarketCommands {
 		return root.requires(MejtaCoreAPI.requires(MarketPermissions.USE))
 				.executes(c -> open(c.getSource().getPlayerOrException(), market, menus))
 				.then(Commands.literal("help").executes(c -> help(c.getSource().getPlayerOrException())))
-				.then(Commands.literal("search").then(Commands.argument("text", StringArgumentType.greedyString())
+				.then(Commands.literal("search").executes(c -> {
+					ServerPlayer p = c.getSource().getPlayerOrException();
+					if (refuse(p, market)) {
+						return 0;
+					}
+					menus.askSearch(p);
+					return 1;
+				}).then(Commands.argument("text", StringArgumentType.greedyString())
 						.executes(c -> {
 							ServerPlayer p = c.getSource().getPlayerOrException();
 							if (refuse(p, market)) {
@@ -84,6 +91,18 @@ public final class MarketCommands {
 							return 1;
 						})))
 				.then(Commands.literal("sell").requires(MejtaCoreAPI.requires(MarketPermissions.SELL))
+						.executes(c -> {
+							ServerPlayer p = c.getSource().getPlayerOrException();
+							if (refuse(p, market)) {
+								return 0;
+							}
+							if (p.getMainHandItem().isEmpty()) {
+								p.sendSystemMessage(Msg.error("Hold the items you want to sell in your main hand."));
+								return 0;
+							}
+							menus.askSellPrice(p);
+							return 1;
+						})
 						.then(Commands.argument("price", StringArgumentType.word())
 								.executes(c -> sell(c.getSource().getPlayerOrException(), market, StringArgumentType.getString(c, "price"), 0))
 								.then(Commands.argument("amount", IntegerArgumentType.integer(1, 10_000))
@@ -144,8 +163,8 @@ public final class MarketCommands {
 		player.sendSystemMessage(Msg.highlight("Auction house"));
 		for (String[] line : new String[][] {
 				{"/ah", "browse what is on sale"},
-				{"/ah search <text>", "find items"},
-				{"/ah sell <price> [amount]", "sell what you hold, for that price in all"},
+				{"/ah search [text]", "find items (without text: type on a sign)"},
+				{"/ah sell [price] [amount]", "sell what you hold, for that price in all (without a price: type it on a sign)"},
 				{"/ah order <amount> <price each> [item]", "ask to buy items (holding one, leave out the item)"},
 				{"/ah orders", "buy orders you can sell into"},
 				{"/ah collect", "your collection box"},

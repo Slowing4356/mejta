@@ -2,14 +2,19 @@ package com.mejta.mejtamarket.bot;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.UUID;
 import java.util.random.RandomGenerator;
 
 import com.google.gson.JsonElement;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -20,19 +25,34 @@ import com.mejta.mejtamarket.data.BuyOrder;
 import com.mejta.mejtamarket.data.Lot;
 import com.mejta.mejtamarket.price.PriceBook;
 import com.mejta.mejtamarket.util.ItemJson;
+import com.mejta.mejtamarket.logic.Search;
 import com.mejta.mejtamarket.util.MarketItems;
+import com.mejta.mejtamarket.util.Msg;
 
 /**
  * The market bot: now and then, while few players are online, it does one small thing that keeps the
  * market moving. It only trades items on the price list, at prices from {@link BotPolicy} around each
  * item's reference price, within its daily budget and stock (see {@link BotLedger}).
+ *
+ * <p><b>Demand.</b> Searches count as interest in the price-list items they match ({@link Demand}). The bot
+ * lists items with more interest more often, and when someone searches for an item nobody sells, it brings
+ * some within about a minute (if it may: same prices, stock, budget and player-count rules as always).
  */
 public final class MarketBot {
 	private static final int TICKS_PER_MINUTE = 1200;
+	/** Searched items the bot will bring soon: item → (ticks left, who searched). */
+	private record Restock(int ticksLeft, UUID player) {
+	}
+
+	/** Most items one search can show interest in. */
+	static final int MAX_MATCHES = 5;
+	/** At most this many restocks wait at once. */
+	static final int MAX_RESTOCKS = 4;
 
 	private final MarketService market;
 	private final RandomGenerator random = RandomGenerator.getDefault();
 	private int ticksLeft = -1;
+	private final Map<String, Restock> restocks = new LinkedHashMap<>();
 
 	public MarketBot(MarketService market) {
 		this.market = market;
@@ -40,6 +60,7 @@ public final class MarketBot {
 
 	/** Called every server tick. */
 	public void tick(MinecraftServer server) {
+		tickRestocks(server);
 		if (ticksLeft < 0) {
 			reschedule();
 		}
@@ -60,6 +81,90 @@ public final class MarketBot {
 	private void reschedule() {
 		ticksLeft = BotPolicy.nextDelayMinutes(random, market.config().get(MarketSettings.BOT_INTERVAL_MIN),
 				market.config().get(MarketSettings.BOT_INTERVAL_MAX)) * TICKS_PER_MINUTE;
+	}
+
+	/**
+	 * A player searched the market. Notes their interest in the price-list items the search matches and,
+	 * if one of them is not on sale at all, plans to bring some soon.
+	 *
+	 * @return the item the bot plans to bring, if any
+	 */
+	public Optional<String> searched(ServerPlayer player, String query) {
+		if (query == null || query.isBlank()) {
+			return Optional.empty();
+		}
+		long now = System.currentTimeMillis();
+		List<String> matches = new ArrayList<>();
+		for (String id : market.priceList().items()) {
+			Optional<Item> item = MarketItems.byId(id);
+			if (item.isPresent() && Search.matches(query, id, new ItemStack(item.get()).getHoverName().getString(), "")) {
+				matches.add(id);
+				if (matches.size() >= MAX_MATCHES) {
+					break;
+				}
+			}
+		}
+		for (String id : matches) {
+			market.demand().searched(player.getUUID(), id, now);
+		}
+		if (!market.config().get(MarketSettings.BOT_ENABLED) || market.closedReason().isPresent() || restocks.size() >= MAX_RESTOCKS) {
+			return Optional.empty();
+		}
+		double chance = BotPolicy.activity(activePlayers(player.level().getServer()), market.config().get(MarketSettings.BOT_FULL_PLAYERS),
+				market.config().get(MarketSettings.BOT_MAX_PLAYERS));
+		if (random.nextDouble() >= chance) {
+			return Optional.empty();
+		}
+		int dailyStock = market.config().get(MarketSettings.BOT_DAILY_STOCK);
+		for (String id : matches) {
+			boolean onSale = market.store().listed().stream().anyMatch(l -> l.itemId().equals(id) && !l.expired(now));
+			if (!onSale && !restocks.containsKey(id) && market.ledger().stockLeft(id, now, dailyStock) > 0) {
+				// 20 to 60 seconds: soon enough to notice, not so fast it looks like a vending machine.
+				restocks.put(id, new Restock(400 + random.nextInt(801), player.getUUID()));
+				return Optional.of(id);
+			}
+		}
+		return Optional.empty();
+	}
+
+	private void tickRestocks(MinecraftServer server) {
+		if (restocks.isEmpty()) {
+			return;
+		}
+		List<Map.Entry<String, Restock>> due = new ArrayList<>();
+		for (Map.Entry<String, Restock> e : List.copyOf(restocks.entrySet())) {
+			Restock r = e.getValue();
+			if (r.ticksLeft() <= 1) {
+				restocks.remove(e.getKey());
+				due.add(e);
+			} else {
+				restocks.put(e.getKey(), new Restock(r.ticksLeft() - 1, r.player()));
+			}
+		}
+		for (Map.Entry<String, Restock> e : due) {
+			if (!market.config().get(MarketSettings.BOT_ENABLED) || market.closedReason().isPresent()) {
+				return;
+			}
+			long now = System.currentTimeMillis();
+			makeRoom(now);
+			Optional<Lot> listed = listLot(e.getKey(), now);
+			ServerPlayer p = server.getPlayerList().getPlayer(e.getValue().player());
+			if (listed.isPresent() && p != null && market.config().get(MarketSettings.ANNOUNCE_SALES)) {
+				p.sendSystemMessage(Msg.highlight(market.botName() + " ").append(Msg.info("just listed " + listed.get().count() + " x "
+						+ listed.get().itemName() + " for " + MarketService.money(listed.get().price()) + ". "))
+						.append(Msg.button("Show", "/ah search " + listed.get().itemName(), ChatFormatting.GREEN)));
+			}
+		}
+	}
+
+	/** At its listing limit, the bot withdraws its listing that players care least about, to list a searched item. */
+	private void makeRoom(long now) {
+		List<Lot> mine = market.store().listedBy(PriceBook.BOT);
+		if (mine.size() < market.config().get(MarketSettings.BOT_MAX_LISTINGS) || mine.isEmpty()) {
+			return;
+		}
+		mine.stream().min(Comparator.comparingDouble((Lot l) -> market.demand().of(l.itemId(), now)).thenComparingLong(Lot::createdMillis))
+				.ifPresent(market::botWithdraw);
 	}
 
 	/** Online players who are visible and not AFK: the ones who could trade. */
@@ -90,7 +195,7 @@ public final class MarketBot {
 					? Optional.of("bought " + cheap.get().count() + " x " + cheap.get().itemId() + " from " + cheap.get().sellerName())
 					: Optional.empty();
 			case FILL_ORDER -> fill(paying.get(), now);
-			case LIST_ITEMS -> list(listable.get(random.nextInt(listable.size())), now);
+			case LIST_ITEMS -> list(pickByDemand(listable, now), now);
 			case PLACE_ORDER -> order(orderable.get(random.nextInt(orderable.size())), now);
 		};
 	}
@@ -211,7 +316,29 @@ public final class MarketBot {
 				: Optional.empty();
 	}
 
+	/** A random item, more likely the more players searched for it lately. */
+	String pickByDemand(List<String> items, long now) {
+		double total = 0;
+		double[] weights = new double[items.size()];
+		for (int i = 0; i < items.size(); i++) {
+			weights[i] = market.demand().weight(items.get(i), now);
+			total += weights[i];
+		}
+		double r = random.nextDouble() * total;
+		for (int i = 0; i < items.size(); i++) {
+			r -= weights[i];
+			if (r < 0) {
+				return items.get(i);
+			}
+		}
+		return items.get(items.size() - 1);
+	}
+
 	private Optional<String> list(String itemId, long now) {
+		return listLot(itemId, now).map(l -> "listed " + l.count() + " x " + itemId + " for " + MarketService.money(l.price()));
+	}
+
+	private Optional<Lot> listLot(String itemId, long now) {
 		Optional<Item> item = MarketItems.byId(itemId);
 		OptionalLong ref = market.reference(itemId);
 		if (item.isEmpty() || ref.isEmpty()) {
@@ -232,7 +359,7 @@ public final class MarketBot {
 		} catch (ArithmeticException e) {
 			return Optional.empty();
 		}
-		return market.botList(item.get(), count, price).map(l -> "listed " + l.count() + " x " + itemId + " for " + MarketService.money(l.price()));
+		return market.botList(item.get(), count, price);
 	}
 
 	private Optional<String> order(String itemId, long now) {

@@ -96,6 +96,11 @@ public class MejtaMarketGameTest {
 		helper.assertValueEqual(market.ledger().paidOut() - paidBefore, 1_000L, Component.literal("bot paid 10.00 from its budget"));
 		helper.assertValueEqual(TestEconomy.BALANCES.get(SELLER), sellerBefore - 10L + 950L, Component.literal("seller paid by the bot"));
 		helper.assertTrue(market.store().lot(cheap.get().id()).isEmpty(), Component.literal("bot's purchase destroyed"));
+
+		// A search for a price-list item nobody sells counts as interest, and the bot plans to bring some.
+		Optional<String> coming = MejtaMarket.bot().searched(buyer, "oak log");
+		helper.assertValueEqual(coming.orElse("none"), "minecraft:oak_log", Component.literal("bot plans to list searched oak logs"));
+		helper.assertTrue(market.demand().of("minecraft:oak_log", System.currentTimeMillis()) > 0.9, Component.literal("search counted as demand"));
 		helper.succeed();
 	}
 }

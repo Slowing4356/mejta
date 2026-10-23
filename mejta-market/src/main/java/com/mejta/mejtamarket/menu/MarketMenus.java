@@ -22,6 +22,7 @@ import com.mejta.mejtacore.api.menu.ServerMenus;
 import com.mejta.mejtamarket.MarketPermissions;
 import com.mejta.mejtamarket.MarketService;
 import com.mejta.mejtamarket.MarketSettings;
+import com.mejta.mejtamarket.bot.MarketBot;
 import com.mejta.mejtamarket.data.BuyOrder;
 import com.mejta.mejtamarket.data.Lot;
 import com.mejta.mejtamarket.data.Payout;
@@ -64,6 +65,8 @@ public final class MarketMenus {
 		int page;
 		int orderPage;
 		boolean ownOrders;
+		/** Name of the item the bot is bringing for the current search, or empty. */
+		String coming = "";
 	}
 
 	static final int PER_PAGE = 45;
@@ -80,9 +83,11 @@ public final class MarketMenus {
 	private static final Map<UUID, View> VIEWS = new ConcurrentHashMap<>();
 
 	private final MarketService market;
+	private final MarketBot bot;
 
-	public MarketMenus(MarketService market) {
+	public MarketMenus(MarketService market, MarketBot bot) {
 		this.market = market;
+		this.bot = bot;
 	}
 
 	public View view(ServerPlayer player) {
@@ -107,7 +112,23 @@ public final class MarketMenus {
 		View v = view(player);
 		v.search = Search.clean(query);
 		v.page = 0;
+		v.coming = bot.searched(player, v.search).flatMap(MarketItems::byId)
+				.map(item -> new ItemStack(item).getHoverName().getString()).orElse("");
 		browse(player);
+	}
+
+	/** Asks for a search on a sign (works on every client), then shows the results. */
+	public void askSearch(ServerPlayer player) {
+		SignInput.open(player, List.of("^^^^^^^^^^^^^^^", "Type what you", "look for above"), typed -> {
+			if (!mayUse(player)) {
+				return;
+			}
+			if (typed.isEmpty()) {
+				browse(player);
+			} else {
+				search(player, typed);
+			}
+		});
 	}
 
 	List<Lot> shown(View v, long now) {
@@ -163,18 +184,30 @@ public final class MarketMenus {
 					browse(click.player());
 				});
 		menu.button(SEARCH, () -> v.search.isEmpty()
-				? MenuIcons.of(Items.OAK_SIGN, Component.literal("Search").withStyle(ChatFormatting.AQUA), MenuIcons.line("Click, then type what you look for"))
+				? MenuIcons.of(Items.OAK_SIGN, Component.literal("Search").withStyle(ChatFormatting.AQUA), MenuIcons.line("Click and type on the sign"))
 				: MenuIcons.of(Items.OAK_SIGN, Component.literal("Search: " + v.search).withStyle(ChatFormatting.AQUA),
-						MenuIcons.line(lots.size() + " match(es)"), MenuIcons.line("Click to clear")), click -> {
-					if (v.search.isEmpty()) {
-						click.menu().close();
-						click.player().sendSystemMessage(Msg.highlight("Search the market: ").append(Msg.suggest("type here", "/ah search ", ChatFormatting.AQUA)));
-					} else {
+						MenuIcons.line(lots.size() + " match(es)"), MenuIcons.line("Left-click: new search"), MenuIcons.line("Right-click: clear")),
+				click -> {
+					if (!v.search.isEmpty() && click.type().isRight()) {
 						v.search = "";
+						v.coming = "";
 						v.page = 0;
 						browse(click.player());
+					} else {
+						askSearch(click.player());
 					}
 				});
+		if (lots.isEmpty()) {
+			List<Component> lore = new ArrayList<>();
+			if (!v.search.isEmpty()) {
+				lore.add(MenuIcons.line("Nothing on sale matches \"" + v.search + "\""));
+			}
+			if (!v.coming.isEmpty()) {
+				lore.add(Component.literal(market.botName() + " will bring some " + v.coming + " soon").withStyle(ChatFormatting.LIGHT_PURPLE));
+			}
+			lore.add(MenuIcons.line("Or place a buy order: /ah order <amount> <price each> <item>"));
+			menu.icon(22, () -> MenuIcons.of(Items.BARRIER, Component.literal("Nothing here yet").withStyle(ChatFormatting.GRAY), lore));
+		}
 		menu.button(SORT, () -> MenuIcons.of(Items.HOPPER, Component.literal("Sort: " + v.sort.title).withStyle(ChatFormatting.AQUA),
 				MenuIcons.line("Click to change")), click -> {
 					v.sort = v.sort.next();
@@ -195,14 +228,53 @@ public final class MarketMenus {
 					MenuIcons.line(market.store().openOrders().size() + " open"), MenuIcons.line("Sell to players who want your items")),
 					click -> orders(click.player()));
 		}
-		menu.icon(HELP, () -> MenuIcons.of(Items.BOOK, Component.literal("How to sell").withStyle(ChatFormatting.GOLD),
-				MenuIcons.line("Hold the item, then /ah sell <price> [amount]"),
-				MenuIcons.line("Listing fee " + market.config().get(MarketSettings.LISTING_FEE) + "%, sales tax "
-						+ market.config().get(MarketSettings.SALES_TAX) + "%"),
-				MenuIcons.line("Buy orders: /ah order <amount> <price each> [item]"),
-				MenuIcons.line("Market prices: /ah price [item]")));
+		menu.button(HELP, () -> sellIcon(player), click -> {
+			if (MejtaCoreAPI.hasPermission(click.player(), MarketPermissions.SELL) && !click.player().getMainHandItem().isEmpty()) {
+				askSellPrice(click.player());
+			}
+		});
 		menu.validWhile(MarketMenus::mayUse);
 		menu.open(player);
+	}
+
+	private ItemStack sellIcon(ServerPlayer player) {
+		ItemStack held = player.getMainHandItem();
+		List<Component> lore = new ArrayList<>();
+		if (held.isEmpty()) {
+			lore.add(MenuIcons.line("Hold an item in your main hand,"));
+			lore.add(MenuIcons.line("then click here to set its price"));
+		} else {
+			market.reference(MarketItems.id(held)).ifPresent(ref -> lore.add(MenuIcons.line("Market price: " + money(ref) + " each, "
+					+ money(ref * held.getCount()) + " for " + held.getCount())));
+			lore.add(Component.literal("Click: type the price for all " + held.getCount()).withStyle(ChatFormatting.GREEN));
+		}
+		lore.add(MenuIcons.line("Listing fee " + market.config().get(MarketSettings.LISTING_FEE) + "%, sales tax "
+				+ market.config().get(MarketSettings.SALES_TAX) + "%"));
+		lore.add(MenuIcons.line("Or: /ah sell <price> [amount]"));
+		lore.add(MenuIcons.line("Buy orders: /ah order <amount> <price each> [item]"));
+		return held.isEmpty() ? MenuIcons.of(Items.BOOK, Component.literal("Sell an item").withStyle(ChatFormatting.GOLD), lore)
+				: MenuIcons.of(held.copyWithCount(1), Component.literal("Sell " + held.getCount() + " x " + held.getHoverName().getString())
+						.withStyle(ChatFormatting.GOLD), lore);
+	}
+
+	/** Asks for the price of the held stack on a sign, then lists it. */
+	public void askSellPrice(ServerPlayer player) {
+		ItemStack held = player.getMainHandItem();
+		OptionalLong ref = market.reference(MarketItems.id(held));
+		String hint = ref.isPresent() ? "market " + money(ref.getAsLong() * held.getCount()) : "e.g. 50 or 2k";
+		SignInput.open(player, List.of("^ price for all ^", held.getCount() + " x " + held.getHoverName().getString(), hint), typed -> {
+			if (typed.isEmpty() || !MejtaCoreAPI.hasPermission(player, MarketPermissions.SELL)) {
+				browse(player);
+				return;
+			}
+			OptionalLong price = MejtaCoreAPI.economy().parse(typed);
+			if (price.isEmpty()) {
+				player.sendSystemMessage(Msg.error("\"" + typed + "\" is not a price. Examples: 50, 12.5, 2k"));
+			} else {
+				market.list(player, price.getAsLong(), 0);
+			}
+			browse(player);
+		});
 	}
 
 	private ItemStack lotIcon(ServerPlayer viewer, Lot lot, boolean staff) {

@@ -31,6 +31,7 @@ import com.mejta.mejtacore.api.economy.EconomyResult;
 import com.mejta.mejtacore.api.economy.EconomyService;
 import com.mejta.mejtacore.api.storage.RecordLog;
 import com.mejta.mejtamarket.bot.BotLedger;
+import com.mejta.mejtamarket.bot.Demand;
 import com.mejta.mejtamarket.data.BuyOrder;
 import com.mejta.mejtamarket.data.Lot;
 import com.mejta.mejtamarket.data.MarketStore;
@@ -76,6 +77,7 @@ public final class MarketService {
 	static final long HOUR = 3_600_000L;
 	private static final String PRICES_KEY = "prices";
 	private static final String BOT_KEY = "bot";
+	private static final String DEMAND_KEY = "demand";
 
 	private final ConfigHandle config;
 	private final MarketStore store;
@@ -83,6 +85,7 @@ public final class MarketService {
 	private PriceBook prices = new PriceBook();
 	private PriceList priceList = PriceList.withDefaults();
 	private BotLedger ledger = new BotLedger();
+	private Demand demand = new Demand();
 	private PlayerSaver saver = SAVE_PLAYER;
 	private volatile MinecraftServer server;
 
@@ -103,6 +106,7 @@ public final class MarketService {
 		}
 		prices = store.read(PRICES_KEY).map(PriceBook::fromJson).orElseGet(PriceBook::new);
 		ledger = store.read(BOT_KEY).map(BotLedger::fromJson).orElseGet(BotLedger::new);
+		demand = store.read(DEMAND_KEY).map(Demand::fromJson).orElseGet(Demand::new);
 	}
 
 	public void serverStopped() {
@@ -115,6 +119,8 @@ public final class MarketService {
 		prices.prune(System.currentTimeMillis(), config.get(MarketSettings.PRICE_HISTORY_DAYS));
 		store.writeLater(PRICES_KEY, prices.toJson());
 		store.writeLater(BOT_KEY, ledger.toJson());
+		demand.prune(System.currentTimeMillis());
+		store.writeLater(DEMAND_KEY, demand.toJson());
 	}
 
 	/** For game tests: fake players cannot be saved by the game. */
@@ -140,6 +146,11 @@ public final class MarketService {
 
 	public BotLedger ledger() {
 		return ledger;
+	}
+
+	/** What players searched for recently (the bot lists those items more often). */
+	public Demand demand() {
+		return demand;
 	}
 
 	public ConfigHandle config() {
@@ -457,6 +468,11 @@ public final class MarketService {
 			collect(player, lot.id(), true);
 		}
 		return true;
+	}
+
+	/** The bot takes one of its own listings off sale (to make room for something players look for). */
+	public boolean botWithdraw(Lot lot) {
+		return lot.seller().equals(PriceBook.BOT) && lot.state() == Lot.State.LISTED && returnLot(lot, "Withdrawn");
 	}
 
 	/** Takes a listing off sale; a player's items go to their collection box, the bot's are destroyed. */
