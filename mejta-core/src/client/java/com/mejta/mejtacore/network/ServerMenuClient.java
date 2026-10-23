@@ -17,7 +17,7 @@ import com.mejta.mejtacore.ui.ServerMenuScreen;
 
 /**
  * Client side of server menus shown as screens: tells the server whether this player wants them
- * ({@code server_menu_screens}), opens and redraws {@link ServerMenuScreen}s and sends clicks back.
+ * ({@code menus_as_screens}, off by default), opens and redraws {@link ServerMenuScreen}s and sends clicks back.
  */
 public final class ServerMenuClient {
 	private static boolean lastSent;

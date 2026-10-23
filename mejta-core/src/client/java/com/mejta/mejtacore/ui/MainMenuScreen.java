@@ -123,15 +123,15 @@ public class MainMenuScreen extends CardScreen {
 				settingsLines(), click -> minecraft.setScreen(new SettingsScreen(this, null, true)), false));
 		if (RemoteConfigs.supported()) {
 			items.add(new Card("local_settings", new ItemStack(Items.REPEATER), Component.literal("This Computer").withStyle(ChatFormatting.GOLD),
-					List.of(gray("Your own MejtaCore settings: sounds,"), gray("server menus as screens, tooltips")),
+					List.of(gray("Your own MejtaCore settings: sounds,"), gray("menus as screens, tooltips")),
 					click -> minecraft.setScreen(new SettingsScreen(this, MejtaCore.MOD_ID, false)), false));
 		}
 		boolean screens = MejtaCore.coreConfig().get(CoreSettings.SERVER_MENU_SCREENS);
 		items.add(new Card("server_menu_style", new ItemStack(screens ? Items.ITEM_FRAME : Items.CHEST),
 				Component.literal("Server Menus: " + (screens ? "Screens" : "Chests")).withStyle(ChatFormatting.GOLD),
-				List.of(gray(screens ? "Homes, warps and other addon menus open" : "Addon menus open as chests,"),
-						gray(screens ? "as screens like this one" : "like for players without MejtaCore"),
-						dark("Click to switch")),
+				List.of(gray(screens ? "Homes, warps and other addon menus open" : "Homes, warps and other addon menus open"),
+						gray(screens ? "as screens like this one" : "as chests, like for everyone else"),
+						dark(screens ? "Click for chests (the default)" : "Click to try screens instead")),
 				click -> {
 					MejtaCore.coreConfig().set(CoreSettings.SERVER_MENU_SCREENS, !screens);
 					refresh();

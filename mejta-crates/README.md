@@ -9,18 +9,18 @@ MejtaCrates (mod ID `mejtacrates`) adds **crates** opened with **keys** to a ser
 - **Keys and rewards can never be duplicated.** See [How duplication is prevented](#how-duplication-is-prevented).
 - Every key given or taken, and (by default) every opening, is recorded in MejtaCore's audit log.
 
-It is server-side only: menus are MejtaCore screens for players with MejtaCore on their client and chests for everyone else, so players need no mod.
+It is server-side only: menus are chests, so players need no mod (players with MejtaCore on their client can choose screens).
 
 | | |
 |---|---|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
-| Requires | MejtaCore 1.8.0 or newer, below 2.0.0 (API version 6) |
+| Requires | MejtaCore 1.9.0 or newer, below 2.0.0 (API version 7) |
 | Optional | An economy addon such as MejtaEconomy, for money rewards. Without one, money rewards are simply not drawn. |
 
 ## Installing
 
-1. Put `mejtacore-1.8.0.jar`, `mejtacrates-1.0.0.jar` and Fabric API in the server's `mods/` folder (and `mejtaeconomy-1.0.0.jar` for money rewards).
+1. Put `mejtacore-1.9.0.jar`, `mejtacrates-1.1.0.jar` and Fabric API in the server's `mods/` folder (and `mejtaeconomy-1.0.0.jar` for money rewards).
 2. Start the server. The settings file `config/mejta/mejtacrates.json` is created on first start; every setting can also be changed in game in MejtaCore's settings editor (`/mejta config mejtacrates`, or `/mejtaadmin config` without client mods).
 3. On the very first start an **example crate** (`example`) is created to show how crates look. Look at it with `/crates admin info example`, try it with `/crates give <you> example 3`, and delete it with `/crates admin delete example confirm`.
 

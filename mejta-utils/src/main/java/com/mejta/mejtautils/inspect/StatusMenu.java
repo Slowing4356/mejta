@@ -70,6 +70,8 @@ public final class StatusMenu {
 				.button(16, () -> MenuIcons.of(Items.CHEST, Component.literal("Inventory").withStyle(ChatFormatting.YELLOW),
 								MenuIcons.line("Click: /invsee")),
 						click -> Inspect.openInventory(viewer, target, false))
+				.closeButton(22)
+				.fillEmpty()
 				.refreshEvery(MejtaUtils.config().get(UtilsSettings.INVSEE_REFRESH_TICKS))
 				.validWhile(p -> allowed(p, target))
 				.open(viewer);
@@ -100,14 +102,19 @@ public final class StatusMenu {
 	}
 
 	private static void chooseGameMode(ServerPlayer viewer, ServerPlayer target) {
-		ServerMenu.Builder menu = ServerMenu.builder(Component.literal("Game mode of " + target.getGameProfile().name()), 1);
+		ServerMenu.Builder menu = ServerMenu.builder(Component.literal("Game mode of " + target.getGameProfile().name()), 2);
 		for (int i = 0; i < MODES.length; i++) {
 			GameType mode = MODES[i];
-			menu.button(1 + i * 2, () -> MenuIcons.of(iconOf(mode),
-					Component.literal(mode.getName()).withStyle(mode == PlayerInfo.gameMode(target) ? ChatFormatting.GREEN : ChatFormatting.WHITE)),
-					click -> confirmGameMode(viewer, target, mode));
+			menu.button(1 + i * 2, () -> {
+				boolean current = mode == PlayerInfo.gameMode(target);
+				return MenuIcons.of(iconOf(mode), Component.literal(mode.getName()).withStyle(current ? ChatFormatting.GREEN : ChatFormatting.WHITE),
+						MenuIcons.line(current ? "Current game mode" : "Click: switch to " + mode.getName()));
+			}, click -> confirmGameMode(viewer, target, mode));
 		}
-		menu.validWhile(p -> allowed(p, target)).open(viewer);
+		menu.backButton(9, "status", p -> show(viewer, target))
+				.closeButton(17)
+				.fillEmpty()
+				.validWhile(p -> allowed(p, target)).open(viewer);
 	}
 
 	private static net.minecraft.world.item.Item iconOf(GameType mode) {

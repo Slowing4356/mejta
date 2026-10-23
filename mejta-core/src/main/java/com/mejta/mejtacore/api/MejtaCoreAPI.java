@@ -71,13 +71,18 @@ import com.mejta.mejtacore.storage.RecordLogs;
  * <h2>API version 6 (MejtaCore 1.8.0)</h2>
  * One shared economy ({@link #economy()}), like Vault: an economy addon provides the accounts, and
  * shops, crates and auction houses use them without depending on it.
+ *
+ * <h2>API version 7 (MejtaCore 1.9.0)</h2>
+ * A shared look for chest menus: {@code PagedMenu} lists any number of entries over pages with a Back,
+ * page, info and Close bar; {@code ServerMenu.Builder} gains {@code backButton}, {@code closeButton} and
+ * {@code fillEmpty}; {@code MenuIcons} gains {@code filler}, {@code back}, {@code close} and {@code page}.
  */
 public final class MejtaCoreAPI {
 	/**
 	 * Version of the public API contract. Incremented when the API changes in a way addons may need
 	 * to check for. Addons should prefer a {@code fabric.mod.json} version range on {@code mejtacore}.
 	 */
-	public static final int API_VERSION = 6;
+	public static final int API_VERSION = 7;
 
 	private MejtaCoreAPI() {
 	}

@@ -27,7 +27,7 @@ import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.audit.AuditEntry;
 import com.mejta.mejtacore.api.audit.AuditOutcome;
 import com.mejta.mejtacore.api.menu.MenuIcons;
-import com.mejta.mejtacore.api.menu.ServerMenu;
+import com.mejta.mejtacore.api.menu.PagedMenu;
 import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtaqol.MejtaQoL;
 import com.mejta.mejtaqol.QolPermissions;
@@ -43,7 +43,6 @@ import com.mejta.mejtaqol.util.Names;
 /** {@code /warp}, {@code /warps}, {@code /setwarp} and {@code /delwarp}. The warps live in the data store under {@code warps}. */
 public final class WarpCommands {
 	private static final String KEY = "warps";
-	static final int MAX_SHOWN = 45;
 
 	private static volatile WarpBook book = new WarpBook();
 
@@ -157,25 +156,21 @@ public final class WarpCommands {
 	}
 
 	private static void openMenu(ServerPlayer player, List<WarpBook.Warp> warps) {
-		int shown = Math.min(warps.size(), MAX_SHOWN);
-		int rows = Math.max(1, (shown + 8) / 9) + (warps.size() > MAX_SHOWN ? 1 : 0);
-		ServerMenu.Builder menu = ServerMenu.builder(Component.literal("Warps (" + warps.size() + ")"), rows);
-		for (int i = 0; i < shown; i++) {
-			WarpBook.Warp w = warps.get(i);
-			menu.button(i, () -> MenuIcons.of(icon(w.icon()), Component.literal(w.name()).withStyle(ChatFormatting.AQUA),
-					MenuIcons.line(w.location().describe()),
-					MenuIcons.line("Click: teleport")),
-					click -> {
-						click.menu().close();
-						warp(click.player(), w.name());
-					});
-		}
-		if (warps.size() > MAX_SHOWN) {
-			menu.icon((rows - 1) * 9 + 4, () -> MenuIcons.of(Items.PAPER, Component.literal((warps.size() - MAX_SHOWN) + " more")
-					.withStyle(ChatFormatting.GOLD), MenuIcons.line("Use /warp <name>")));
-		}
-		menu.validWhile(p -> Cmds.available(Features.WARP).test(p.createCommandSourceStack()));
-		menu.open(player);
+		PagedMenu.<WarpBook.Warp>builder(Component.literal("Warps (" + warps.size() + ")"), () -> new ArrayList<>(book.all().values()))
+				.rows(Math.max(2, Math.min(6, (warps.size() + 8) / 9 + 1)))
+				.entry(w -> MenuIcons.of(icon(w.icon()), Component.literal(w.name()).withStyle(ChatFormatting.AQUA),
+						MenuIcons.line(w.location().describe()),
+						Component.empty(),
+						Component.literal("Click: teleport").withStyle(ChatFormatting.YELLOW)),
+						(w, click) -> {
+							click.menu().close();
+							warp(click.player(), w.name());
+						})
+				.empty(() -> MenuIcons.of(Items.ENDER_PEARL, Component.literal("No warps").withStyle(ChatFormatting.GRAY)))
+				.info(() -> MenuIcons.of(Items.BOOK, Component.literal("Warps").withStyle(ChatFormatting.GOLD),
+						MenuIcons.line("Click a warp to go there"), MenuIcons.line("Or use /warp <name>")))
+				.validWhile(p -> Cmds.available(Features.WARP).test(p.createCommandSourceStack()))
+				.open(player);
 	}
 
 	static Item icon(String id) {

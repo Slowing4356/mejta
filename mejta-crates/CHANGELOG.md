@@ -1,5 +1,11 @@
 # MejtaCrates changelog
 
+## 1.1.0
+
+Requires MejtaCore 1.9.0 or newer, below 2.0.0 (API version 7).
+
+- **Crate menus** use MejtaCore's shared look: the crate list gets a bottom bar with an info icon and Close, and the reward preview gets the standard Back, page and Close buttons; gray panes fill the empty slots.
+
 ## 1.0.0
 
 First release. Requires MejtaCore 1.8.0 or newer, below 2.0.0 (API version 6).

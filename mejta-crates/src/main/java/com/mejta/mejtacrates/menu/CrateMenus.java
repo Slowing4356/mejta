@@ -39,12 +39,16 @@ public final class CrateMenus {
 		CrateService service = MejtaCrates.service();
 		HolderLookup.Provider registries = player.level().getServer().registryAccess();
 		List<Crate> crates = service.store().crates();
-		int rows = Math.max(1, Math.min(6, (crates.size() + 8) / 9));
+		int rows = Math.max(2, Math.min(6, (crates.size() + 8) / 9 + 1));
+		int bar = (rows - 1) * 9;
 		ServerMenu.Builder menu = ServerMenu.builder(Component.literal("Crates"), rows);
 		if (crates.isEmpty()) {
 			menu.icon(4, () -> MenuIcons.of(Items.BARRIER, Component.literal("There are no crates yet").withStyle(ChatFormatting.GRAY)));
 		}
-		for (int i = 0; i < crates.size() && i < rows * 9; i++) {
+		menu.icon(bar + 4, () -> MenuIcons.of(Items.BOOK, Component.literal("Crates").withStyle(ChatFormatting.GOLD),
+				MenuIcons.line("Left-click a crate to open it with a key"), MenuIcons.line("Right-click to see what it can give")));
+		menu.closeButton(bar + 8);
+		for (int i = 0; i < crates.size() && i < bar; i++) {
 			Crate crate = crates.get(i);
 			menu.button(i, () -> {
 				int keys = service.store().player(player.getUUID(), player.getGameProfile().name()).keys(crate.id());
@@ -74,7 +78,7 @@ public final class CrateMenus {
 				}
 			});
 		}
-		menu.refreshEvery(20).validWhile(p -> MejtaCoreAPI.hasPermission(p, CratePermissions.USE)).open(player);
+		menu.fillEmpty().refreshEvery(20).validWhile(p -> MejtaCoreAPI.hasPermission(p, CratePermissions.USE)).open(player);
 	}
 
 	/** A crate's rewards with their chances; admins remove a reward with shift-right-click. */
@@ -115,10 +119,10 @@ public final class CrateMenus {
 			menu.icon(4, () -> MenuIcons.of(Items.BARRIER, Component.literal("This crate has no rewards yet").withStyle(ChatFormatting.GRAY)));
 		}
 		if (backToList) {
-			menu.button(bar, () -> MenuIcons.of(Items.ARROW, Component.literal("Back").withStyle(ChatFormatting.YELLOW)), click -> list(click.player()));
+			menu.backButton(bar, "crates", CrateMenus::list);
 		}
 		if (current > 0) {
-			menu.button(bar + 3, () -> MenuIcons.of(Items.SPECTRAL_ARROW, Component.literal("Previous page")),
+			menu.button(bar + 3, () -> MenuIcons.page(false, current, pages),
 					click -> preview(click.player(), crate, current - 1, backToList));
 		}
 		menu.button(bar + 4, () -> {
@@ -137,10 +141,10 @@ public final class CrateMenus {
 			}
 		});
 		if (current < pages - 1) {
-			menu.button(bar + 5, () -> MenuIcons.of(Items.SPECTRAL_ARROW, Component.literal("Next page")),
+			menu.button(bar + 5, () -> MenuIcons.page(true, current + 2, pages),
 					click -> preview(click.player(), crate, current + 1, backToList));
 		}
-		menu.refreshEvery(20).validWhile(p -> MejtaCoreAPI.hasPermission(p, CratePermissions.USE)).open(player);
+		menu.closeButton(bar + 8).fillEmpty().refreshEvery(20).validWhile(p -> MejtaCoreAPI.hasPermission(p, CratePermissions.USE)).open(player);
 	}
 
 	private static void confirmRemove(ServerPlayer player, String crateId, int index, Reward reward) {

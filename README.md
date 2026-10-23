@@ -4,17 +4,17 @@ Server-side Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.19.5+, Fa
 
 | Mod | Version | What it does |
 |---|---|---|
-| [MejtaCore](mejta-core/README.md) | 1.8.0 | Settings with in-game editing (a full settings editor with MejtaCore on the client, a chest menu for vanilla clients), permissions, notifications, secrets, data store, audit log, server menus (screens for players with MejtaCore, chests for everyone else), scheduler, metrics, shared AFK and combat status, and the shared economy API. Required by every addon. |
+| [MejtaCore](mejta-core/README.md) | 1.9.0 | Settings with in-game editing (a full settings editor with MejtaCore on the client, a chest menu for vanilla clients), permissions, notifications, secrets, data store, audit log, server menus (chests with a shared look for everyone, screens on request for players with MejtaCore), scheduler, metrics, shared AFK and combat status, and the shared economy API. Required by every addon. |
 | [MejtaAC](mejta-ac/README.md) | 1.1.1 | Anti-cheat with latency-compensated movement, combat, vehicle and interaction checks. Starts in `DRY_RUN`. |
-| [MejtaUtils](mejta-utils/README.md) | 1.0.2 | Staff tools: `/invsee`, `/ecsee`, `/status`, `/vanish`, `/freeze`, `/staffmode`. |
+| [MejtaUtils](mejta-utils/README.md) | 1.1.0 | Staff tools: `/invsee`, `/ecsee`, `/status`, `/vanish`, `/freeze`, `/staffmode`. |
 | [MejtaDiscord](mejta-discord/README.md) | 1.0.0 | Anti-cheat alerts and chat to Discord webhooks; (experimental) Discord chat to Minecraft. |
 | [MejtaPerf](mejta-perf/README.md) | 1.0.0 | TPS/MSPT monitor, lag alerts, a sampling profiler and reports (`/mperf`). |
 | [MejtaCorpse](mejta-corpse/README.md) | 1.2.0 | Corpses that keep a dead player's items in a chest menu, wearing their skin and armour, with backups of the last deaths that staff can restore. Built so items can never be duplicated. |
-| [MejtaQoL](mejta-qol/README.md) | 1.1.1 | Player commands: `/tpa`, homes, warps, `/spawn`, `/back`, `/rtp`, `/ec`, portable workstations, `/trash`, AFK and `/r`. Every feature can be switched off. |
+| [MejtaQoL](mejta-qol/README.md) | 1.2.0 | Player commands: `/tpa`, homes, warps, `/spawn`, `/back`, `/rtp`, `/ec`, portable workstations, `/trash`, AFK and `/r`. Every feature can be switched off. |
 | [MejtaEconomy](mejta-economy/README.md) | 1.0.0 | Player balances, `/pay`, `/baltop`, staff commands and a transaction log. Provides MejtaCore's economy, which shops, crates and auction houses use. |
 | [MejtaMarket](mejta-market/README.md) | 1.1.0 | Auction house (`/ah`) with buy orders, a collection box, fees and a market bot that keeps trading going on quiet servers. Uses MejtaCore's economy (install MejtaEconomy). Built so items can never be duplicated. |
-| [MejtaCrates](mejta-crates/README.md) | 1.0.0 | Crates opened with keys: weighted rewards of items, commands and money, a spinning opening animation and a preview. Staff and the console (donation stores) give keys, also to offline players. Built so keys and rewards can never be duplicated. |
-| [MejtaSMP](mejta-smp/README.md) | 1.0.1 | SMP features: AFK protection, sidebar and leaderboards, item and XP clumping with piles bigger than a stack, infinite trades, one-player sleep, Nether/End toggles, locator bar off and an account limit. |
+| [MejtaCrates](mejta-crates/README.md) | 1.1.0 | Crates opened with keys: weighted rewards of items, commands and money, a spinning opening animation and a preview. Staff and the console (donation stores) give keys, also to offline players. Built so keys and rewards can never be duplicated. |
+| [MejtaSMP](mejta-smp/README.md) | 1.1.0 | SMP features: AFK protection, sidebar and leaderboards, item and XP clumping with piles bigger than a stack, infinite trades, one-player sleep, Nether/End toggles, locator bar off and an account limit. |
 
 Download the jars from [Releases](https://github.com/Slowing4356/mejta/releases). Put MejtaCore, Fabric API and the addons you want in the server's `mods/` folder; settings appear in `config/mejta/`. Each mod's README lists its commands, permissions and settings, and its `CHANGELOG.md` what changed.
 
