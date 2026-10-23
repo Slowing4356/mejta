@@ -94,16 +94,19 @@ public class MejtaCratesGameTest {
 		}
 		helper.assertValueEqual(key.getCount(), 1, Component.literal("one key item at the join"));
 		ItemStack copy = key.copy();
+		// The prize lands in the emptied hand slot, so the inventory is cleared to count it.
+		inv.clearContent();
 		player.setItemInHand(InteractionHand.MAIN_HAND, key);
 		helper.assertValueEqual(service.openPhysical(player, InteractionHand.MAIN_HAND, false), CrateService.OpenOutcome.STARTED,
 				Component.literal("physical key opens"));
-		helper.assertTrue(player.getMainHandItem().isEmpty(), Component.literal("physical key used"));
-		helper.assertValueEqual(inv.countItem(Items.DIAMOND), 9, Component.literal("physical key's reward"));
+		helper.assertTrue(!KeyItems.isKey(player.getMainHandItem()), Component.literal("physical key used"));
+		helper.assertValueEqual(inv.countItem(Items.DIAMOND), 3, Component.literal("physical key's reward"));
+		inv.clearContent();
 		player.setItemInHand(InteractionHand.MAIN_HAND, copy);
 		helper.assertValueEqual(service.openPhysical(player, InteractionHand.MAIN_HAND, false), CrateService.OpenOutcome.COPIED_KEY,
 				Component.literal("a copied key is refused"));
 		helper.assertTrue(player.getMainHandItem().isEmpty(), Component.literal("the copy is taken away"));
-		helper.assertValueEqual(inv.countItem(Items.DIAMOND), 9, Component.literal("a copied key gives nothing"));
+		helper.assertValueEqual(inv.countItem(Items.DIAMOND), 0, Component.literal("a copied key gives nothing"));
 
 		// Keys given to a name that never joined move to the player at the join, once.
 		helper.assertTrue(service.giveByName(actor, NAME, crate, 5, false), Component.literal("keys given by name"));
