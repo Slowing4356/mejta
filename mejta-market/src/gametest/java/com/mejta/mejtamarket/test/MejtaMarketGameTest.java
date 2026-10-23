@@ -109,12 +109,12 @@ public class MejtaMarketGameTest {
 		// Sign input: the typed first line comes back once, trimmed; the world is left alone.
 		String[] typed = {null};
 		BlockPos signPos = SignInput.open(buyer, List.of("a", "b", "c"), t -> typed[0] = t);
-		BlockState before = level.getBlockState(signPos);
+		BlockState blockBefore = level.getBlockState(signPos);
 		helper.assertTrue(SignInput.capture(buyer, signPos, new String[] {"  diamond ", "", "", ""}), Component.literal("sign answer caught"));
 		helper.assertTrue(!SignInput.capture(buyer, signPos, new String[] {"again", "", "", ""}), Component.literal("sign answer caught once"));
 		helper.succeedWhen(() -> {
 			helper.assertValueEqual(typed[0], "diamond", Component.literal("typed text handed back"));
-			helper.assertValueEqual(level.getBlockState(signPos), before, Component.literal("real block unchanged"));
+			helper.assertValueEqual(level.getBlockState(signPos), blockBefore, Component.literal("real block unchanged"));
 		});
 	}
 }
