@@ -12,6 +12,7 @@ Server-side Fabric mods for Minecraft Java **26.1.2** (Fabric Loader 0.19.5+, Fa
 | [MejtaCorpse](mejta-corpse/README.md) | 1.2.0 | Corpses that keep a dead player's items in a chest menu, wearing their skin and armour, with backups of the last deaths that staff can restore. Built so items can never be duplicated. |
 | [MejtaQoL](mejta-qol/README.md) | 1.1.1 | Player commands: `/tpa`, homes, warps, `/spawn`, `/back`, `/rtp`, `/ec`, portable workstations, `/trash`, AFK and `/r`. Every feature can be switched off. |
 | [MejtaEconomy](mejta-economy/README.md) | 1.0.0 | Player balances, `/pay`, `/baltop`, staff commands and a transaction log. Provides MejtaCore's economy, which shops, crates and auction houses use. |
+| [MejtaMarket](mejta-market/README.md) | 1.0.0 | Auction house (`/ah`) with buy orders, a collection box, fees and a market bot that keeps trading going on quiet servers. Uses MejtaCore's economy (install MejtaEconomy). Built so items can never be duplicated. |
 | [MejtaCrates](mejta-crates/README.md) | 1.0.0 | Crates opened with keys: weighted rewards of items, commands and money, a spinning opening animation and a preview. Staff and the console (donation stores) give keys, also to offline players. Built so keys and rewards can never be duplicated. |
 | [MejtaSMP](mejta-smp/README.md) | 1.0.1 | SMP features: AFK protection, sidebar and leaderboards, item and XP clumping with piles bigger than a stack, infinite trades, one-player sleep, Nether/End toggles, locator bar off and an account limit. |
 
@@ -28,7 +29,7 @@ cd ../mejta-ac && ./gradlew build   # jar in build/libs/
 
 ## CI and releases
 
-- **CI** (`.github/workflows/ci.yml`) builds every project and runs the unit tests on pushes to `main` and on pull requests: MejtaCore first, then the addons side by side, each in its own job. MejtaQoL's, MejtaCorpse's, MejtaSMP's, MejtaEconomy's and MejtaCrates' headless server game tests run there too.
+- **CI** (`.github/workflows/ci.yml`) builds every project and runs the unit tests on pushes to `main` and on pull requests: MejtaCore first, then the addons side by side, each in its own job. MejtaQoL's, MejtaCorpse's, MejtaSMP's, MejtaEconomy's, MejtaMarket's and MejtaCrates' headless server game tests run there too.
 - **Client game tests** (a real client joins a dedicated server under a virtual display) run on demand, in parallel per project: **Actions > CI > Run workflow**, then pick one project (or `all`). Run them for the projects whose features changed, in the pull request that changes them; a release does not repeat them for everything.
 - **Releases** (`.github/workflows/release.yml`): pushing a tag such as `v2026.10.1` builds and tests the mods again and publishes a GitHub release with their jars, `SHA256SUMS.txt` and [`RELEASE-NOTES.md`](RELEASE-NOTES.md). An existing release for the tag is updated instead.
 

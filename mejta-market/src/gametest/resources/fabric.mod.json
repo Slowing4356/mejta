@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtamarket_test",
+	"version": "1.0.0",
+	"name": "MejtaMarket Tests",
+	"description": "Server game tests for MejtaMarket. Development only.",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.mejta.mejtamarket.test.MejtaMarketGameTest"
+		],
+		"mejtacore": [
+			"com.mejta.mejtamarket.test.TestEconomy"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtamarket": "*"
+	}
+}

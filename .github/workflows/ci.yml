@@ -101,6 +101,8 @@ jobs:
             tasks: test build runGameTest
           - project: mejta-economy
             tasks: test build runGameTest
+          - project: mejta-market
+            tasks: test build runGameTest
           - project: mejta-crates
             tasks: test build runGameTest
     steps:

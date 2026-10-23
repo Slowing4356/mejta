@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtamarket",
+	"version": "${version}",
+	"name": "MejtaMarket",
+	"description": "Server-side auction house for MejtaCore: listings, buy orders, a collection box and a market bot that keeps quiet servers trading. Paid through MejtaCore's shared economy; built so items can never be duplicated.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.mejtamarket.MejtaMarket"
+		]
+	},
+	"mixins": [
+		"mejtamarket.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.8.0 <2.0.0"
+	}
+}
