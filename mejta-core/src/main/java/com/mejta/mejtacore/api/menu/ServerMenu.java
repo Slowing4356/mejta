@@ -116,8 +116,8 @@ public final class ServerMenu {
 	/**
 	 * Opens the menu for {@code player} (closing whatever they had open). Call on the server thread.
 	 *
-	 * <p>Since MejtaCore 1.7.0 a player whose client has MejtaCore sees the menu as a MejtaCore screen (cards with
-	 * the icons' names and lore) rather than a chest, unless they turned that off; everyone else gets the chest.
+	 * <p>Every player sees a chest. Since MejtaCore 1.9.0 a player whose client has MejtaCore can turn on
+	 * "menus as screens" to see it as a MejtaCore screen (cards with the icons' names and lore) instead.
 	 * Buttons, clicks, refreshes, {@code validWhile} and {@code onClose} work the same either way.
 	 */
 	public boolean open(ServerPlayer player) {
@@ -132,6 +132,7 @@ public final class ServerMenu {
 		private Predicate<ServerPlayer> validWhile = p -> true;
 		private Consumer<ServerPlayer> onClose = p -> {
 		};
+		private boolean fillEmpty;
 
 		private Builder(Component title, int rows) {
 			this.title = Objects.requireNonNull(title, "title");
@@ -153,6 +154,37 @@ public final class ServerMenu {
 		/** An icon that does nothing when clicked. */
 		public Builder icon(int slot, Supplier<ItemStack> icon) {
 			return button(slot, icon, NO_ACTION);
+		}
+
+		/**
+		 * A "Back" button (an arrow) that runs {@code back}, usually opening the menu this one came from.
+		 *
+		 * @param to what it leads back to, shown as "Back to ..."; {@code null} for just "Back"
+		 * @since API version 7
+		 */
+		public Builder backButton(int slot, String to, Consumer<ServerPlayer> back) {
+			Objects.requireNonNull(back, "back");
+			return button(slot, () -> MenuIcons.back(to), click -> back.accept(click.player()));
+		}
+
+		/**
+		 * A "Close" button (a barrier).
+		 *
+		 * @since API version 7
+		 */
+		public Builder closeButton(int slot) {
+			return button(slot, MenuIcons::close, click -> click.menu().close());
+		}
+
+		/**
+		 * Fills every slot left empty when the menu is built with {@link MenuIcons#filler()} panes, so the buttons
+		 * stand out. Players who see menus as MejtaCore screens do not see the panes.
+		 *
+		 * @since API version 7
+		 */
+		public Builder fillEmpty() {
+			this.fillEmpty = true;
+			return this;
 		}
 
 		/** Refresh every icon every {@code ticks} ticks (e.g. 10 for live values). */
@@ -177,6 +209,11 @@ public final class ServerMenu {
 		}
 
 		public ServerMenu build() {
+			if (fillEmpty) {
+				for (int slot = 0; slot < rows * 9; slot++) {
+					buttons.putIfAbsent(slot, new Button(MenuIcons::filler, NO_ACTION));
+				}
+			}
 			return new ServerMenu(this);
 		}
 

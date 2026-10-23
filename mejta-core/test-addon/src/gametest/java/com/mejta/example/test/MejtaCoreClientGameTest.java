@@ -33,6 +33,7 @@ import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionLevel;
 import net.minecraft.world.item.ItemStack;
@@ -47,6 +48,8 @@ import com.mejta.mejtacore.api.addon.AddonState;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.menu.MenuClick;
+import com.mejta.mejtacore.api.menu.MenuIcons;
+import com.mejta.mejtacore.api.menu.PagedMenu;
 import com.mejta.mejtacore.api.notify.Notification;
 import com.mejta.mejtacore.api.notify.NotificationProvider;
 import com.mejta.mejtacore.api.notify.NotificationService;
@@ -383,13 +386,13 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ConfigHandle core = MejtaCore.coreConfig();
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		check("server menus are screens by default", core.get(CoreSettings.SERVER_MENU_SCREENS)
-				&& menuHas(ctx, s -> s.card("server_menu_style").title().getString().endsWith("Screens")));
-		clickCard(ctx, "server_menu_style");
-		check("the menu style card switches to chests", !core.get(CoreSettings.SERVER_MENU_SCREENS)
+		check("server menus are chests by default", !core.get(CoreSettings.SERVER_MENU_SCREENS)
 				&& menuHas(ctx, s -> s.card("server_menu_style").title().getString().endsWith("Chests")));
 		clickCard(ctx, "server_menu_style");
-		check("and back to screens", core.get(CoreSettings.SERVER_MENU_SCREENS));
+		check("the menu style card switches to screens", core.get(CoreSettings.SERVER_MENU_SCREENS)
+				&& menuHas(ctx, s -> s.card("server_menu_style").title().getString().endsWith("Screens")));
+		clickCard(ctx, "server_menu_style");
+		check("and back to chests", !core.get(CoreSettings.SERVER_MENU_SCREENS));
 		closeMenu(ctx);
 	}
 
@@ -412,7 +415,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 
 	private void permissionConfigChecks(Path configDir) {
 		String file = read(configDir.resolve(PermissionRegistry.CONFIG_ID + ".json"));
-		check("API_VERSION is 6", MejtaCoreAPI.API_VERSION == 6);
+		check("API_VERSION is 7", MejtaCoreAPI.API_VERSION == 7);
 		Setting<String> choice = Setting.choice("pick", "b", List.of("a", "b", "c"));
 		check("choice setting accepts its options only", choice.isValid("c") && !choice.isValid("d") && choice.options().size() == 3);
 		check("enum setting lists its constants as options", ExampleAddon.MODE.options().equals(List.of("NORMAL", "FAST", "SILENT")));
@@ -954,9 +957,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 
 	private void serverMenuChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
 		UUID me = ctx.computeOnClient(mc -> mc.player.getUUID());
-		// The chest is what players without MejtaCore get; this client asks for it by turning screens off.
-		ctx.runOnClient(mc -> MejtaCore.coreConfig().set(CoreSettings.SERVER_MENU_SCREENS, false));
-		ctx.waitTicks(5);
+		// Chests are the default, for this client too (1.9.0).
 		server.runOnServer(s -> {
 			ServerPlayer p = s.getPlayerList().getPlayer(me);
 			p.getInventory().setItem(0, new ItemStack(Items.DIAMOND, 3));
@@ -1005,10 +1006,45 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
 		check("api4: onClose runs once", waitUntil(ctx, () -> ExampleAddon.MENU_CLOSES.get() == closesBefore + 1));
 		server.runOnServer(s -> s.getPlayerList().getPlayer(me).getInventory().setItem(0, ItemStack.EMPTY));
+		pagedMenuChecks(ctx, server, me);
 
 		ctx.runOnClient(mc -> MejtaCore.coreConfig().set(CoreSettings.SERVER_MENU_SCREENS, true));
 		ctx.waitTicks(5);
 		serverMenuScreenChecks(ctx, server);
+	}
+
+	/** 1.9.0: a paged list in a 2-row chest (9 entries a page, then the bar in slots 9 to 17). */
+	private static void openPagedMenu(TestDedicatedServerContext server, UUID me) {
+		server.runOnServer(s -> PagedMenu.<String>builder(Component.literal("Paged menu"),
+						() -> java.util.stream.IntStream.rangeClosed(1, 20).mapToObj(i -> "Entry " + i).toList())
+				.rows(2)
+				.entry(e -> MenuIcons.of(Items.PAPER, Component.literal(e)), null)
+				.open(s.getPlayerList().getPlayer(me)));
+	}
+
+	private static String slotName(ClientGameTestContext ctx, int slot) {
+		return ctx.computeOnClient(mc -> mc.player.containerMenu.getSlot(slot).getItem().getHoverName().getString());
+	}
+
+	private void pagedMenuChecks(ClientGameTestContext ctx, TestDedicatedServerContext server, UUID me) {
+		openPagedMenu(server, me);
+		check("1.9: a paged menu opens as a chest with the shared bar", waitUntil(ctx, () -> ctx.computeOnClient(mc ->
+				mc.screen instanceof AbstractContainerScreen<?> screen && screen.getTitle().getString().equals("Paged menu")))
+				&& slotName(ctx, 0).equals("Entry 1") && slotName(ctx, 13).equals("20 entries")
+				&& slotName(ctx, 17).equals("Close") && slotName(ctx, 14).startsWith("Next page"));
+		check("1.9: unused bar slots hold filler panes (no Back, no previous page on page 1)", ctx.computeOnClient(mc ->
+				MenuIcons.isFiller(mc.player.containerMenu.getSlot(9).getItem()) && MenuIcons.isFiller(mc.player.containerMenu.getSlot(12).getItem())));
+		int containerId = ctx.computeOnClient(mc -> mc.player.containerMenu.containerId);
+		clickContainerSlot(ctx, 14, 0);
+		check("1.9: next page turns in place", waitUntil(ctx, () -> slotName(ctx, 0).equals("Entry 10"))
+				&& ctx.computeOnClient(mc -> mc.player.containerMenu.containerId) == containerId
+				&& slotName(ctx, 12).startsWith("\u2190 Previous page"));
+		clickContainerSlot(ctx, 14, 0);
+		check("1.9: the last page shows the rest and no next page", waitUntil(ctx, () -> slotName(ctx, 0).equals("Entry 19"))
+				&& ctx.computeOnClient(mc -> mc.player.containerMenu.getSlot(2).getItem().isEmpty()
+						&& MenuIcons.isFiller(mc.player.containerMenu.getSlot(14).getItem())));
+		clickContainerSlot(ctx, 17, 0);
+		check("1.9: Close closes it", waitUntil(ctx, () -> ctx.computeOnClient(mc -> mc.screen == null)));
 	}
 
 	/** 1.7.0: a server menu opens as a MejtaCore screen on a client with MejtaCore. */
@@ -1044,6 +1080,11 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("1.7: closing the screen ends the menu and runs onClose once", waitUntil(ctx,
 				() -> ExampleAddon.MENU_CLOSES.get() == closesBefore + 1)
 				&& server.computeOnServer(s -> ScreenMenus.openTitle(s.getPlayerList().getPlayer(me)).isEmpty()));
+
+		openPagedMenu(server, me);
+		check("1.9: as a screen, filler panes are left out", waitUntil(ctx, () -> serverMenuHas(ctx, s -> s.cardIds().equals(List.of(
+				"slot_0", "slot_1", "slot_2", "slot_3", "slot_4", "slot_5", "slot_6", "slot_7", "slot_8", "slot_13", "slot_14", "slot_17")))));
+		closeMenu(ctx);
 	}
 
 	private void presenceAndSchedulerChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {

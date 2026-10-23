@@ -19,6 +19,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
 import com.mejta.mejtacore.api.menu.MenuClick;
+import com.mejta.mejtacore.api.menu.MenuIcons;
 import com.mejta.mejtacore.api.menu.ServerMenu;
 import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.network.MenuPayloads.ClickMenu;
@@ -29,7 +30,8 @@ import com.mejta.mejtacore.network.MenuPayloads.MenuSlot;
 import com.mejta.mejtacore.network.MenuPayloads.OpenMenu;
 
 /**
- * Shows {@link ServerMenu}s as MejtaCore screens to players whose client has MejtaCore 1.7+ and asked for them;
+ * Shows {@link ServerMenu}s as MejtaCore screens to players whose client has MejtaCore 1.7+ and asked for them
+ * (off by default since 1.9.0); filler panes are left out, since a screen has no grid to fill;
  * everyone else gets the chest ({@link ButtonMenu}). The server stays in charge exactly as with the chest: the
  * client only sees copies of the icons and reports which one was clicked, the click handler runs here after
  * {@code validWhile} is checked, and {@code onClose} runs once however the menu ends (closed by the player, by a
@@ -214,7 +216,7 @@ public final class ScreenMenus {
 				} catch (RuntimeException e) {
 					Diagnostics.error("menu", "Icon of slot " + i + " in menu '" + definition.title().getString() + "' failed", e);
 				}
-				if (!stack.isEmpty()) {
+				if (!stack.isEmpty() && !MenuIcons.isFiller(stack)) {
 					slots.add(new MenuSlot(i, stack, button.clickable()));
 				}
 			}

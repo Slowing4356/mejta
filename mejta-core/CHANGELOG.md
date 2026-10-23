@@ -1,5 +1,15 @@
 # MejtaCore changelog
 
+## 1.9.0 (API version 7)
+
+Addons built for API version 6 keep working; they only need `mejtacore_version=1.9.0` to compile in this repository.
+
+- **Server menus are chests by default, for everyone.** The Mejta mods are server-side, so homes, warps, the auction house, crates and staff panels now look the same for every player. Players with MejtaCore on their client can still choose MejtaCore screens: the setting is now `menus_as_screens` (off by default) in `mejtacore.json`, and the Server Menus card on the `/mejta` overview switches it. The old `server_menu_screens` key is kept in the file but no longer read, so clients that had it on (the 1.7/1.8 default) start with chests too.
+- **One look for every chest menu** (new API, see `PagedMenu` and `ServerMenu.Builder`):
+  - `PagedMenu` lists any number of entries over pages. The bottom row is the same everywhere: Back, Previous page, an info icon with the page number, Next page and Close. Pages turn in place, so the cursor does not jump, and the list is read again on every refresh.
+  - `ServerMenu.Builder.backButton`, `closeButton` and `fillEmpty` (gray glass panes in the unused slots); `MenuIcons.filler`, `back`, `close` and `page` for the standard icons. Filler panes are left out when a menu is shown as a screen.
+  - `/mejtaadmin config menu` uses them: filler panes, and the same Back, page and Close buttons as the addons.
+
 ## 1.8.0 (API version 6)
 
 Addons built for API version 5 keep working; they only need `mejtacore_version=1.8.0` to compile in this repository.

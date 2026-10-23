@@ -2,7 +2,7 @@
 
 MejtaQoL (mod ID `mejtaqol`) adds everyday player commands to a server running **MejtaCore**:
 - teleport requests (`/tpa`, `/tpahere`) and `/back`;
-- homes, warps, `/spawn` and random teleport (`/rtp`), with menus for homes and warps (chests, or screens for players with MejtaCore 1.7+);
+- homes, warps, `/spawn` and random teleport (`/rtp`), with paged menus for homes and warps (chests for everyone; players with MejtaCore can choose screens);
 - your own ender chest, workstations and a trash bin anywhere (`/ec`, `/craft`, `/anvil`, `/trash`...);
 - AFK status, `/r` for private messages, a join greeting and your death coordinates.
 
@@ -10,14 +10,14 @@ Every feature has its own on/off switch, and every command its own permission no
 
 | | |
 |---|---|
-| Version | 1.1.0 |
+| Version | 1.2.0 |
 | Minecraft | 26.1.2, Fabric Loader 0.19.5 or newer, Fabric API 0.155.3+26.1.2, Java 25 |
-| Requires | MejtaCore 1.5.0 (any version from 1.5.0 up to, not including, 2.0.0 is accepted) |
+| Requires | MejtaCore 1.9.0 (any version from 1.9.0 up to, not including, 2.0.0 is accepted) |
 | Other libraries | None |
 
 ## Installing
 
-1. Put `mejtacore-1.8.0.jar`, `mejtaqol-1.1.1.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.9.0.jar`, `mejtaqol-1.2.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtaqol.json` is created on first start.
 3. Players type `/qol` to see the commands they can use.
 
@@ -172,7 +172,7 @@ Nothing logged or published contains IP addresses, chat content or secrets.
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.8.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.9.0 first
 cd ../mejta-qol && ./gradlew build               # compile and run unit tests
 ./gradlew runGameTest                            # headless server game test (about a minute)
 ```

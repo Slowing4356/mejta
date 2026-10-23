@@ -17,10 +17,15 @@ public final class CoreSettings {
 			.describedAs("Show addon IDs and sources in menu tooltips");
 	public static final Setting<MenuSound> MENU_SOUND = Setting.enumeration("menu_sound", MenuSound.NORMAL)
 			.describedAs("Click sound when using MejtaCore menus");
-	/** @since 1.7.0 */
-	public static final Setting<Boolean> SERVER_MENU_SCREENS = Setting.bool("server_menu_screens", true)
-			.describedAs("Show addon menus from the server (homes, warps, leaderboards, staff panels...) as MejtaCore screens "
-					+ "instead of chests. Only used by a client with MejtaCore; players without it always get chests");
+	/**
+	 * Off by default since 1.9.0 (Mejta is server-side first: everyone sees the same chests). The key changed from
+	 * {@code server_menu_screens} so files written by 1.7/1.8, which stored {@code true}, start with chests too.
+	 *
+	 * @since 1.7.0
+	 */
+	public static final Setting<Boolean> SERVER_MENU_SCREENS = Setting.bool("menus_as_screens", false)
+			.describedAs("Show addon menus from the server (homes, warps, auction house, staff panels...) as MejtaCore screens "
+					+ "instead of the chests everyone else sees. Only used by a client with MejtaCore");
 
 	public static final Setting<Boolean> IN_GAME_NOTIFICATIONS = Setting.bool("in_game_notifications", true)
 			.describedAs("Show addon notifications (e.g. alerts) in chat to players with the required permission");

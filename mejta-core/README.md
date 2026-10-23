@@ -9,14 +9,14 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 - **Secret settings** (tokens, webhook URLs) that are never sent to clients, shown or logged.
 - **A hash-chained audit log** of staff actions and config changes.
 - **Storage**: size-limited record logs and a small JSON data store per addon.
-- **Server menus** that work for players without mods (as a chest) and open as a proper screen for players with MejtaCore.
+- **Server menus** that work for players without mods: chests with one shared look (filler panes, pages, Back and Close buttons), which players with MejtaCore can switch to screens.
 - **Presence** (so vanished staff stay hidden in every addon), a server-thread **scheduler** and **metrics**.
 - **A shared economy API**, like Vault: an economy addon (MejtaEconomy) keeps the accounts, and shops, crates and auction houses pay through MejtaCore without depending on it.
-- An optional **client menu** (`/mejta`) with a full **settings editor**, for players who install MejtaCore themselves. With it, addon menus (homes, warps, leaderboards, staff panels) open as screens instead of chests.
+- An optional **client menu** (`/mejta`) with a full **settings editor**, for players who install MejtaCore themselves. With it, players may also choose to see addon menus (homes, warps, leaderboards, staff panels) as screens instead of chests.
 
 | | |
 |---|---|
-| Version | 1.8.0 (public API version 6) |
+| Version | 1.9.0 (public API version 7) |
 | Minecraft | 26.1.2 (Java Edition) |
 | Fabric Loader | 0.19.5 or newer |
 | Fabric API | 0.155.3+26.1.2 or newer, required |
@@ -27,7 +27,7 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 
 Put these in the server's `mods/` folder and restart:
 
-- `mejtacore-1.8.0.jar`
+- `mejtacore-1.9.0.jar`
 - Fabric API for 26.1.2
 - the Mejta addons you want
 
@@ -120,7 +120,7 @@ Addon nodes are listed in each addon's README. To change a level, run `/mejtaadm
 | `combat.tag_seconds` | `10` (0–300) | After hurting or being hurt by a player, both are in combat this long (addons refuse teleports, AFK protection and the like). `0` = off. |
 | `debug_logging` | `false` | Log extra diagnostic information |
 | `menu_sound` | `NORMAL` | Click sound in the client menu: `OFF`, `QUIET` or `NORMAL` |
-| `server_menu_screens` | `true` | Show addon menus from the server (homes, warps, leaderboards, staff panels) as MejtaCore screens instead of chests |
+| `menus_as_screens` | `false` | Show addon menus from the server (homes, warps, the auction house, staff panels) as MejtaCore screens instead of the chests everyone else sees |
 | `show_addon_ids` | `false` | Show addon IDs and sources in client menu tooltips |
 
 The last three only matter on a client with MejtaCore.
@@ -187,9 +187,9 @@ Hover over a card for its full description; the mouse wheel scrolls.
 
 ### Addon menus as screens
 
-Addon menus run by the server (homes, warps, the sidebar picker, leaderboards, vanish settings, staff status panels, confirmations) are chests for players without mods. With MejtaCore 1.7+ on your client and on the server, they open as a MejtaCore screen instead: one card per icon, in the chest's order, with the icon's name and first lore line on the card and the rest on hover. Left, right, shift and middle clicks reach the server just as they would from the chest, and the server still runs everything (permission checks, refreshes, closing). Menus that hold real items (`/invsee`, `/ec`, corpses, `/trash`, portable workstations) stay normal inventories.
+Addon menus run by the server (homes, warps, the sidebar picker, leaderboards, vanish settings, staff status panels, confirmations) are chests, for every player: the Mejta mods are server-side, so everyone sees the same menus. With MejtaCore 1.7+ on your client and on the server you can choose to open them as a MejtaCore screen instead: one card per icon, in the chest's order, with the icon's name and first lore line on the card and the rest on hover. Left, right, shift and middle clicks reach the server just as they would from the chest, and the server still runs everything (permission checks, refreshes, closing). Menus that hold real items (`/invsee`, `/ec`, corpses, `/trash`, portable workstations) stay normal inventories.
 
-To get the chests back, switch **Server Menus** on the `/mejta` overview, or set `server_menu_screens` to `false` in **This Computer**'s settings. `/mejtaadmin config menu` is always a chest.
+To try screens, switch **Server Menus** on the `/mejta` overview, or set `menus_as_screens` to `true` in **This Computer**'s settings. It is off by default since 1.9.0 (the setting was called `server_menu_screens` and on by default before). `/mejtaadmin config menu` is always a chest.
 
 ### Secret settings
 
@@ -394,7 +394,7 @@ Each line holds the time, actor, action, target, outcome and details, plus the S
 
 ### Server menus
 
-Menus run by the server. Players without mods see a chest; players with MejtaCore 1.7+ see the same menu as a screen (unless they turned that off). Your code is the same either way:
+Menus run by the server. Every player sees a chest; players with MejtaCore 1.7+ can choose to see the same menu as a screen. Your code is the same either way:
 
 ```java
 ServerMenu.builder(Component.literal("Status"), 3)
@@ -413,6 +413,20 @@ No click type moves an item, in the menu or the player's inventory below it. Han
 
 - **Presence:** a vanish addon registers a `VisibilityProvider` with `MejtaCoreAPI.presence().registerVisibilityProvider(...)`. Every addon that shows or announces players asks `presence()`: `isHidden(uuid)`, `canSee(viewer, uuid)`, `publiclyOnline(server)`, and `addListener(...)` for public joins and leaves (a staff member's fake quit is reported with `real = false`).
 - **Scheduler:** `MejtaCoreAPI.scheduler().runLater(20, task)` and `runEvery(20, task)` run on the server thread at the end of a tick. Both return a task you can `cancel()`.
+**Shared look (API version 7, MejtaCore 1.9.0).** Give your menus the same layout as every Mejta menu. `PagedMenu` lists any number of entries over pages, with the standard bottom bar (Back, previous page, info and page number, next page, Close); pages turn in place:
+
+```java
+PagedMenu.<Home>builder(Component.literal("Homes"), () -> homesOf(player))
+    .entry(home -> MenuIcons.of(Items.RED_BED, Component.literal(home.name())),
+           (home, click) -> teleport(click.player(), home))
+    .empty(() -> MenuIcons.of(Items.PAPER, Component.literal("No homes yet")))
+    .back("menu", MyMenus::main)              // optional
+    .barButton(6, () -> icon, click -> ...)   // optional, bar columns 1, 2, 6 or 7
+    .open(player);
+```
+
+For fixed menus, `ServerMenu.Builder` has `backButton(slot, "where", player -> ...)`, `closeButton(slot)` and `fillEmpty()` (gray panes in every unused slot, left out on screens), and `MenuIcons` has `filler()`, `back(...)`, `close()` and `page(...)`.
+
 - **Player status (API version 5):** `MejtaCoreAPI.status()` says who is AFK and who is in combat, so every addon agrees.
   - **AFK:** MejtaCore notices activity itself: looking around, walking (not being carried), chatting and interacting. After `afk.auto_minutes` idle, a player is AFK. Ask with `isAfk(uuid)` and `idleMillis(uuid)`. Set or clear it on request with `setAfk(player, boolean)` (an `/afk` command), report other activity with `markActive(player)`, and listen with `addAfkListener(...)` (cause `IDLE`, `ACTIVITY` or `REQUEST`).
   - **Combat:** a PvP hit (also with projectiles) puts both players in combat for `combat.tag_seconds`; death ends it. Ask with `inCombat(uuid)` and `combatRemainingMillis(uuid)`.
@@ -433,7 +447,7 @@ You need JDK 25 (`JAVA_HOME` pointing at it). From `mejta-core/`:
 ./gradlew runClient             # a development client with MejtaCore
 ```
 
-`build/libs/` then holds `mejtacore-1.8.0.jar` (install this one), plus sources and javadoc jars.
+`build/libs/` then holds `mejtacore-1.9.0.jar` (install this one), plus sources and javadoc jars.
 
 **Unit tests** (`./gradlew test`) cover logic that needs no running game: secret storage and masking, the data store (ordering, durability, corrupt files, key validation), the audit hash chain, metrics, the config edit path and menu steps.
 

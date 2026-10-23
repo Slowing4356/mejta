@@ -27,7 +27,7 @@ import com.mejta.mejtasmp.SmpSettings.SidebarView;
 import com.mejta.mejtasmp.stats.PlayerStats;
 import com.mejta.mejtasmp.stats.Stat;
 
-/** {@code /sb}: pick your sidebar. {@code /leaderboard} ({@code /lb}): the top players. Plain chest menus. */
+/** {@code /sb}: pick your sidebar. {@code /leaderboard} ({@code /lb}): the top players. Chest menus with the shared MejtaCore look (filler panes, Close at the bottom). */
 public final class ScoreMenus {
 	static final int[] RANK_SLOTS = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
 	private static final int[] STAT_SLOTS = {46, 47, 48, 50, 51};
@@ -75,7 +75,7 @@ public final class ScoreMenus {
 		option(menu, player, 12, SidebarView.MY_STATS, Items.BOOK, "Your kills, deaths, K/D, kill streak, mob kills and play time");
 		option(menu, player, 14, SidebarView.TOP_KILLS, Items.IRON_SWORD, "The 10 players with the most kills");
 		option(menu, player, 16, SidebarView.TOP_PLAYTIME, Items.CLOCK, "The 10 players who played the longest");
-		menu.button(22, () -> MenuIcons.of(Items.BARRIER, Component.literal("Close").withStyle(ChatFormatting.RED)), click -> click.menu().close());
+		menu.closeButton(22).fillEmpty();
 		return menu.validWhile(p -> MejtaSMP.config().get(SmpSettings.SIDEBAR_ENABLED) && MejtaCoreAPI.hasPermission(p, SmpPermissions.SIDEBAR))
 				.open(player);
 	}
@@ -142,7 +142,7 @@ public final class ScoreMenus {
 					Component.literal(stat.label() + ": ").withStyle(ChatFormatting.GRAY).append(Component.literal(stat.format(me)).withStyle(ChatFormatting.WHITE)),
 					MenuIcons.line(rank > 0 ? "Rank #" + rank : "Not ranked yet")));
 		});
-		menu.button(SLOT_CLOSE, () -> MenuIcons.of(Items.BARRIER, Component.literal("Close").withStyle(ChatFormatting.RED)), click -> click.menu().close());
+		menu.closeButton(SLOT_CLOSE).fillEmpty();
 		return menu.validWhile(p -> MejtaSMP.config().get(SmpSettings.LEADERBOARD) && MejtaCoreAPI.hasPermission(p, SmpPermissions.LEADERBOARD))
 				.refreshEvery(40)
 				.open(player);

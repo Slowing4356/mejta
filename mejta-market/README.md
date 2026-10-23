@@ -15,7 +15,7 @@ An auction house for Fabric servers, as a MejtaCore addon (mod ID `mejtamarket`)
 
 ## Installing
 
-Put `mejtamarket-1.0.0.jar` next to `mejtacore-1.8.0.jar`, `mejtaeconomy-1.0.0.jar` and Fabric API in the server's `mods/` folder. Settings appear in `config/mejta/mejtamarket.json`, the bot's price list in `config/mejta/mejtamarket-prices.json`.
+Put `mejtamarket-1.0.0.jar` next to `mejtacore-1.9.0.jar`, `mejtaeconomy-1.0.0.jar` and Fabric API in the server's `mods/` folder. Settings appear in `config/mejta/mejtamarket.json`, the bot's price list in `config/mejta/mejtamarket-prices.json`.
 
 ## Using the market
 

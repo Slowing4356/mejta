@@ -1,6 +1,7 @@
 package com.mejta.mejtautils.inspect;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -13,7 +14,7 @@ import net.minecraft.world.item.Items;
 import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.audit.AuditOutcome;
 import com.mejta.mejtacore.api.menu.MenuIcons;
-import com.mejta.mejtacore.api.menu.ServerMenu;
+import com.mejta.mejtacore.api.menu.PagedMenu;
 import com.mejta.mejtautils.MejtaUtils;
 import com.mejta.mejtautils.UtilsPermissions;
 import com.mejta.mejtautils.offline.PendingChange;
@@ -25,8 +26,6 @@ import com.mejta.mejtautils.util.UtilsAudit;
  * or returned because their change was cancelled. Click one to take it.
  */
 public final class ClaimsMenu {
-	private static final int ROWS = 6;
-
 	private ClaimsMenu() {
 	}
 
@@ -48,32 +47,36 @@ public final class ClaimsMenu {
 					Map.of("reason", "in staff mode"), null);
 			return;
 		}
-		List<Entry> entries = new java.util.ArrayList<>();
+		List<Entry> entries = entries(staff);
+		PagedMenu.<Entry>builder(Component.literal("Your claims (" + entries.size() + ")"), () -> entries(staff))
+				.entry(entry -> {
+					ItemStack stack = ItemJson.decode(staff.level().getServer().registryAccess(), entry.change().claims().get(entry.index()))
+							.orElse(new ItemStack(Items.BARRIER));
+					String why = entry.change().state() == PendingChange.State.CANCELLED ? "Returned: " + entry.change().note()
+							: "Removed from " + entry.change().targetName();
+					return MenuIcons.of(stack, stack.getHoverName(), List.of(MenuIcons.line(why), Component.empty(),
+							Component.literal("Click: take it").withStyle(ChatFormatting.YELLOW)));
+				}, (entry, click) -> {
+					click.menu().close();
+					if (take(staff, entry)) {
+						open(staff); // indexes changed: rebuild
+					}
+				})
+				.empty(() -> MenuIcons.of(Items.PAPER, Component.literal("Nothing to claim").withStyle(ChatFormatting.GRAY)))
+				.info(() -> MenuIcons.of(Items.BOOK, Component.literal("Your claims").withStyle(ChatFormatting.GOLD),
+						MenuIcons.line("Items removed by your offline edits,"), MenuIcons.line("or returned when one was cancelled")))
+				.validWhile(p -> MejtaCoreAPI.hasPermission(p, UtilsPermissions.INVSEE_OFFLINE) && !MejtaUtils.staffMode().isActive(p.getUUID()))
+				.open(staff);
+	}
+
+	private static List<Entry> entries(ServerPlayer staff) {
+		List<Entry> entries = new ArrayList<>();
 		for (PendingChange change : MejtaUtils.pending().claimsOf(staff.getUUID())) {
-			for (int i = 0; i < change.claims().size() && entries.size() < ROWS * 9 - 1; i++) {
+			for (int i = 0; i < change.claims().size(); i++) {
 				entries.add(new Entry(change, i));
 			}
 		}
-		ServerMenu.Builder menu = ServerMenu.builder(Component.literal("Your claims (" + entries.size() + ")"), ROWS)
-				.validWhile(p -> MejtaCoreAPI.hasPermission(p, UtilsPermissions.INVSEE_OFFLINE) && !MejtaUtils.staffMode().isActive(p.getUUID()));
-		for (int slot = 0; slot < entries.size(); slot++) {
-			Entry entry = entries.get(slot);
-			ItemStack stack = ItemJson.decode(staff.level().getServer().registryAccess(), entry.change().claims().get(entry.index()))
-					.orElse(new ItemStack(Items.BARRIER));
-			String why = entry.change().state() == PendingChange.State.CANCELLED ? "returned: " + entry.change().note()
-					: "removed from " + entry.change().targetName();
-			menu.button(slot, () -> MenuIcons.of(stack, stack.getHoverName(), List.of(MenuIcons.line(why), MenuIcons.line("Click to take it"))),
-					click -> {
-						click.menu().close();
-						if (take(staff, entry)) {
-							open(staff); // indexes changed: rebuild
-						}
-					});
-		}
-		if (entries.isEmpty()) {
-			menu.icon(22, () -> MenuIcons.of(Items.PAPER, Component.literal("Nothing to claim").withStyle(ChatFormatting.GRAY)));
-		}
-		menu.open(staff);
+		return entries;
 	}
 
 	/** @return whether the menu may be shown again */
