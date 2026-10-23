@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtacrates_test",
+	"version": "1.0.0",
+	"name": "MejtaCrates Tests",
+	"description": "Server game tests for MejtaCrates. Development only.",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.mejta.mejtacrates.test.MejtaCratesGameTest"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtacrates": "*"
+	}
+}
