@@ -59,7 +59,7 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
 
 /**
  * Stage 6 (MejtaAC 1.1.0): {@code movement.elytra}, {@code vehicle.horse} and mitigation, tested against
- * latency with the same five network profiles as stages 4 and 5. The whole suite runs with
+ * latency with the same two network profiles as stages 4 and 5. The whole suite runs with
  * {@code enforcement.mitigation} ON.
  *
  * <p>For every profile a real (non-op) client first plays legitimately, and no movement check may flag
@@ -87,11 +87,12 @@ public final class MejtaAcStage6GameTest implements FabricClientGameTest {
 	private record Profile(String name, int rttMs, int jitterMs, boolean freeze) {
 	}
 
+	/**
+	 * The two extremes: no added latency, and high latency with jitter and freezes. 150, 300 and 500 ms without
+	 * jitter were also run until MejtaAC 1.1.1 and were dropped to make the suite much shorter.
+	 */
 	private static final List<Profile> PROFILES = List.of(
 			new Profile("0 ms", 0, 0, false),
-			new Profile("150 ms", 150, 0, false),
-			new Profile("300 ms", 300, 0, false),
-			new Profile("500 ms", 500, 0, false),
 			new Profile("300 ms +-80 jitter + 1.5 s freezes", 300, 80, true));
 
 	private static final List<String> MOVEMENT_CHECKS = List.of(ElytraCheck.ID, HorseCheck.ID, FlyCheck.ID, SpeedCheck.ID,
@@ -132,7 +133,8 @@ public final class MejtaAcStage6GameTest implements FabricClientGameTest {
 				connection.getClientLevel().waitForChunksRender();
 				Arena arena = buildArena(ctx, server);
 				LatencySimulator simulator = ctx.computeOnClient(LatencySimulator::install);
-				for (Profile profile : PROFILES) {
+				// Only the worst case by default; both profiles in full runs.
+				for (Profile profile : GameTestScope.FULL ? PROFILES : PROFILES.subList(PROFILES.size() - 1, PROFILES.size())) {
 					runProfile(ctx, server, arena, simulator, profile);
 				}
 				simulator.set(0, 0);

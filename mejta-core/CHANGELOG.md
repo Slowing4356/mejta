@@ -1,5 +1,18 @@
 # MejtaCore changelog
 
+## 1.6.0 (API version 5)
+
+The public API is unchanged, so every addon keeps working.
+
+- **A real settings editor** replaces the chest-style settings pages of the client menu (`/mejta`). One screen lists every config in a sidebar (the server's and this computer's, clearly separated) and the selected config's settings under category headers, each with a widget that fits its type: an ON/OFF button, an option button, a slider plus a field for numbers, a text field. It adds:
+  - checking as you type, with the reason in the row ("Must be from 1 to 64");
+  - a reset button per setting and a marker on every setting that differs from its default;
+  - search across all configs, and a filter for changed settings;
+  - **Undo Changes** for everything changed since the screen opened, **Reset All** (click twice) and **Reload Files**;
+  - the full description, default, range, options and key on hover.
+- **Opening it:** `/mejta config` (it used to print the help), **Configuration**, **MejtaCore Settings** and an addon's **Settings** in the `/mejta` menu, and `/mejtaadmin config` on a server: that now opens the editor for players with MejtaCore 1.6+ on their client (on the server's MejtaCore settings) and the chest menu for everyone else. `/mejtaadmin config menu` still always opens the chest menu, which works without client mods.
+- New network message `mejtacore:open_settings` (server to client), sent only to clients that have it. The settings protocol stays at 1, so 1.6.0 clients and servers work with 1.2+ on the other side.
+
 ## 1.5.0 (API version 5)
 
 Addons built for API version 4 keep working.

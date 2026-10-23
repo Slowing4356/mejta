@@ -63,11 +63,12 @@ public final class MejtaAcStage5GameTest implements FabricClientGameTest {
 	private record Profile(String name, int rttMs, int jitterMs, boolean freeze) {
 	}
 
+	/**
+	 * The two extremes: no added latency, and high latency with jitter and freezes. 150, 300 and 500 ms without
+	 * jitter were also run until MejtaAC 1.1.1 and were dropped to make the suite much shorter.
+	 */
 	private static final List<Profile> PROFILES = List.of(
 			new Profile("0 ms", 0, 0, false),
-			new Profile("150 ms", 150, 0, false),
-			new Profile("300 ms", 300, 0, false),
-			new Profile("500 ms", 500, 0, false),
 			new Profile("300 ms +-80 jitter + 1.5 s freezes", 300, 80, true));
 
 	private static final List<String> MOVEMENT_CHECKS = List.of(JumpCheck.ID, BoatFlyCheck.ID, FlyCheck.ID, SpeedCheck.ID,
@@ -89,6 +90,9 @@ public final class MejtaAcStage5GameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext ctx) {
+		if (GameTestScope.skipUnlessFull(LOG, "stage 5")) {
+			return;
+		}
 		ConfigHandle config = config();
 		config.set(AcSettings.DECAY_PER_MINUTE, 0.0);
 		config.set(AcSettings.LOG_LEVEL, AcSettings.LogLevel.VERBOSE);

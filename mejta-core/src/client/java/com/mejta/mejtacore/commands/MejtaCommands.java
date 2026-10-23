@@ -22,6 +22,7 @@ import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.logging.Diagnostics;
 import com.mejta.mejtacore.ui.CoreMenus;
 import com.mejta.mejtacore.ui.ScreenOpener;
+import com.mejta.mejtacore.ui.SettingsScreen;
 
 /**
  * Client-side command tree. Registered identically under {@code /mejtacore} and {@code /mejta}.
@@ -49,7 +50,7 @@ public final class MejtaCommands {
 				.then(ClientCommands.literal("addons").executes(MejtaCommands::addons))
 				.then(ClientCommands.literal("about").executes(MejtaCommands::about))
 				.then(ClientCommands.literal("config")
-						.executes(ctx -> help(ctx, root))
+						.executes(MejtaCommands::openSettings)
 						.then(ClientCommands.literal("reload").executes(MejtaCommands::reloadConfig)));
 
 		addonCommands.forEach((addonId, providers) -> {
@@ -74,6 +75,11 @@ public final class MejtaCommands {
 		return 1;
 	}
 
+	private static int openSettings(CommandContext<FabricClientCommandSource> ctx) {
+		ScreenOpener.open(() -> new SettingsScreen(null, null, true));
+		return 1;
+	}
+
 	private static int help(CommandContext<FabricClientCommandSource> ctx, String root) {
 		FabricClientCommandSource source = ctx.getSource();
 		source.sendFeedback(header("Commands (/" + root + " or /" + other(root) + ")"));
@@ -81,6 +87,7 @@ public final class MejtaCommands {
 		line(source, "/" + root + " gui", "open the MejtaCore menu");
 		line(source, "/" + root + " help", "show this list");
 		line(source, "/" + root + " addons", "list registered addons");
+		line(source, "/" + root + " config", "open the settings editor");
 		line(source, "/" + root + " config reload", "reload all configuration files");
 		line(source, "/" + root + " about", "version and framework information");
 

@@ -39,6 +39,15 @@ fabricApi {
 	}
 }
 
+// `gradlew runClientGameTest -PfullGameTests` also runs the suites of older checks and every network profile
+// (see GameTestScope). Without it only the newest checks are tested end to end.
+def fullGameTests = project.hasProperty("fullGameTests")
+tasks.withType(JavaExec).configureEach {
+	if (fullGameTests) {
+		systemProperty "mejta.fullGameTests", "true"
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"

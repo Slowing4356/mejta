@@ -33,6 +33,7 @@ import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.network.ConfigPayloads.EditConfig;
 import com.mejta.mejtacore.network.ConfigPayloads.EditResult;
+import com.mejta.mejtacore.network.ConfigPayloads.OpenSettings;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteConfig;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteSetting;
 import com.mejta.mejtacore.network.ConfigPayloads.RequestConfigs;
@@ -65,6 +66,7 @@ public final class ServerConfigSync {
 	public static void register() {
 		PayloadTypeRegistry.clientboundPlay().register(ServerConfigs.TYPE, ServerConfigs.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(EditResult.TYPE, EditResult.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(OpenSettings.TYPE, OpenSettings.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(RequestConfigs.TYPE, RequestConfigs.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(EditConfig.TYPE, EditConfig.CODEC);
 
@@ -116,6 +118,19 @@ public final class ServerConfigSync {
 		return editableBy(permissions).stream().filter(h -> h.id().equals(configId)).findFirst();
 	}
 
+	/**
+	 * Opens the settings editor of the player's client on {@code configId} ({@code null}: MejtaCore's), with a
+	 * fresh catalog. {@code false} if the client has no MejtaCore 1.6 or newer (then use the chest menu).
+	 */
+	public static boolean openEditor(ServerPlayer player, String configId) {
+		if (!ServerPlayNetworking.canSend(player, OpenSettings.TYPE)) {
+			return false;
+		}
+		sendTo(player);
+		ServerPlayNetworking.send(player, new OpenSettings(configId == null ? "" : configId));
+		return true;
+	}
+
 	private static void sendTo(ServerPlayer player) {
 		if (player.connection == null || !ServerPlayNetworking.canSend(player, ServerConfigs.TYPE)) {
 			return;
@@ -154,7 +169,7 @@ public final class ServerConfigSync {
 	}
 
 	/**
-	 * An edit by a player from a menu: the client's Server Settings (network) or the server's own chest menu
+	 * An edit by a player from a menu: the client's settings editor (network) or the server's own chest menu
 	 * ({@code /mejtaadmin config menu}). Permission check, rate limit, then {@link #apply}: validation, save,
 	 * audit and notification. Secret settings are refused, as for every menu.
 	 */

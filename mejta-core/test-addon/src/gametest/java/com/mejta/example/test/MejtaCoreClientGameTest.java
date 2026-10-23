@@ -65,7 +65,7 @@ import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.network.ConfigPayloads;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
 import com.mejta.mejtacore.ui.ChestMenuScreen;
-import com.mejta.mejtacore.ui.TextInputScreen;
+import com.mejta.mejtacore.ui.SettingsScreen;
 
 /**
  * End-to-end test of MejtaCore driven through real client input: typed chat commands, mouse clicks
@@ -185,11 +185,13 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("Back returns to main menu", waitForMenu(ctx, "MejtaCore"));
 
 		clickSlot(ctx, 5, 0);
-		check("Configuration page opens", waitForMenu(ctx, "Configuration"));
-		check("Configuration lists core and example configs",
-				findSlot(ctx, "config_mejtacore") >= 0 && findSlot(ctx, "config_example") >= 0);
-		clickSlot(ctx, navRow(ctx), 0);
-		waitForMenu(ctx, "MejtaCore");
+		check("Configuration opens the settings editor", waitForSettings(ctx));
+		check("settings editor lists core and example configs", settingsHas(ctx,
+				s -> s.listsConfig("mejtacore", false) && s.listsConfig("example", false)));
+		check("settings editor opens on MejtaCore's settings", "mejtacore".equals(onSettings(ctx, SettingsScreen::selectedConfigId)));
+		ctx.takeScreenshot("mejtacore-03b-settings-editor");
+		clickSettingsButton(ctx, "done");
+		check("Done returns to the main menu", waitForMenu(ctx, "MejtaCore"));
 		clickSlot(ctx, 7, 0);
 		check("About page opens", waitForMenu(ctx, "About MejtaCore"));
 		ctx.takeScreenshot("mejtacore-03-about");
@@ -210,36 +212,50 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
 		clickSlot(ctx, 1, 0);
-		check("MejtaCore Settings opens", waitForMenu(ctx, "MejtaCore Settings"));
+		check("MejtaCore Settings opens the settings editor", waitForSettings(ctx)
+				&& "mejtacore".equals(onSettings(ctx, SettingsScreen::selectedConfigId)));
+		check("settings are split into categories", settingsHas(ctx, s -> s.listedGroups().contains("Afk")
+				&& s.listedGroups().contains("General")));
 		ctx.takeScreenshot("mejtacore-04-core-settings");
 
-		int showIds = findSlot(ctx, "setting_show_addon_ids");
-		clickSlot(ctx, showIds, 0);
-		check("boolean toggles on click", core.get(CoreSettings.SHOW_ADDON_IDS));
-		ctx.getInput().holdControl();
-		clickSlot(ctx, showIds, 0);
-		ctx.getInput().releaseControl();
-		check("ctrl-click resets to default", !core.get(CoreSettings.SHOW_ADDON_IDS));
-		clickSlot(ctx, showIds, 0);
+		clickSetting(ctx, "show_addon_ids", SettingsScreen.Part.CONTROL);
+		check("toggle button switches a boolean", core.get(CoreSettings.SHOW_ADDON_IDS));
+		check("toggle button shows the new value", "ON".equals(onSettings(ctx, s -> s.shownValue("show_addon_ids"))));
+		clickSetting(ctx, "show_addon_ids", SettingsScreen.Part.RESET);
+		check("reset button restores the default", !core.get(CoreSettings.SHOW_ADDON_IDS));
+		clickSetting(ctx, "show_addon_ids", SettingsScreen.Part.CONTROL);
 
-		int sound = findSlot(ctx, "setting_menu_sound");
-		clickSlot(ctx, sound, 0);
-		check("enum cycles forward (NORMAL -> OFF)", core.get(CoreSettings.MENU_SOUND) == CoreSettings.MenuSound.OFF);
-		clickSlot(ctx, sound, 1);
-		check("enum cycles backward (OFF -> NORMAL)", core.get(CoreSettings.MENU_SOUND) == CoreSettings.MenuSound.NORMAL);
+		clickSetting(ctx, "menu_sound", SettingsScreen.Part.CONTROL);
+		check("option button cycles forward (NORMAL -> OFF)", core.get(CoreSettings.MENU_SOUND) == CoreSettings.MenuSound.OFF);
+		ctx.getInput().holdShift();
+		clickSetting(ctx, "menu_sound", SettingsScreen.Part.CONTROL);
+		ctx.getInput().releaseShift();
+		check("shift-click cycles backward (OFF -> NORMAL)", core.get(CoreSettings.MENU_SOUND) == CoreSettings.MenuSound.NORMAL);
 
-		int rows = findSlot(ctx, "setting_menu_rows");
-		clickSlot(ctx, rows, 1);
-		check("integer decreases on right-click (6 -> 5)", core.get(CoreSettings.MENU_ROWS) == 5);
-		check("menu resizes after change", navRow(ctx) == 36);
-		clickSlot(ctx, findSlot(ctx, "setting_menu_rows"), 0);
-		clickSlot(ctx, findSlot(ctx, "setting_menu_rows"), 0);
-		check("integer clamps at max (6)", core.get(CoreSettings.MENU_ROWS) == 6);
+		typeSetting(ctx, "menu_rows", "5");
+		check("typing a number and Enter sets it (6 -> 5)", core.get(CoreSettings.MENU_ROWS) == 5);
+		typeSetting(ctx, "menu_rows", "9");
+		check("an out-of-range number is refused", core.get(CoreSettings.MENU_ROWS) == 5);
+		check("and the range is explained", java.util.Objects.toString(onSettings(ctx, s -> s.errorOf("menu_rows"))).contains("3 to 6"));
+		ctx.takeScreenshot("mejtacore-04b-validation");
+		clickSetting(ctx, "menu_rows", SettingsScreen.Part.RESET);
+		check("reset after an invalid value restores the default (6)", core.get(CoreSettings.MENU_ROWS) == 6
+				&& onSettings(ctx, s -> s.errorOf("menu_rows")) == null);
+
+		typeSearch(ctx, "addon id");
+		check("search narrows the list", settingsHas(ctx, s -> s.listedKeys().equals(List.of("show_addon_ids"))));
+		clearSearch(ctx);
+		check("clearing the search lists everything again", settingsHas(ctx, s -> s.listedKeys().size() == core.spec().settings().size()));
+		clickSettingsButton(ctx, "changed");
+		check("the Show: Changed filter lists only changed settings", settingsHas(ctx, s -> s.listedKeys().equals(List.of("show_addon_ids"))));
+		clickSettingsButton(ctx, "changed");
 
 		check("change is dirty before close", core.isDirty());
 		closeMenu(ctx);
-		check("closing the menu saves", !core.isDirty()
+		check("Escape closes the editor and saves", !core.isDirty()
 				&& read(configDir.resolve("mejtacore.json")).contains("\"show_addon_ids\": true"));
+		check("and returns to the menu it was opened from", waitForMenu(ctx, "MejtaCore"));
+		closeMenu(ctx);
 	}
 
 	private void addonSettingsChecks(ClientGameTestContext ctx, Path configDir) {
@@ -252,39 +268,37 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("addon detail page opens", waitForMenu(ctx, "Example Addon"));
 		check("addon detail shows its own menu entries", findSlot(ctx, "example_status") >= 0);
 		clickSlot(ctx, findSlot(ctx, "settings"), 0);
-		check("addon settings page opens", waitForMenu(ctx, "Example Addon Settings"));
+		check("addon settings open in the editor", waitForSettings(ctx) && "example".equals(onSettings(ctx, SettingsScreen::selectedConfigId)));
 
-		ctx.getInput().holdShift();
-		clickSlot(ctx, findSlot(ctx, "setting_radius"), 0);
-		ctx.getInput().releaseShift();
-		check("shift-click adds 10 (8 -> 18)", config.get(ExampleAddon.RADIUS) == 18);
-		clickSlot(ctx, findSlot(ctx, "setting_speed"), 0);
-		check("decimal step (1.0 -> 1.1)", config.get(ExampleAddon.SPEED) == 1.1);
+		typeSetting(ctx, "radius", "18");
+		check("number field sets an integer (8 -> 18)", config.get(ExampleAddon.RADIUS) == 18);
+		check("the field shows the new value", "18".equals(onSettings(ctx, s -> s.shownValue("radius"))));
+		typeSetting(ctx, "speed", "1.1");
+		check("number field sets a decimal (1.0 -> 1.1)", config.get(ExampleAddon.SPEED) == 1.1);
+		typeSetting(ctx, "speed", "fast");
+		check("text in a number field is refused", config.get(ExampleAddon.SPEED) == 1.1
+				&& java.util.Objects.toString(onSettings(ctx, s -> s.errorOf("speed"))).contains("not a number"));
 		ctx.takeScreenshot("mejtacore-05-addon-settings");
 
-		clickSlot(ctx, findSlot(ctx, "setting_greeting"), 0);
-		check("string setting opens text input", waitForScreenClass(ctx, TextInputScreen.class));
-		selectAllAndType(ctx, "Hi tester");
-		ctx.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
-		ctx.waitTicks(2);
-		check("text input returns to settings", waitForMenu(ctx, "Example Addon Settings"));
-		check("string value saved in memory", "Hi tester".equals(config.get(ExampleAddon.GREETING)));
+		typeSetting(ctx, "greeting", "Hi tester");
+		check("text field sets a string", "Hi tester".equals(config.get(ExampleAddon.GREETING)));
+		typeSetting(ctx, "greeting", "   ");
+		check("invalid string is not accepted", "Hi tester".equals(config.get(ExampleAddon.GREETING))
+				&& onSettings(ctx, s -> s.errorOf("greeting")) != null);
+		clickSetting(ctx, "speed", SettingsScreen.Part.RESET);
+		check("reset button resets a decimal", config.get(ExampleAddon.SPEED) == 1.0);
+		check("leaving an invalid field shows the value again", "Hi tester".equals(onSettings(ctx, s -> s.shownValue("greeting"))));
 
-		clickSlot(ctx, findSlot(ctx, "setting_greeting"), 0);
-		waitForScreenClass(ctx, TextInputScreen.class);
-		selectAllAndType(ctx, "   ");
-		ctx.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
-		ctx.waitTicks(2);
-		check("invalid string is not accepted", ctx.computeOnClient(mc -> mc.screen instanceof TextInputScreen));
-		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
-		check("cancel returns to settings", waitForMenu(ctx, "Example Addon Settings"));
-		check("value unchanged after cancel", "Hi tester".equals(config.get(ExampleAddon.GREETING)));
+		clickSetting(ctx, "enabled", SettingsScreen.Part.CONTROL);
+		check("toggle before undo", !config.get(ExampleAddon.ENABLED));
+		clickSettingsButton(ctx, "undo");
+		check("Undo Changes puts back everything changed in the editor", config.get(ExampleAddon.ENABLED)
+				&& config.get(ExampleAddon.RADIUS) == 8 && config.get(ExampleAddon.GREETING).startsWith("Hello from"));
+		typeSetting(ctx, "radius", "18");
+		typeSetting(ctx, "greeting", "Hi tester");
 
-		ctx.getInput().holdControl();
-		clickSlot(ctx, findSlot(ctx, "setting_speed"), 0);
-		ctx.getInput().releaseControl();
-		check("ctrl-click resets decimal", config.get(ExampleAddon.SPEED) == 1.0);
-
+		closeMenu(ctx);
+		check("Escape returns to the addon page", waitForMenu(ctx, "Example Addon"));
 		closeMenu(ctx);
 		String file = read(configDir.resolve("example.json"));
 		check("addon settings saved on close", file.contains("\"radius\": 18") && file.contains("\"greeting\": \"Hi tester\""));
@@ -339,9 +353,9 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("corrupt file backed up", countBackups(configDir, "example_extra.json.broken-") > 0);
 		check("corrupt file replaced with defaults", read(extra).contains("\"show_tips\": true"));
 
-		clearChat(ctx);
 		chat(ctx, "/mejtacore config");
-		check("/mejtacore config without subcommand shows help", chatContains(ctx, "/mejtacore config reload"));
+		check("/mejtacore config without subcommand opens the settings editor", waitForSettings(ctx));
+		closeMenu(ctx);
 	}
 
 	private void addonMenuEntryChecks(ClientGameTestContext ctx) {
@@ -595,8 +609,10 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
 		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
-		waitForMenu(ctx, "Configuration");
-		check("single-player: no Server Settings entry (local files are the server's)", findSlot(ctx, "server_settings") < 0);
+		waitForSettings(ctx);
+		check("single-player: no server configs listed (local files are the server's)",
+				settingsHas(ctx, s -> !s.listsConfig("example", true) && s.serverState().isEmpty()));
+		closeMenu(ctx);
 		closeMenu(ctx);
 	}
 
@@ -613,57 +629,43 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
 		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
-		check("remote: Configuration page opens on a server", waitForMenu(ctx, "Configuration"));
-		check("remote: Server Settings entry offered by a MejtaCore server", findSlot(ctx, "server_settings") >= 0);
-		clickSlot(ctx, findSlot(ctx, "server_settings"), 0);
-		check("remote: Server Settings page opens", waitForMenu(ctx, "Server Settings"));
-		check("remote: non-op sees 'No permission'", waitUntil(ctx, () -> findSlot(ctx, "server_no_permission") >= 0));
+		check("remote: Configuration opens the settings editor on a server", waitForSettings(ctx));
+		check("remote: non-op sees 'No permission'", waitUntil(ctx, () -> "No permission".equals(onSettings(ctx, SettingsScreen::serverState))));
 		ctx.takeScreenshot("mejtacore-08-server-settings-denied");
 
 		perms.set(edit, PermissionLevel.ALL);
-		perms.save(); // a config change: the server pushes fresh catalogs, the open page refreshes
-		check("remote: granting mejtacore.config.edit shows the server's configs",
-				waitUntil(ctx, () -> findSlot(ctx, "server_config_example") >= 0));
+		perms.save(); // a config change: the server pushes fresh catalogs, the open editor refreshes
+		check("remote: granting mejtacore.config.edit lists the server's configs",
+				waitUntil(ctx, () -> settingsHas(ctx, s -> s.listsConfig("example", true))));
 		check("remote: permissions file hidden without mejtacore.config.permissions",
-				findSlot(ctx, "server_config_mejtacore.permissions") < 0);
+				settingsHas(ctx, s -> !s.listsConfig(PermissionRegistry.CONFIG_ID, true)));
 		ctx.takeScreenshot("mejtacore-09-server-settings");
 
-		clickSlot(ctx, findSlot(ctx, "server_config_example"), 0);
-		check("remote: server config page opens", waitForMenu(ctx, "Example Addon (Server)"));
-		clickSlot(ctx, findSlot(ctx, "setting_radius"), 0);
-		check("remote: left click changes the server's value (8 -> 9)", waitUntil(ctx, () -> example.get(ExampleAddon.RADIUS) == 9));
+		clickSidebar(ctx, "example", true);
+		check("remote: server config opens", settingsHas(ctx, s -> "example".equals(s.selectedConfigId()) && s.showsServerConfig()));
+		typeSetting(ctx, "radius", "9");
+		check("remote: typing changes the server's value (8 -> 9)", waitUntil(ctx, () -> example.get(ExampleAddon.RADIUS) == 9));
 		check("remote: server saved the change to disk", waitUntil(ctx,
 				() -> read(example.file()).contains("\"radius\": 9")));
-		check("remote: the server's confirmation is shown in the menu (1.4.0)", waitUntil(ctx, () -> statusContains(ctx, "Saved on the server")));
-		clickSlot(ctx, findSlot(ctx, "setting_mode"), 0);
+		check("remote: the server's confirmation is shown in the editor", waitUntil(ctx, () -> statusContains(ctx, "Saved on the server")));
+		clickSetting(ctx, "mode", SettingsScreen.Part.CONTROL);
 		check("remote: enum setting cycles on the server (NORMAL -> FAST)",
 				waitUntil(ctx, () -> example.get(ExampleAddon.MODE) == ExampleAddon.Mode.FAST));
-		check("remote: page shows the server's value", waitUntil(ctx, () -> ctx.computeOnClient(mc -> {
-			if (!(mc.screen instanceof ChestMenuScreen menu)) {
-				return false;
-			}
-			int slot = findSlotOn(menu, "setting_radius");
-			return slot >= 0 && menu.entryAt(slot).title().getString().contains("9");
-		})));
+		check("remote: editor shows the server's value", waitUntil(ctx, () -> "9".equals(onSettings(ctx, s -> s.shownValue("radius")))));
 		ctx.takeScreenshot("mejtacore-10-server-config-edit");
 
-		// 1.4.0: a refusal used to show only in the action bar, hidden behind the menu.
 		clearChat(ctx);
-		clickSlot(ctx, findSlot(ctx, "setting_greeting"), 0);
-		waitForScreenClass(ctx, TextInputScreen.class);
-		selectAllAndType(ctx, "   ");
-		ctx.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
-		check("remote: a refused edit is shown in the menu", waitUntil(ctx, () -> statusContains(ctx, "Server refused the change")
+		ctx.runOnClient(mc -> {
+			if (mc.screen instanceof SettingsScreen) {
+				// Past the editor's own check, so the server's refusal is what the player sees.
+				ClientPlayNetworking.send(new ConfigPayloads.EditConfig("example", "SET", "greeting", "   "));
+			}
+		});
+		check("remote: a refused edit is shown in the editor", waitUntil(ctx, () -> statusContains(ctx, "Server refused the change")
 				&& statusContains(ctx, "greeting")));
 		check("remote: a refused edit is also written to chat", chatContains(ctx, "Server refused the change"));
 		check("remote: the refused value was not applied", !example.get(ExampleAddon.GREETING).isBlank());
-		check("remote: the page shows the server's value again", waitUntil(ctx, () -> ctx.computeOnClient(mc -> {
-			if (!(mc.screen instanceof ChestMenuScreen menu)) {
-				return false;
-			}
-			int slot = findSlotOn(menu, "setting_greeting");
-			return slot >= 0 && menu.entryAt(slot).title().getString().contains("Hello from");
-		})));
+		closeMenu(ctx);
 		closeMenu(ctx);
 		localCopyChecks(ctx);
 
@@ -715,33 +717,36 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	private void localCopyChecks(ClientGameTestContext ctx) {
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
-		waitForMenu(ctx, "Configuration");
-		check("local copy: Configuration page says the files are this computer's", findSlot(ctx, "this_computer_note") >= 0);
-		check("local copy: entry labelled '(this computer)'", ctx.computeOnClient(mc -> mc.screen instanceof ChestMenuScreen menu
-				&& findSlotOn(menu, "config_example") >= 0
-				&& menu.entryAt(findSlotOn(menu, "config_example")).title().getString().equals("Example Addon (this computer)")));
-		clickSlot(ctx, findSlot(ctx, "config_example"), 0);
-		check("local copy: clicking a config the server also has opens the SERVER's copy", waitForMenu(ctx, "Example Addon (Server)"));
-		check("local copy: the menu says which copy is open", statusContains(ctx, "SERVER's settings"));
+		clickSlot(ctx, findSlot(ctx, "installed_addons"), 0);
+		waitForMenu(ctx, "Installed Addons");
+		clickSlot(ctx, findSlot(ctx, "addon_example"), 0);
+		waitForMenu(ctx, "Example Addon");
+		clickSlot(ctx, findSlot(ctx, "settings"), 0);
+		check("local copy: a config the server also has opens the SERVER's copy", waitForSettings(ctx)
+				&& waitUntil(ctx, () -> settingsHas(ctx, s -> "example".equals(s.selectedConfigId()) && s.showsServerConfig())));
+		check("local copy: the editor lists both copies", settingsHas(ctx, s -> s.listsConfig("example", false)));
 		ctx.takeScreenshot("mejtacore-12-local-config-redirect");
-		clickSlot(ctx, navRow(ctx), 0);
-		waitForMenu(ctx, "Configuration");
+		closeMenu(ctx);
+		waitForMenu(ctx, "Example Addon");
 		ctx.getInput().holdShift();
-		clickSlot(ctx, findSlot(ctx, "config_example"), 0);
+		clickSlot(ctx, findSlot(ctx, "settings"), 0);
 		ctx.getInput().releaseShift();
-		check("local copy: shift-click opens this computer's copy", waitForMenu(ctx, "Example Addon (This Computer)"));
-		check("local copy: that page is labelled as not the server's", findSlot(ctx, "this_computer_note") >= 0
-				&& findSlot(ctx, "setting_radius") >= 0);
-		clickSlot(ctx, findSlot(ctx, "this_computer_note"), 0);
-		check("local copy: the note leads to Server Settings", waitForMenu(ctx, "Server Settings"));
+		check("local copy: shift-click opens this computer's copy", waitForSettings(ctx)
+				&& settingsHas(ctx, s -> "example".equals(s.selectedConfigId()) && !s.showsServerConfig()));
+		closeMenu(ctx);
 		closeMenu(ctx);
 
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
 		clickSlot(ctx, findSlot(ctx, "core_settings"), 0);
-		check("local copy: MejtaCore Settings labelled as this computer's on a server",
-				waitForMenu(ctx, "MejtaCore Settings") && findSlot(ctx, "this_computer_note") >= 0);
+		check("local copy: MejtaCore Settings opens this computer's copy on a server",
+				waitForSettings(ctx) && settingsHas(ctx, s -> "mejtacore".equals(s.selectedConfigId()) && !s.showsServerConfig()));
+		closeMenu(ctx);
+		closeMenu(ctx);
+
+		chat(ctx, "/mejtaadmin config");
+		check("/mejtaadmin config opens the client's settings editor on the server's MejtaCore config", waitForSettings(ctx)
+				&& waitUntil(ctx, () -> settingsHas(ctx, s -> "mejtacore".equals(s.selectedConfigId()) && s.showsServerConfig())));
 		closeMenu(ctx);
 	}
 
@@ -813,10 +818,6 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("vanilla menu: a text setting closes the menu", waitUntil(ctx, () -> ctx.computeOnClient(mc -> mc.screen == null)));
 		check("vanilla menu: and offers the command in chat", chatContains(ctx, "Click here to type a new value for greeting"));
 
-		clearChat(ctx);
-		chat(ctx, "/mejtaadmin config");
-		check("vanilla menu: /mejtaadmin config without arguments opens it", waitForContainer(ctx, "Server Settings"));
-		closeMenu(ctx);
 
 		chat(ctx, "/mejtaadmin config menu example");
 		check("vanilla menu: opens one config directly", waitForContainer(ctx, "Example Addon settings"));
@@ -842,16 +843,12 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		@SuppressWarnings("unchecked")
 		Setting<PermissionLevel> secrets = (Setting<PermissionLevel>) perms.spec().setting("mejtacore.config.secrets").orElseThrow();
 
-		chat(ctx, "/mejta gui");
-		waitForMenu(ctx, "MejtaCore");
-		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
-		waitForMenu(ctx, "Configuration");
-		clickSlot(ctx, findSlot(ctx, "server_settings"), 0);
-		waitUntil(ctx, () -> findSlot(ctx, "server_config_example") >= 0);
-		clickSlot(ctx, findSlot(ctx, "server_config_example"), 0);
-		check("secret: server config page opens", waitForMenu(ctx, "Example Addon (Server)"));
-		check("secret: not sent to the client's Server Settings", findSlot(ctx, "setting_api_token") < 0
-				&& findSlot(ctx, "setting_radius") >= 0);
+		chat(ctx, "/mejtacore config");
+		waitForSettings(ctx);
+		waitUntil(ctx, () -> settingsHas(ctx, s -> s.listsConfig("example", true)));
+		ctx.runOnClient(mc -> ((SettingsScreen) mc.screen).selectConfig("example", true));
+		check("secret: not sent to the client's settings editor", settingsHas(ctx, s -> !s.listedKeys().contains("api_token")
+				&& s.listedKeys().contains("radius")));
 		closeMenu(ctx);
 
 		clearChat(ctx);
@@ -1031,6 +1028,74 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("api4: repeating task ran about 5 times, then stopped (" + runs.get() + ")", runs.get() >= 4 && runs.get() <= 6);
 	}
 
+	private static boolean waitForSettings(ClientGameTestContext ctx) {
+		boolean open = waitForScreenClass(ctx, SettingsScreen.class);
+		ctx.waitTicks(2);
+		return open;
+	}
+
+	/** {@code fn} applied to the open settings editor, on the client thread; {@code null} if none is open. */
+	private static <T> T onSettings(ClientGameTestContext ctx, java.util.function.Function<SettingsScreen, T> fn) {
+		return ctx.computeOnClient(mc -> mc.screen instanceof SettingsScreen screen ? fn.apply(screen) : null);
+	}
+
+	/** Whether the settings editor is open and {@code test} holds for it. */
+	private static boolean settingsHas(ClientGameTestContext ctx, java.util.function.Predicate<SettingsScreen> test) {
+		return ctx.computeOnClient(mc -> mc.screen instanceof SettingsScreen screen && test.test(screen));
+	}
+
+	/** Moves the real cursor to GUI position {@code pos} and presses a mouse button. */
+	private static void clickAt(ClientGameTestContext ctx, int[] pos, int button) {
+		if (pos == null) {
+			LOG.error("[MejtaTest] cannot click a missing widget");
+			return;
+		}
+		double factor = ctx.computeOnClient(mc -> (double) mc.getWindow().getScreenWidth() / mc.getWindow().getGuiScaledWidth());
+		ctx.getInput().setCursorPos(pos[0] * factor, pos[1] * factor);
+		ctx.getInput().pressMouse(button);
+		ctx.waitTicks(2);
+	}
+
+	private static void clickSetting(ClientGameTestContext ctx, String key, SettingsScreen.Part part) {
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof SettingsScreen s ? s.positionOf(key, part) : null), 0);
+	}
+
+	private static void clickSettingsButton(ClientGameTestContext ctx, String id) {
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof SettingsScreen s ? s.buttonPosition(id) : null), 0);
+	}
+
+	private static void clickSidebar(ClientGameTestContext ctx, String configId, boolean server) {
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof SettingsScreen s ? s.sidebarPosition(configId, server) : null), 0);
+	}
+
+	/** Clicks the setting's field, replaces its text and presses Enter. */
+	private static void typeSetting(ClientGameTestContext ctx, String key, String text) {
+		clickSetting(ctx, key, SettingsScreen.Part.FIELD);
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_END);
+		String shown = onSettings(ctx, s -> s.shownValue(key));
+		for (int i = 0; shown != null && i < shown.length(); i++) {
+			ctx.getInput().pressKey(GLFW.GLFW_KEY_BACKSPACE);
+		}
+		ctx.getInput().typeChars(text);
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
+		ctx.waitTicks(3);
+	}
+
+	private static void typeSearch(ClientGameTestContext ctx, String text) {
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof SettingsScreen s ? s.searchPosition() : null), 0);
+		ctx.getInput().typeChars(text);
+		ctx.waitTicks(2);
+	}
+
+	private static void clearSearch(ClientGameTestContext ctx) {
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof SettingsScreen s ? s.searchPosition() : null), 0);
+		ctx.getInput().pressKey(GLFW.GLFW_KEY_END);
+		for (int i = 0; i < 64; i++) {
+			ctx.getInput().pressKey(GLFW.GLFW_KEY_BACKSPACE);
+		}
+		ctx.waitTicks(2);
+	}
+
 	private static boolean statusContains(ClientGameTestContext ctx, String text) {
 		return ctx.computeOnClient(mc -> ChestMenuScreen.currentStatus() != null && ChestMenuScreen.currentStatus().getString().contains(text));
 	}
@@ -1107,17 +1172,6 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 			throw new IllegalStateException("Cannot read " + name, e);
 		}
 	}
-
-	private static int findSlotOn(ChestMenuScreen menu, String entryId) {
-		for (int slot = 0; slot < 54; slot++) {
-			MenuEntry entry = menu.entryAt(slot);
-			if (entry != null && entry.id().equals(entryId)) {
-				return slot;
-			}
-		}
-		return -1;
-	}
-
 
 	private static NotificationProvider provider(String id, java.util.function.Consumer<Notification> action) {
 		return new NotificationProvider() {
@@ -1226,6 +1280,10 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	}
 
 	private static void chat(ClientGameTestContext ctx, String command) {
+		// Chat only opens in game, so close whatever screens (and the menus they return to) are still open.
+		for (int i = 0; i < 5 && ctx.computeOnClient(mc -> mc.screen != null); i++) {
+			closeMenu(ctx);
+		}
 		ctx.getInput().pressKey(options -> options.keyChat);
 		ctx.waitForScreen(ChatScreen.class);
 		ctx.getInput().typeChars(command);
@@ -1300,19 +1358,6 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ctx.getInput().setCursorPos(pos[0], pos[1]);
 		ctx.getInput().pressMouse(button);
 		ctx.waitTicks(2);
-	}
-
-	/**
-	 * Clears the focused text box with Backspace, then types. (Ctrl+A cannot be used: Fabric's
-	 * TestInput sends key events without modifier bits, and vanilla EditBox reads them from the event.)
-	 */
-	private static void selectAllAndType(ClientGameTestContext ctx, String text) {
-		int length = ctx.computeOnClient(mc -> mc.screen instanceof TextInputScreen
-				? ((TextInputScreen) mc.screen).currentValue().length() : 0);
-		for (int i = 0; i < length; i++) {
-			ctx.getInput().pressKey(GLFW.GLFW_KEY_BACKSPACE);
-		}
-		ctx.getInput().typeChars(text);
 	}
 
 	private static void clearChat(ClientGameTestContext ctx) {

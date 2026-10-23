@@ -16,14 +16,17 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.config.PendingEdits;
 import com.mejta.mejtacore.logging.MejtaLog;
 import com.mejta.mejtacore.network.ConfigPayloads.EditResult;
+import com.mejta.mejtacore.network.ConfigPayloads.OpenSettings;
 import com.mejta.mejtacore.network.ConfigPayloads.RemoteConfig;
 import com.mejta.mejtacore.network.ConfigPayloads.RequestConfigs;
 import com.mejta.mejtacore.network.ConfigPayloads.ServerConfigs;
 import com.mejta.mejtacore.ui.ChestMenuScreen;
+import com.mejta.mejtacore.ui.ScreenOpener;
+import com.mejta.mejtacore.ui.SettingsScreen;
 
 /**
  * Client-side copy of the configs the current server lets this player edit. Empty in single-player
- * (where the menu edits the local files directly) and on servers without MejtaCore 1.2+.
+ * (where the settings editor edits the local files directly) and on servers without MejtaCore 1.2+.
  */
 public final class RemoteConfigs {
 	private static final Map<String, RemoteConfigHandle> handles = new LinkedHashMap<>();
@@ -43,6 +46,9 @@ public final class RemoteConfigs {
 			PENDING.answered();
 			showResult(ctx.client(), payload.ok(), payload.message());
 		}));
+		// /mejtaadmin config on the server: open the settings editor on the server's copy of the config.
+		ClientPlayNetworking.registerGlobalReceiver(OpenSettings.TYPE, (payload, ctx) -> ctx.client().execute(() -> ScreenOpener.open(
+				() -> new SettingsScreen(null, payload.configId().isEmpty() ? null : payload.configId(), true))));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(RemoteConfigs::clear));
 	}
 

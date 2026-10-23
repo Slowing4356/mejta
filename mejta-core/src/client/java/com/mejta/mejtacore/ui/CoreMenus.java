@@ -18,7 +18,6 @@ import com.mejta.mejtacore.api.addon.AddonInfo;
 import com.mejta.mejtacore.api.client.MenuContext;
 import com.mejta.mejtacore.api.client.MenuEntry;
 import com.mejta.mejtacore.api.config.ConfigHandle;
-import com.mejta.mejtacore.config.ConfigNames;
 import com.mejta.mejtacore.core.CoreSettings;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.logging.Diagnostics;
@@ -41,10 +40,9 @@ public final class CoreMenus {
 				.title(Component.literal("MejtaCore Settings").withStyle(ChatFormatting.GOLD))
 				.dynamicDescription(() -> RemoteConfigs.supported()
 						? List.of(gray("This computer's framework settings: menu"), gray("size, sounds, logging and tooltips"),
-								dark("The server's: Configuration > Server Settings"))
+								dark("The server's settings: Configuration"))
 						: List.of(gray("Framework settings: menu size, sounds,"), gray("logging and tooltips")))
-				.onClick(ctx -> ctx.openPage(Component.literal("MejtaCore Settings"),
-						() -> withNoteWhenRemote(ConfigMenus.settingsEntries(MejtaCore.coreConfig()))))
+				.onClick(ctx -> ctx.openScreen(new SettingsScreen(ctx.screen(), MejtaCore.MOD_ID, false)))
 				.build());
 		entries.add(null);
 		entries.add(MenuEntry.builder("installed_addons")
@@ -57,13 +55,8 @@ public final class CoreMenus {
 		entries.add(MenuEntry.builder("configuration")
 				.icon(() -> new ItemStack(Items.BOOK))
 				.title(Component.literal("Configuration").withStyle(ChatFormatting.GOLD))
-				.dynamicDescription(() -> RemoteConfigs.supported()
-						? List.of(gray(MejtaCore.configs().all().size() + " configuration file(s) on this computer"),
-								Component.literal("+ Server Settings").withStyle(ChatFormatting.AQUA),
-								gray("View, edit and reload settings"))
-						: List.of(gray(MejtaCore.configs().all().size() + " configuration file(s)"),
-								gray("View, edit and reload settings")))
-				.onClick(ctx -> ctx.openPage(Component.literal("Configuration"), CoreMenus::configEntries))
+				.dynamicDescription(CoreMenus::configurationDescription)
+				.onClick(ctx -> ctx.openScreen(new SettingsScreen(ctx.screen(), null, true)))
 				.build());
 		entries.add(null);
 		entries.add(MenuEntry.builder("about")
@@ -158,7 +151,7 @@ public final class CoreMenus {
 					lines.addAll(remoteNote(config));
 					return lines;
 				})
-				.onClick(ctx -> openConfig(ctx, config, addon.name()))
+				.onClick(ctx -> openConfig(ctx, config))
 				.build()));
 		entries.addAll(ClientAddonExtensions.menuEntries(addon.id()));
 		return entries;
@@ -179,126 +172,29 @@ public final class CoreMenus {
 		return entries;
 	}
 
-	private static List<Component> serverSettingsDescription() {
-		if (RemoteConfigs.incompatibleProtocol() != 0) {
-			return List.of(gray("Settings of the server you are playing on"),
-					Component.literal("Different MejtaCore version on the server").withStyle(ChatFormatting.RED));
+	private static List<Component> configurationDescription() {
+		List<Component> lines = new ArrayList<>();
+		lines.add(gray("Every setting of MejtaCore and its addons,"));
+		lines.add(gray("with search, categories and reset"));
+		if (!RemoteConfigs.supported()) {
+			lines.add(dark(MejtaCore.configs().all().size() + " configuration file(s)"));
+		} else if (RemoteConfigs.incompatibleProtocol() != 0) {
+			lines.add(Component.literal("Server: different MejtaCore version").withStyle(ChatFormatting.RED));
+		} else if (RemoteConfigs.received() && !RemoteConfigs.permitted()) {
+			lines.add(Component.literal("Server: needs mejtacore.config.edit").withStyle(ChatFormatting.RED));
+		} else if (RemoteConfigs.received()) {
+			lines.add(Component.literal("+ " + RemoteConfigs.configs().size() + " of the server's configs").withStyle(ChatFormatting.AQUA));
 		}
-		if (!RemoteConfigs.received()) {
-			return List.of(gray("Settings of the server you are playing on"), dark("Click to load"));
-		}
-		if (!RemoteConfigs.permitted()) {
-			return List.of(gray("Settings of the server you are playing on"),
-					Component.literal("You need the permission mejtacore.config.edit").withStyle(ChatFormatting.RED));
-		}
-		return List.of(gray("Settings of the server you are playing on"),
-				gray(RemoteConfigs.configs().size() + " configuration file(s)"),
-				dark("Changes are checked and saved by the server"));
-	}
-
-	private static List<MenuEntry> serverConfigEntries() {
-		List<MenuEntry> entries = new ArrayList<>();
-		if (RemoteConfigs.incompatibleProtocol() != 0) {
-			entries.add(MenuEntry.builder("server_incompatible")
-					.icon(() -> new ItemStack(Items.BARRIER))
-					.title(Component.literal("Different MejtaCore version").withStyle(ChatFormatting.RED))
-					.description(gray("The server uses settings protocol " + RemoteConfigs.incompatibleProtocol() + ","),
-							gray("this client " + com.mejta.mejtacore.network.ConfigPayloads.PROTOCOL + ". Update MejtaCore on both,"),
-							gray("or use /mejtaadmin config menu"))
-					.build());
-			return entries;
-		}
-		if (!RemoteConfigs.received()) {
-			entries.add(MenuEntry.builder("server_loading")
-					.icon(() -> new ItemStack(Items.CLOCK))
-					.title(Component.literal("Loading from the server...").withStyle(ChatFormatting.GRAY))
-					.build());
-			return entries;
-		}
-		if (!RemoteConfigs.permitted()) {
-			entries.add(MenuEntry.builder("server_no_permission")
-					.icon(() -> new ItemStack(Items.BARRIER))
-					.title(Component.literal("No permission").withStyle(ChatFormatting.RED))
-					.description(gray("Editing server settings needs the permission"), gray("mejtacore.config.edit (operator level 3 by default)"))
-					.build());
-			return entries;
-		}
-		for (ConfigHandle config : RemoteConfigs.configs()) {
-			String name = RemoteConfigs.name(config);
-			entries.add(MenuEntry.builder("server_config_" + config.id())
-					.icon(() -> new ItemStack(Items.ENCHANTED_BOOK))
-					.title(Component.literal(name).withStyle(ChatFormatting.AQUA))
-					.dynamicDescription(() -> List.of(
-							gray("On the server: config/mejta/" + config.id() + ".json"),
-							gray(config.spec().settings().size() + " setting(s)"),
-							dark("Click to edit")))
-					.onClick(ctx -> openServerConfig(ctx, config.id(), name))
-					.build());
-		}
-		return entries;
+		return lines;
 	}
 
 	/**
-	 * The server's copy of a config. The page looks the handle up by ID on every refresh: after the permission
-	 * was revoked and granted again the catalog holds a new handle, and a page bound to the old one showed
-	 * stale values forever.
+	 * Opens a config. While playing on a server that offers the same config (an addon installed on both sides),
+	 * a click opens the SERVER's copy: editing the local file there changed only this computer and looked like
+	 * the server ignored the change. Shift-click opens the local copy, which is then clearly labelled.
 	 */
-	private static void openServerConfig(MenuContext ctx, String id, String name) {
-		RemoteConfigs.request();
-		ctx.openPage(Component.literal(name + " (Server)"), () -> RemoteConfigs.find(id)
-				.map(ConfigMenus::settingsEntries)
-				.orElseGet(() -> List.of(MenuEntry.builder("server_config_gone")
-						.icon(() -> new ItemStack(Items.BARRIER))
-						.title(Component.literal("Not available").withStyle(ChatFormatting.RED))
-						.description(gray("The server no longer offers this config to you"))
-						.build())));
-	}
-
-	/**
-	 * Opens a config file of this computer. While playing on a server that offers the same config in Server
-	 * Settings (an addon installed on both sides), a click opens the SERVER's copy: editing the local file there
-	 * changed only this computer and looked like the server ignored the change. Shift-click opens the local copy,
-	 * which is then clearly labelled.
-	 */
-	private static void openConfig(MenuContext ctx, ConfigHandle local, String name) {
-		if (!RemoteConfigs.supported()) {
-			ctx.openPage(Component.literal(name + " Settings"), () -> ConfigMenus.settingsEntries(local));
-			return;
-		}
-		ConfigHandle server = RemoteConfigs.find(local.id()).orElse(null);
-		if (server != null && !ctx.shiftDown()) {
-			openServerConfig(ctx, local.id(), RemoteConfigs.name(server));
-			ChestMenuScreen.showStatus(Component.literal("The SERVER's settings (Shift-click for this computer's copy)")
-					.withStyle(ChatFormatting.AQUA));
-			return;
-		}
-		ctx.openPage(Component.literal(name + " (This Computer)"), () -> withNoteWhenRemote(ConfigMenus.settingsEntries(local)));
-		ChestMenuScreen.showStatus(Component.literal("This computer's copy: changes here do not reach the server")
-				.withStyle(ChatFormatting.YELLOW));
-	}
-
-	/** Puts {@link #thisComputerNote()} first while connected to a server. */
-	private static List<MenuEntry> withNoteWhenRemote(List<MenuEntry> entries) {
-		if (!RemoteConfigs.supported()) {
-			return entries;
-		}
-		List<MenuEntry> out = new ArrayList<>(entries.size() + 1);
-		out.add(thisComputerNote());
-		out.addAll(entries);
-		return out;
-	}
-
-	private static MenuEntry thisComputerNote() {
-		return MenuEntry.builder("this_computer_note")
-				.icon(() -> new ItemStack(Items.PAPER))
-				.title(Component.literal("This computer's settings").withStyle(ChatFormatting.YELLOW))
-				.description(gray("These files are on your computer."),
-						Component.literal("Changing them does NOT change the server.").withStyle(ChatFormatting.RED),
-						gray("The server's settings are under"),
-						gray("Configuration > Server Settings."),
-						dark("Click to open Server Settings"))
-				.onClick(CoreMenus::openServerSettings)
-				.build();
+	private static void openConfig(MenuContext ctx, ConfigHandle local) {
+		ctx.openScreen(new SettingsScreen(ctx.screen(), local.id(), !ctx.shiftDown()));
 	}
 
 	/** Description lines of a local config while connected to a server. */
@@ -311,70 +207,6 @@ public final class CoreMenus {
 					dark("Shift-click: this computer's copy"));
 		}
 		return List.of(Component.literal("This computer only: does not change the server").withStyle(ChatFormatting.YELLOW));
-	}
-
-	private static void openServerSettings(MenuContext ctx) {
-		RemoteConfigs.request();
-		ctx.openPage(Component.literal("Server Settings"), CoreMenus::serverConfigEntries);
-	}
-
-	private static List<MenuEntry> configEntries() {
-		List<MenuEntry> entries = new ArrayList<>();
-		if (RemoteConfigs.supported()) {
-			entries.add(MenuEntry.builder("server_settings")
-					.icon(() -> new ItemStack(Items.COMMAND_BLOCK))
-					.title(Component.literal("Server Settings").withStyle(ChatFormatting.GOLD))
-					.dynamicDescription(CoreMenus::serverSettingsDescription)
-					.onClick(CoreMenus::openServerSettings)
-					.build());
-			entries.add(thisComputerNote());
-		}
-		for (ConfigHandle config : MejtaCore.configs().all()) {
-			String name = ConfigNames.displayName(config);
-			entries.add(MenuEntry.builder("config_" + config.id())
-					.icon(() -> new ItemStack(Items.BOOK))
-					.title(() -> Component.literal(RemoteConfigs.supported() ? name + " (this computer)" : name)
-							.withStyle(ChatFormatting.AQUA))
-					.dynamicDescription(() -> {
-						List<Component> lines = new ArrayList<>();
-						lines.add(gray((RemoteConfigs.supported() ? "On this computer: " : "File: ") + "config/mejta/"
-								+ config.file().getFileName()));
-						lines.add(gray(config.spec().settings().size() + " setting(s), format v" + config.spec().version()));
-						lines.add(config.isDirty() ? Component.literal("Unsaved changes").withStyle(ChatFormatting.YELLOW) : dark("Saved"));
-						List<Component> note = remoteNote(config);
-						lines.addAll(note.isEmpty() ? List.of(dark("Click to edit")) : note);
-						return lines;
-					})
-					.onClick(ctx -> openConfig(ctx, config, name))
-					.build());
-		}
-		entries.add(MenuEntry.builder("reload")
-				.icon(() -> new ItemStack(Items.HOPPER))
-				.title(Component.literal("Reload from Disk").withStyle(ChatFormatting.YELLOW))
-				.dynamicDescription(() -> RemoteConfigs.supported()
-						? List.of(gray("Re-reads this computer's files in"), gray("config/mejta, discarding unsaved changes"),
-								dark("(not the server's: /mejtaadmin config reload)"))
-						: List.of(gray("Re-reads all files in config/mejta,"), gray("discarding unsaved changes")))
-				.onClick(ctx -> {
-					int count = MejtaCore.configs().reloadAll();
-					ChestMenuScreen.showStatus(Component.literal("Reloaded " + count + " configuration file(s)"
-							+ (RemoteConfigs.supported() ? " on this computer" : "")).withStyle(ChatFormatting.GREEN));
-					ctx.refresh();
-				})
-				.build());
-		entries.add(MenuEntry.builder("save")
-				.icon(() -> new ItemStack(Items.WRITABLE_BOOK))
-				.title(Component.literal("Save Now").withStyle(ChatFormatting.YELLOW))
-				.description(gray("Changes are also saved automatically"), gray("when the menu closes"))
-				.onClick(ctx -> {
-					MejtaCore.configs().saveAll();
-					ChestMenuScreen.showStatus(Component.literal("Configuration saved"
-							+ (RemoteConfigs.supported() ? " on this computer (server changes are saved by the server)" : ""))
-							.withStyle(ChatFormatting.GREEN));
-					ctx.refresh();
-				})
-				.build());
-		return entries;
 	}
 
 	private static List<MenuEntry> aboutEntries() {

@@ -1,12 +1,9 @@
-# Builds every Mejta project against Minecraft and runs the unit tests: a few minutes, on every push to
-# main and every pull request (documentation-only changes skip it).
+# Builds every Mejta project against Minecraft and runs the unit tests on every push to main and every pull
+# request (documentation-only changes skip it). MejtaCore builds first; the addons then build side by side, each
+# in its own job, against the MejtaCore it published.
 #
-# The client game tests (a real client against a dedicated server, under a virtual display) take up to
-# half an hour, MejtaAC's latency suites most of it, so they only run on demand: Actions > CI > Run workflow,
-# then choose "all" or one project. Run them before tagging a release.
-#
-# Projects build in dependency order: MejtaCore is published to the runner's Maven Local first, and the
-# addons compile against that copy. Nothing is published outside the runner.
+# The client game tests (a real client against a dedicated server, under a virtual display) only run on demand:
+# Actions > CI > Run workflow, then choose "all" or one project. Run them before tagging a release.
 name: CI
 
 on:
@@ -22,6 +19,10 @@ on:
         type: choice
         default: none
         options: [ none, all, mejta-core/test-addon, mejta-ac, mejta-utils, mejta-discord, mejta-perf, mejta-corpse, mejta-smp ]
+      full:
+        description: Also run the suites of older checks (MejtaAC stages 4 and 5, every latency profile)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,10 +36,10 @@ env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false
 
 jobs:
-  build:
-    name: Build and unit tests
+  core:
+    name: MejtaCore
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -46,63 +47,104 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
-      - name: MejtaCore
+      - name: Build, unit tests, publish to Maven Local
         working-directory: mejta-core
         run: bash ./gradlew test build publishToMavenLocal --stacktrace
-      - name: MejtaCore test addon
+      # compileGametestJava: the client game tests only run on demand, but they must always compile.
+      - name: Test addon
         working-directory: mejta-core/test-addon
-        run: bash ./gradlew build --stacktrace
-      - name: MejtaAC
-        working-directory: mejta-ac
-        run: bash ./gradlew test build --stacktrace
-      - name: MejtaUtils
-        working-directory: mejta-utils
-        run: bash ./gradlew test build --stacktrace
-      - name: MejtaDiscord
-        working-directory: mejta-discord
-        run: bash ./gradlew test build --stacktrace
-      - name: MejtaPerf
-        working-directory: mejta-perf
-        run: bash ./gradlew test build --stacktrace
-      # MejtaQoL's, MejtaCorpse's and MejtaSMP's server game tests are headless (about a minute each), so they
-      # run with every build.
-      - name: MejtaQoL
-        working-directory: mejta-qol
-        run: bash ./gradlew test build runGameTest --stacktrace
-      - name: MejtaCorpse
-        working-directory: mejta-corpse
-        run: bash ./gradlew test build runGameTest --stacktrace
-      - name: MejtaSMP
-        working-directory: mejta-smp
-        run: bash ./gradlew test build runGameTest --stacktrace
-      - name: Collect jars
-        if: always()
-        run: |
-          mkdir -p dist
-          for p in mejta-core mejta-ac mejta-utils mejta-discord mejta-perf mejta-qol mejta-corpse mejta-smp; do
-            [ -d "$p/build/libs" ] || continue
-            find "$p/build/libs" -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -exec cp {} dist/ \;
-          done
-          ls -l dist
+        run: bash ./gradlew build compileGametestJava --stacktrace
+      # The addon jobs (and game tests) compile against this copy instead of building MejtaCore again.
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: mejta-jars
-          path: dist/*.jar
+          name: mejtacore-maven
+          path: /home/runner/.m2/repository/com/mejta/
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jars-mejta-core
+          path: |
+            mejta-core/build/libs/*.jar
+            !mejta-core/build/libs/*-sources.jar
+            !mejta-core/build/libs/*-javadoc.jar
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: unit-test-reports-mejta-core
+          path: mejta-core/build/reports/tests/
+          if-no-files-found: ignore
+
+  addon:
+    name: ${{ matrix.project }}
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: mejta-ac
+            tasks: test build compileGametestJava
+          - project: mejta-utils
+            tasks: test build compileGametestJava
+          - project: mejta-discord
+            tasks: test build compileGametestJava
+          - project: mejta-perf
+            tasks: test build compileGametestJava
+          # The headless server game tests take about a minute each, so they run with every build.
+          - project: mejta-qol
+            tasks: test build runGameTest
+          - project: mejta-corpse
+            tasks: test build runGameTest
+          - project: mejta-smp
+            tasks: test build runGameTest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mejtacore-maven
+          path: /home/runner/.m2/repository/com/mejta/
+      - name: Build and test
+        working-directory: ${{ matrix.project }}
+        run: bash ./gradlew ${{ matrix.tasks }} --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jars-${{ matrix.project }}
+          path: |
+            ${{ matrix.project }}/build/libs/*.jar
+            !${{ matrix.project }}/build/libs/*-sources.jar
+            !${{ matrix.project }}/build/libs/*-javadoc.jar
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: unit-test-reports
-          path: '*/build/reports/tests/'
+          name: unit-test-reports-${{ matrix.project }}
+          path: ${{ matrix.project }}/build/reports/tests/
           if-no-files-found: ignore
+
+  # One check that is green only when MejtaCore and every addon built and passed (the name older runs used).
+  build:
+    name: Build and unit tests
+    needs: [ core, addon ]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every project passed
+        run: |
+          [ "${{ needs.core.result }}" = success ] && [ "${{ needs.addon.result }}" = success ]
 
   gametest:
     name: Game tests (${{ matrix.project }})
-    needs: build
+    needs: core
     if: github.event_name == 'workflow_dispatch' && inputs.game_tests != 'none'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -114,14 +156,15 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mejtacore-maven
+          path: /home/runner/.m2/repository/com/mejta/
       - name: Virtual display and software OpenGL
-        run: sudo apt-get update -q && sudo apt-get install -yq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils
-      - name: Publish MejtaCore to Maven Local
-        working-directory: mejta-core
-        run: bash ./gradlew publishToMavenLocal --stacktrace
+        run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
       - name: Client game test
         working-directory: ${{ matrix.project }}
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" bash ./gradlew runClientGameTest --stacktrace
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" bash ./gradlew runClientGameTest ${{ inputs.full && '-PfullGameTests' || '' }} --stacktrace
       - name: Name the log artifact
         if: always()
         id: name
@@ -134,5 +177,6 @@ jobs:
             ${{ matrix.project }}/build/run/clientGameTest/logs/
             ${{ matrix.project }}/build/run/clientGameTest/crash-reports/
             ${{ matrix.project }}/build/run/clientGameTest/screenshots/
+            ${{ matrix.project }}/build/run/clientGameTest/*.md
             ${{ matrix.project }}/run/logs/
           if-no-files-found: ignore
