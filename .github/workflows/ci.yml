@@ -46,9 +46,10 @@ jobs:
       - name: Build, unit tests, publish to Maven Local
         working-directory: mejta-core
         run: bash ./gradlew test build publishToMavenLocal --stacktrace
+      # compileGametestJava: the client game tests only run on demand, but they must always compile.
       - name: Test addon
         working-directory: mejta-core/test-addon
-        run: bash ./gradlew build --stacktrace
+        run: bash ./gradlew build compileGametestJava --stacktrace
       # The addon jobs (and game tests) compile against this copy instead of building MejtaCore again.
       - uses: actions/upload-artifact@v4
         with:
@@ -79,13 +80,13 @@ jobs:
       matrix:
         include:
           - project: mejta-ac
-            tasks: test build
+            tasks: test build compileGametestJava
           - project: mejta-utils
-            tasks: test build
+            tasks: test build compileGametestJava
           - project: mejta-discord
-            tasks: test build
+            tasks: test build compileGametestJava
           - project: mejta-perf
-            tasks: test build
+            tasks: test build compileGametestJava
           # The headless server game tests take about a minute each, so they run with every build.
           - project: mejta-qol
             tasks: test build runGameTest

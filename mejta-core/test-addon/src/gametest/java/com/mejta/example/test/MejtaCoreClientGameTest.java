@@ -236,7 +236,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("typing a number and Enter sets it (6 -> 5)", core.get(CoreSettings.MENU_ROWS) == 5);
 		typeSetting(ctx, "menu_rows", "9");
 		check("an out-of-range number is refused", core.get(CoreSettings.MENU_ROWS) == 5);
-		check("and the range is explained", String.valueOf(onSettings(ctx, s -> s.errorOf("menu_rows"))).contains("3 to 6"));
+		check("and the range is explained", java.util.Objects.toString(onSettings(ctx, s -> s.errorOf("menu_rows"))).contains("3 to 6"));
 		ctx.takeScreenshot("mejtacore-04b-validation");
 		clickSetting(ctx, "menu_rows", SettingsScreen.Part.RESET);
 		check("reset after an invalid value restores the default (6)", core.get(CoreSettings.MENU_ROWS) == 6
@@ -275,7 +275,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		check("number field sets a decimal (1.0 -> 1.1)", config.get(ExampleAddon.SPEED) == 1.1);
 		typeSetting(ctx, "speed", "fast");
 		check("text in a number field is refused", config.get(ExampleAddon.SPEED) == 1.1
-				&& String.valueOf(onSettings(ctx, s -> s.errorOf("speed"))).contains("not a number"));
+				&& java.util.Objects.toString(onSettings(ctx, s -> s.errorOf("speed"))).contains("not a number"));
 		ctx.takeScreenshot("mejtacore-05-addon-settings");
 
 		typeSetting(ctx, "greeting", "Hi tester");
