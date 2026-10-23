@@ -11,11 +11,12 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 - **Storage**: size-limited record logs and a small JSON data store per addon.
 - **Server menus** that work for players without mods (as a chest) and open as a proper screen for players with MejtaCore.
 - **Presence** (so vanished staff stay hidden in every addon), a server-thread **scheduler** and **metrics**.
+- **A shared economy API**, like Vault: an economy addon (MejtaEconomy) keeps the accounts, and shops, crates and auction houses pay through MejtaCore without depending on it.
 - An optional **client menu** (`/mejta`) with a full **settings editor**, for players who install MejtaCore themselves. With it, addon menus (homes, warps, leaderboards, staff panels) open as screens instead of chests.
 
 | | |
 |---|---|
-| Version | 1.7.0 (public API version 5) |
+| Version | 1.8.0 (public API version 6) |
 | Minecraft | 26.1.2 (Java Edition) |
 | Fabric Loader | 0.19.5 or newer |
 | Fabric API | 0.155.3+26.1.2 or newer, required |
@@ -26,7 +27,7 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 
 Put these in the server's `mods/` folder and restart:
 
-- `mejtacore-1.7.0.jar`
+- `mejtacore-1.8.0.jar`
 - Fabric API for 26.1.2
 - the Mejta addons you want
 
@@ -211,7 +212,7 @@ dependencies {
 	minecraft "com.mojang:minecraft:26.1.2"
 	implementation "net.fabricmc:fabric-loader:0.19.5"
 	implementation "net.fabricmc.fabric-api:fabric-api:0.155.3+26.1.2"
-	implementation "com.mejta:mejtacore:1.7.0"
+	implementation "com.mejta:mejtacore:1.8.0"
 }
 ```
 
@@ -415,6 +416,11 @@ No click type moves an item, in the menu or the player's inventory below it. Han
 - **Player status (API version 5):** `MejtaCoreAPI.status()` says who is AFK and who is in combat, so every addon agrees.
   - **AFK:** MejtaCore notices activity itself: looking around, walking (not being carried), chatting and interacting. After `afk.auto_minutes` idle, a player is AFK. Ask with `isAfk(uuid)` and `idleMillis(uuid)`. Set or clear it on request with `setAfk(player, boolean)` (an `/afk` command), report other activity with `markActive(player)`, and listen with `addAfkListener(...)` (cause `IDLE`, `ACTIVITY` or `REQUEST`).
   - **Combat:** a PvP hit (also with projectiles) puts both players in combat for `combat.tag_seconds`; death ends it. Ask with `inCombat(uuid)` and `combatRemainingMillis(uuid)`.
+- **Economy (API version 6, MejtaCore 1.8.0):** `MejtaCoreAPI.economy()` is one economy for every addon, like Vault. An economy addon registers the single `EconomyProvider`; everyone else calls `EconomyService` and declares `"mejtacore": ">=1.8.0 <2.0.0"`.
+  - Check `isAvailable()` first and hide money features without an economy.
+  - Amounts are `long`s in minor units (`1050` is `10.50` with two decimals). `parse(text)` reads player input (`12.5`, `2k`), `format(amount)` and `currencyName(amount)` print it.
+  - `deposit`, `withdraw` and the all-or-nothing `transfer(from, to, amount, source, reason)` return an `EconomyResult` with a status, the new balance and a message for players; nothing changes unless it succeeded. Deposits work for offline players. `source` is your addon ID, `reason` a short text for the economy's transaction log.
+  - Also `balance`, `has`, `hasAccount`, `ensureAccount`, `top(n)` and `addListener(...)` for every change.
 - **Metrics:** `metrics().timer(...)`, `counter(...)` and `gauge(...)`, read by tools such as MejtaPerf. Time a hot path with `long t = Metrics.Timer.start(); ... TIMER.stop(t);`. Recording takes no locks. Gauges are read on another thread, so keep them thread-safe. Names use lowercase letters, digits, `.`, `_` and `-`, and must never contain player names.
 
 ## Building and testing
@@ -423,11 +429,11 @@ You need JDK 25 (`JAVA_HOME` pointing at it). From `mejta-core/`:
 
 ```bash
 ./gradlew build                 # compiles and runs the unit tests
-./gradlew publishToMavenLocal   # com.mejta:mejtacore:1.7.0, for addon projects
+./gradlew publishToMavenLocal   # com.mejta:mejtacore:1.8.0, for addon projects
 ./gradlew runClient             # a development client with MejtaCore
 ```
 
-`build/libs/` then holds `mejtacore-1.7.0.jar` (install this one), plus sources and javadoc jars.
+`build/libs/` then holds `mejtacore-1.8.0.jar` (install this one), plus sources and javadoc jars.
 
 **Unit tests** (`./gradlew test`) cover logic that needs no running game: secret storage and masking, the data store (ordering, durability, corrupt files, key validation), the audit hash chain, metrics, the config edit path and menu steps.
 

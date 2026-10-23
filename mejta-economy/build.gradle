@@ -1,0 +1,84 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	mavenCentral()
+	// MejtaCore during local development. Replace with the public Mejta Maven repository once published.
+	mavenLocal {
+		content {
+			includeGroup "com.mejta"
+		}
+	}
+}
+
+loom {
+	mods {
+		"mejtaeconomy" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+fabricApi {
+	// Server game test: a headless dedicated server loads MejtaEconomy and moves money through MejtaCore's
+	// economy API and the commands. Run with `gradlew runGameTest` (about a minute; no display needed).
+	configureTests {
+		createSourceSet = true
+		modId = "mejtaeconomy_test"
+		enableGameTests = true
+		enableClientGameTests = false
+		eula = true
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Compile against MejtaCore and load it in development runs. Players install it separately;
+	// it is never bundled (no `include`).
+	implementation "com.mejta:mejtacore:${project.mejtacore_version}"
+
+	// Unit tests for the logic that needs no running game (`gradlew test`). Test-only; never shipped.
+	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
+	testImplementation "org.junit.jupiter:junit-jupiter"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+	useJUnitPlatform()
+	testLogging {
+		events "failed"
+		exceptionFormat "full"
+	}
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = "UTF-8"
+}
+
+java {
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}

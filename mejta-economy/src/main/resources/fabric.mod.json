@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtaeconomy",
+	"version": "${version}",
+	"name": "MejtaEconomy",
+	"description": "Server-side economy for MejtaCore: balances, /pay, /baltop and staff commands. Provides MejtaCore's shared economy API, which shops, crates and auction houses use.",
+	"authors": [
+		"Mejta"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"mejtacore": [
+			"com.mejta.mejtaeconomy.MejtaEconomy"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mejtacore": ">=1.8.0 <2.0.0"
+	}
+}

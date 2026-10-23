@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "mejtaeconomy_test",
+	"version": "1.0.0",
+	"name": "MejtaEconomy Tests",
+	"description": "Server game test for MejtaEconomy. Development only.",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.mejta.mejtaeconomy.test.MejtaEconomyGameTest"
+		]
+	},
+	"depends": {
+		"mejtacore": "*",
+		"mejtaeconomy": "*"
+	}
+}
