@@ -6,6 +6,7 @@ Requires MejtaCore 1.9.0 or newer, below 2.0.0 (API version 7).
 
 - **Staff menus** use MejtaCore's shared look: `/vanish` settings and `/status` get gray panes and a Close button; the game mode picker gets a Back button to the status panel and says which mode is current.
 - **`/invsee claims` has pages,** so every claim is listed (it stopped at 53), with an info icon explaining where the items come from.
+- Taking a claim redraws the claims list in place instead of closing and reopening it, so the cursor stays where it was.
 
 ## 1.0.2
 

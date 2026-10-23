@@ -20,6 +20,8 @@ Addons built for API version 6 keep working; they only need `mejtacore_version=1
   - `PagedMenu` lists any number of entries over pages. The bottom row is the same everywhere: Back, Previous page, an info icon with the page number, Next page and Close. Pages turn in place, so the cursor does not jump, and the list is read again on every refresh.
   - `ServerMenu.Builder.backButton`, `closeButton` and `fillEmpty` (gray glass panes in the unused slots); `MenuIcons.filler`, `back`, `close` and `page` for the standard icons. Filler panes are left out when a menu is shown as a screen.
   - `/mejtaadmin config menu` uses them: filler panes, and the same Back, page and Close buttons as the addons.
+- **The cursor stays put in chest menus.** Going from one server menu to the next (a page, a confirmation, Back, a sub-menu) used to close the chest on the client and open a new one, which put the mouse back in the middle of the screen. The new chest now replaces the old one directly, so the cursor stays where it was.
+  - `ServerMenus.confirm` runs the answer before closing the question, and only closes it when the answer opened nothing else, so Confirm or Cancel leading back to a list keeps the cursor too.
 
 ## 1.8.0 (API version 6)
 

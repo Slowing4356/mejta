@@ -5,6 +5,7 @@
 Requires MejtaCore 1.9.0 or newer, below 2.0.0 (API version 7).
 
 - **Crate menus** use MejtaCore's shared look: the crate list gets a bottom bar with an info icon and Close, and the reward preview gets the standard Back, page and Close buttons; gray panes fill the empty slots.
+- Opening a crate from the menu goes straight to the spin without closing the chest first, so the cursor stays where it was; with the animation off, the menu stays open with the new key count.
 
 ## 1.0.0
 

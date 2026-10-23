@@ -57,9 +57,10 @@ public final class ClaimsMenu {
 					return MenuIcons.of(stack, stack.getHoverName(), List.of(MenuIcons.line(why), Component.empty(),
 							Component.literal("Click: take it").withStyle(ChatFormatting.YELLOW)));
 				}, (entry, click) -> {
-					click.menu().close();
 					if (take(staff, entry)) {
-						open(staff); // indexes changed: rebuild
+						open(staff); // indexes changed: rebuild (replaces this menu, so the cursor stays)
+					} else {
+						click.menu().close();
 					}
 				})
 				.empty(() -> MenuIcons.of(Items.PAPER, Component.literal("Nothing to claim").withStyle(ChatFormatting.GRAY)))
