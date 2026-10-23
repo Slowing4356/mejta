@@ -47,15 +47,6 @@ public class ChestMenuScreen extends Screen {
 	private static final int NAV_PAGE = 4;
 	private static final int NAV_NEXT = 5;
 	private static final int NAV_CLOSE = 8;
-	private static final long STATUS_MILLIS = 6_000;
-
-	/**
-	 * Feedback of the last action (e.g. the server's answer to an edit), drawn under the menu. The action bar
-	 * and chat are behind the menu's darkened background, where a refusal used to go unnoticed. Static, so it
-	 * stays visible across pages and the text input screen.
-	 */
-	private static @Nullable Component status;
-	private static long statusUntil;
 
 	private final Supplier<List<MenuEntry>> source;
 	private final @Nullable Screen parent;
@@ -209,14 +200,12 @@ public class ChestMenuScreen extends Screen {
 
 	/** Shows {@code message} under the open (or next opened) menu for a few seconds. Call on the client thread. */
 	public static void showStatus(Component message) {
-		String text = message.getString();
-		status = text.length() <= 100 ? message : Component.literal(text.substring(0, 97) + "...").setStyle(message.getStyle());
-		statusUntil = System.currentTimeMillis() + STATUS_MILLIS;
+		MenuStatus.show(message);
 	}
 
 	/** The status line currently shown, if any (used by tests). */
 	public static @Nullable Component currentStatus() {
-		return status != null && System.currentTimeMillis() < statusUntil ? status : null;
+		return MenuStatus.current();
 	}
 
 	@Override

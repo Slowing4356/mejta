@@ -249,6 +249,7 @@ public final class ServerCommands {
 			line(source, "/" + ROOT + " audit verify", "check the audit log's hash chain for edits");
 		}
 		if (MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_EDIT)) {
+			line(source, "/" + ROOT + " config", "open the settings editor (the chest menu without MejtaCore on your client)");
 			line(source, "/" + ROOT + " config menu [config]", "edit settings in a chest menu (no client mod needed)");
 			line(source, "/" + ROOT + " config get <config> [key]", "show settings");
 			line(source, "/" + ROOT + " config set <config> <key> <value>", "change a setting (saved immediately)");
@@ -270,11 +271,17 @@ public final class ServerCommands {
 		return 1;
 	}
 
-	/** {@code /mejtaadmin config}: the menu for players who may edit settings, otherwise the config commands. */
+	/**
+	 * {@code /mejtaadmin config}: for players who may edit settings, the settings editor of their client if it has
+	 * MejtaCore 1.6+, else the chest menu; otherwise the config commands.
+	 */
 	private static int configRoot(CommandContext<CommandSourceStack> ctx) {
 		CommandSourceStack source = ctx.getSource();
 		ServerPlayer player = source.getPlayer();
 		if (player != null && MejtaCoreAPI.hasPermission(source, PermissionRegistry.CONFIG_EDIT)) {
+			if (ServerConfigSync.openEditor(player, null)) {
+				return 1;
+			}
 			return ConfigServerMenu.open(player) ? 1 : 0;
 		}
 		source.sendSystemMessage(Component.literal("Config commands:").withStyle(ChatFormatting.GOLD));

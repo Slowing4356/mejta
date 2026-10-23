@@ -105,6 +105,24 @@ public final class ConfigPayloads {
 		}
 	}
 
+	/**
+	 * Server to client: open the settings editor, on the server's copy of {@code configId} ("" = MejtaCore's).
+	 * Sent by {@code /mejtaadmin config}, only to clients that registered it (MejtaCore 1.6+).
+	 *
+	 * @since 1.6.0
+	 */
+	public record OpenSettings(String configId) implements CustomPacketPayload {
+		public static final Type<OpenSettings> TYPE = new Type<>(Identifier.fromNamespaceAndPath("mejtacore", "open_settings"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, OpenSettings> CODEC = StreamCodec.of(
+				(buf, p) -> buf.writeUtf(p.configId),
+				buf -> new OpenSettings(buf.readUtf()));
+
+		@Override
+		public Type<OpenSettings> type() {
+			return TYPE;
+		}
+	}
+
 	/** Server to client: outcome of an {@link EditConfig}. */
 	public record EditResult(boolean ok, String message) implements CustomPacketPayload {
 		public static final Type<EditResult> TYPE = new Type<>(Identifier.fromNamespaceAndPath("mejtacore", "edit_result"));

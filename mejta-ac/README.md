@@ -101,7 +101,7 @@ Experimental checks have only been tested with the automated suites, not on a bu
 Settings live in `config/mejta/mejtaac.json` and are managed by MejtaCore. Invalid values fall back to the default with a warning. Change them:
 
 - **In-game, any client:** `/mejtaadmin config menu mejtaac` (MejtaCore 1.4.0+). Needs `mejtacore.config.edit`.
-- **In-game, with MejtaCore on the client:** **/mejta → Configuration → Server Settings → MejtaAC**.
+- **In-game, with MejtaCore 1.6+ on the client:** `/mejtaadmin config` or `/mejta config`, then **MejtaAC** under **Server** in the settings editor.
 - **By command (also console):** `/mejtaadmin config set mejtaac enforcement.mode ENFORCE`, `/mejtaadmin config get mejtaac`.
 - **By hand:** edit the file, then run `/mejtaadmin config reload`.
 
