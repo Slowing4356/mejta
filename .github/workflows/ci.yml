@@ -99,6 +99,8 @@ jobs:
             tasks: test build runGameTest
           - project: mejta-smp
             tasks: test build runGameTest
+          - project: mejta-economy
+            tasks: test build runGameTest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
