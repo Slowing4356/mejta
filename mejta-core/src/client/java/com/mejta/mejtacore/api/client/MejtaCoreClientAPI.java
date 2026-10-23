@@ -6,8 +6,8 @@ import java.util.function.Supplier;
 import net.minecraft.network.chat.Component;
 
 import com.mejta.mejtacore.addons.ClientAddonExtensions;
-import com.mejta.mejtacore.ui.ChestMenuScreen;
-import com.mejta.mejtacore.ui.CoreMenus;
+import com.mejta.mejtacore.ui.EntryPageScreen;
+import com.mejta.mejtacore.ui.MainMenuScreen;
 import com.mejta.mejtacore.ui.ScreenOpener;
 
 /**
@@ -22,7 +22,7 @@ public final class MejtaCoreClientAPI {
 	}
 
 	/**
-	 * Adds an entry to the MejtaCore main menu and to the addon's page in "Installed Addons".
+	 * Adds an entry to the MejtaCore main menu ("Addon Actions" on the overview) and to the addon's own page there.
 	 *
 	 * @return {@code false} if the addon already has an entry with the same ID
 	 */
@@ -40,14 +40,14 @@ public final class MejtaCoreClientAPI {
 
 	/** Opens the MejtaCore main menu on the next client tick. */
 	public static void openMainMenu() {
-		ScreenOpener.open(CoreMenus::mainMenu);
+		ScreenOpener.open(() -> new MainMenuScreen(null));
 	}
 
 	/**
-	 * Opens a standalone chest-style page on the next client tick. {@code null} elements in the
-	 * list leave a slot empty; extra entries are split into pages automatically.
+	 * Opens a standalone page of entries on the next client tick, drawn as cards (since 1.7.0; before, as a chest).
+	 * {@code null} elements are skipped; a long list scrolls.
 	 */
 	public static void openPage(Component title, Supplier<List<MenuEntry>> entries) {
-		ScreenOpener.open(() -> new ChestMenuScreen(title, entries, null));
+		ScreenOpener.open(() -> new EntryPageScreen(title, entries, null));
 	}
 }

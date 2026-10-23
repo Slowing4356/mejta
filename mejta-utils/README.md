@@ -124,7 +124,7 @@ Online players are shown live: the menu works on the player's real inventory, no
 - **Staff mode:** while you are in staff mode, every inspection menu is view-only. Players in staff mode cannot have their inventory or ender chest edited.
 - **Audit:** each open, edit session and refusal is written to MejtaCore's audit log.
 
-The status panel is a refreshing chest menu. A server cannot add a permanent on-screen overlay to an unmodded client.
+The status panel is a refreshing chest menu (a screen for staff with MejtaCore 1.7+ on their client). A server cannot add a permanent on-screen overlay to an unmodded client.
 
 ## Offline inventories
 

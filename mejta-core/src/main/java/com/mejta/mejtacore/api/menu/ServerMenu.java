@@ -13,6 +13,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 
 import com.mejta.mejtacore.menu.ButtonMenu;
+import com.mejta.mejtacore.menu.ScreenMenus;
 
 /**
  * A chest-style menu built and run entirely on the server, so players without any mod can use it
@@ -49,7 +50,14 @@ public final class ServerMenu {
 	}
 
 	public record Button(Supplier<ItemStack> icon, ClickHandler handler) {
+		/** {@code false} for icons added with {@link Builder#icon}, which do nothing when clicked. */
+		public boolean clickable() {
+			return handler != NO_ACTION;
+		}
 	}
+
+	private static final ClickHandler NO_ACTION = click -> {
+	};
 
 	private final Component title;
 	private final int rows;
@@ -105,9 +113,15 @@ public final class ServerMenu {
 		return menu instanceof ButtonMenu;
 	}
 
-	/** Opens the menu for {@code player} (closing whatever they had open). Call on the server thread. */
+	/**
+	 * Opens the menu for {@code player} (closing whatever they had open). Call on the server thread.
+	 *
+	 * <p>Since MejtaCore 1.7.0 a player whose client has MejtaCore sees the menu as a MejtaCore screen (cards with
+	 * the icons' names and lore) rather than a chest, unless they turned that off; everyone else gets the chest.
+	 * Buttons, clicks, refreshes, {@code validWhile} and {@code onClose} work the same either way.
+	 */
 	public boolean open(ServerPlayer player) {
-		return ButtonMenu.open(player, this);
+		return ScreenMenus.open(player, this);
 	}
 
 	public static final class Builder {
@@ -138,8 +152,7 @@ public final class ServerMenu {
 
 		/** An icon that does nothing when clicked. */
 		public Builder icon(int slot, Supplier<ItemStack> icon) {
-			return button(slot, icon, click -> {
-			});
+			return button(slot, icon, NO_ACTION);
 		}
 
 		/** Refresh every icon every {@code ticks} ticks (e.g. 10 for live values). */

@@ -23,7 +23,7 @@ public interface MenuContext {
 	Screen screen();
 
 	/**
-	 * Opens a new chest-style page. Its "Back" button returns to the current menu.
+	 * Opens a new page of entries (cards since 1.7.0). Its "Back" button returns to the current menu.
 	 * Entries are re-read from the supplier whenever the page is shown or {@link #refresh()} is called.
 	 */
 	void openPage(Component title, Supplier<List<MenuEntry>> entries);

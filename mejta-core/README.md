@@ -9,13 +9,13 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 - **Secret settings** (tokens, webhook URLs) that are never sent to clients, shown or logged.
 - **A hash-chained audit log** of staff actions and config changes.
 - **Storage**: size-limited record logs and a small JSON data store per addon.
-- **Server-side chest menus** that work for players without mods.
+- **Server menus** that work for players without mods (as a chest) and open as a proper screen for players with MejtaCore.
 - **Presence** (so vanished staff stay hidden in every addon), a server-thread **scheduler** and **metrics**.
-- An optional **client menu** (`/mejta`) with a full **settings editor**, for players who install MejtaCore themselves.
+- An optional **client menu** (`/mejta`) with a full **settings editor**, for players who install MejtaCore themselves. With it, addon menus (homes, warps, leaderboards, staff panels) open as screens instead of chests.
 
 | | |
 |---|---|
-| Version | 1.6.0 (public API version 5) |
+| Version | 1.7.0 (public API version 5) |
 | Minecraft | 26.1.2 (Java Edition) |
 | Fabric Loader | 0.19.5 or newer |
 | Fabric API | 0.155.3+26.1.2 or newer, required |
@@ -26,7 +26,7 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 
 Put these in the server's `mods/` folder and restart:
 
-- `mejtacore-1.6.0.jar`
+- `mejtacore-1.7.0.jar`
 - Fabric API for 26.1.2
 - the Mejta addons you want
 
@@ -118,8 +118,8 @@ Addon nodes are listed in each addon's README. To change a level, run `/mejtaadm
 | `afk.auto_minutes` | `5` (0–120) | A player idle this long becomes AFK, for every addon that uses AFK status. `0` = never automatically. |
 | `combat.tag_seconds` | `10` (0–300) | After hurting or being hurt by a player, both are in combat this long (addons refuse teleports, AFK protection and the like). `0` = off. |
 | `debug_logging` | `false` | Log extra diagnostic information |
-| `menu_rows` | `6` (3–6) | Height of the client menu in rows |
 | `menu_sound` | `NORMAL` | Click sound in the client menu: `OFF`, `QUIET` or `NORMAL` |
+| `server_menu_screens` | `true` | Show addon menus from the server (homes, warps, leaderboards, staff panels) as MejtaCore screens instead of chests |
 | `show_addon_ids` | `false` | Show addon IDs and sources in client menu tooltips |
 
 The last three only matter on a client with MejtaCore.
@@ -128,7 +128,7 @@ The last three only matter on a client with MejtaCore.
 
 There are three ways. All need `mejtacore.config.edit` and take the same path on the server: the permission is checked again, the value is validated with the addon's own rules, the file is saved at once, and the change is logged (`[config] Steve changed mejtaac: enforcement.mode = ENFORCE`), written to the audit log and published on the `mejtacore.config` notification channel. Values of secret settings never appear in any of these.
 
-1. The **settings editor**, for players with MejtaCore on their client: `/mejta config`, **Configuration** in the `/mejta` menu, or `/mejtaadmin config`.
+1. The **settings editor**, for players with MejtaCore on their client: `/mejta config [config]`, **Settings** in the `/mejta` menu, or `/mejtaadmin config`.
 2. `/mejtaadmin config menu`: a chest menu that works on any client.
 3. `/mejtaadmin config get/set/reset` in chat or the console.
 
@@ -154,7 +154,7 @@ The decimal step is a power of ten that splits the range into 20 to 200 steps (0
 
 ### The settings editor (`/mejta config`)
 
-With MejtaCore on your client, every setting can be edited in one screen. Open it with `/mejta config`, **Configuration** or **MejtaCore Settings** in the `/mejta` menu, **Settings** on an addon's page, or `/mejtaadmin config` on a server.
+With MejtaCore on your client, every setting can be edited in one screen. Open it with `/mejta config` (or `/mejta config <config>`, for example `/mejta config mejtaqol`), **Settings** in the `/mejta` menu or on an addon's page there, or `/mejtaadmin config` on a server.
 
 - **Sidebar:** every config. On a multiplayer server with MejtaCore it has two parts: **Server** (the server's configs; edits go to the server, which checks and saves them at once) and **This Computer** (your own files, which do **not** change the server). Without `mejtacore.config.edit`, the Server part says **No permission**; if the server's MejtaCore uses a different settings protocol, it says so. In single-player (and on the computer hosting a LAN world) there is no Server part, because your files *are* the server's.
 - **Settings list:** one row per setting, under category headers (the part of the key before the first dot: `homes.max` is in **Homes**). Each row shows the name, the description and a widget that fits the type:
@@ -175,14 +175,20 @@ With MejtaCore on your client, every setting can be edited in one screen. Open i
 
 ### The client menu (`/mejta`)
 
-`/mejta` opens a menu drawn with the chest texture. It is a client screen, not a real inventory: your items are not touched.
+`/mejta` opens the MejtaCore menu, in the same style as the settings editor. It is a client screen, not a real inventory: your items are not touched. A sidebar leads to:
 
-- **MejtaCore Settings:** this computer's MejtaCore settings (menu height, sound, logging, tooltips) in the settings editor.
-- **Installed Addons:** every addon (green = active, red = failed), with its details, its settings and its own menu entries. A **Problems** entry lists anything that went wrong. On a server that has the same addon, **Settings** opens the server's copy; Shift-click opens yours.
-- **Configuration:** the settings editor.
-- **About:** the versions of MejtaCore, Minecraft, Fabric Loader and Fabric API.
+- **Overview:** **Settings** (the settings editor; on a server you may edit, the server's settings first), **This Computer** (only on a server: your own MejtaCore settings), the **Server Menus** switch (screens or chests, see below), a card per addon and the **Addon Actions** that addons added.
+- **One page per addon** (red in the sidebar if it failed): its version, whether it runs and why not, what it needs, its **Settings** and its own actions. On a server that has the same addon, **Settings** opens the server's copy and **This Computer's Copy** yours.
+- **Problems:** rejected registrations, config errors and failed addons.
+- **About:** the versions of MejtaCore, Minecraft, Fabric Loader and Fabric API, and the commands.
 
-The bottom row has Back, Previous/Next page (or use the mouse wheel) and Close.
+Hover over a card for its full description; the mouse wheel scrolls.
+
+### Addon menus as screens
+
+Addon menus run by the server (homes, warps, the sidebar picker, leaderboards, vanish settings, staff status panels, confirmations) are chests for players without mods. With MejtaCore 1.7+ on your client and on the server, they open as a MejtaCore screen instead: one card per icon, in the chest's order, with the icon's name and first lore line on the card and the rest on hover. Left, right, shift and middle clicks reach the server just as they would from the chest, and the server still runs everything (permission checks, refreshes, closing). Menus that hold real items (`/invsee`, `/ec`, corpses, `/trash`, portable workstations) stay normal inventories.
+
+To get the chests back, switch **Server Menus** on the `/mejta` overview, or set `server_menu_screens` to `false` in **This Computer**'s settings. `/mejtaadmin config menu` is always a chest.
 
 ### Secret settings
 
@@ -387,7 +393,7 @@ Each line holds the time, actor, action, target, outcome and details, plus the S
 
 ### Server menus
 
-Chest menus run by the server, for players without mods:
+Menus run by the server. Players without mods see a chest; players with MejtaCore 1.7+ see the same menu as a screen (unless they turned that off). Your code is the same either way:
 
 ```java
 ServerMenu.builder(Component.literal("Status"), 3)
@@ -400,7 +406,7 @@ ServerMenu.builder(Component.literal("Status"), 3)
 ServerMenus.confirm(player, title, List.of(question), () -> doIt());   // check permissions again inside
 ```
 
-No click type moves an item, in the menu or the player's inventory below it. Handlers run on the server thread. `validWhile` is checked on every click and refresh, and the menu closes once it fails.
+No click type moves an item, in the menu or the player's inventory below it. Handlers run on the server thread. `validWhile` is checked on every click and refresh, and the menu closes once it fails. `onClose` runs once however the menu ends. As a screen, icons added with `icon(...)` are shown as information (not clickable), and an icon's name and lore are its card's title and description, so keep the first lore line short and useful.
 
 ### Presence, scheduler and metrics
 
@@ -417,15 +423,15 @@ You need JDK 25 (`JAVA_HOME` pointing at it). From `mejta-core/`:
 
 ```bash
 ./gradlew build                 # compiles and runs the unit tests
-./gradlew publishToMavenLocal   # com.mejta:mejtacore:1.6.0, for addon projects
+./gradlew publishToMavenLocal   # com.mejta:mejtacore:1.7.0, for addon projects
 ./gradlew runClient             # a development client with MejtaCore
 ```
 
-`build/libs/` then holds `mejtacore-1.6.0.jar` (install this one), plus sources and javadoc jars.
+`build/libs/` then holds `mejtacore-1.7.0.jar` (install this one), plus sources and javadoc jars.
 
 **Unit tests** (`./gradlew test`) cover logic that needs no running game: secret storage and masking, the data store (ordering, durability, corrupt files, key validation), the audit hash chain, metrics, the config edit path and menu steps.
 
-**Client game tests** live in `test-addon/`. After `publishToMavenLocal`, run `cd test-addon && ./gradlew runClientGameTest`. A real client types commands, clicks menu slots and edits files, in single-player and as a non-operator on a dedicated server. It covers addon registration and its failure cases (duplicate IDs, missing dependencies, cycles, failing init, invalid and reserved IDs), config persistence and recovery, permissions and overrides, `/mejtaadmin`, Server Settings and the chest config menu, notifications, record logs, secrets, top-level commands, the data store, the audit log, server menus, presence and the scheduler. Each check logs `[MejtaTest] PASS` or `FAIL`, followed by a summary line. The run folder is kept between runs, so a second run also checks values that must survive a restart.
+**Client game tests** live in `test-addon/`. After `publishToMavenLocal`, run `cd test-addon && ./gradlew runClientGameTest`. A real client types commands, clicks menu cards, slots and settings and edits files, in single-player and as a non-operator on a dedicated server. It covers addon registration and its failure cases (duplicate IDs, missing dependencies, cycles, failing init, invalid and reserved IDs), config persistence and recovery, permissions and overrides, `/mejtaadmin`, Server Settings and the chest config menu, notifications, record logs, secrets, top-level commands, the data store, the audit log, server menus (as a chest and as a screen), the main menu, presence and the scheduler. Each check logs `[MejtaTest] PASS` or `FAIL`, followed by a summary line. The run folder is kept between runs, so a second run also checks values that must survive a restart.
 
 To see the error players get without MejtaCore: `cd test-addon && ./gradlew runClient -PwithoutMejtaCore`.
 
@@ -438,3 +444,4 @@ To see the error players get without MejtaCore: `cd test-addon && ./gradlew runC
 - A mod that registers a command name *after* MejtaCore silently replaces an addon's top-level command.
 - Addons can't be registered or removed while the game is running.
 - There is no keybind for the client menu (use `/mejta`), and menu text is English only.
+- Server menus show as screens only when the server has MejtaCore 1.7+; older servers keep sending chests.

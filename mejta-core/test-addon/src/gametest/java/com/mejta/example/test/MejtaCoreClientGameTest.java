@@ -44,7 +44,6 @@ import com.mejta.mejtacore.api.MejtaCoreAPI;
 import com.mejta.mejtacore.api.addon.AddonDefinition;
 import com.mejta.mejtacore.api.addon.AddonInfo;
 import com.mejta.mejtacore.api.addon.AddonState;
-import com.mejta.mejtacore.api.client.MenuEntry;
 import com.mejta.mejtacore.api.config.ConfigHandle;
 import com.mejta.mejtacore.api.config.Setting;
 import com.mejta.mejtacore.api.menu.MenuClick;
@@ -64,7 +63,12 @@ import com.mejta.mejtacore.core.CoreSettings;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtacore.network.ConfigPayloads;
 import com.mejta.mejtacore.permissions.PermissionRegistry;
-import com.mejta.mejtacore.ui.ChestMenuScreen;
+import com.mejta.mejtacore.menu.ScreenMenus;
+import com.mejta.mejtacore.ui.CardScreen;
+import com.mejta.mejtacore.ui.EntryPageScreen;
+import com.mejta.mejtacore.ui.MainMenuScreen;
+import com.mejta.mejtacore.ui.MenuStatus;
+import com.mejta.mejtacore.ui.ServerMenuScreen;
 import com.mejta.mejtacore.ui.SettingsScreen;
 
 /**
@@ -95,7 +99,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 			addonSettingsChecks(ctx, configDir);
 			commandChecks(ctx, configDir);
 			addonMenuEntryChecks(ctx);
-			pagingChecks(ctx);
+			menuStyleCardChecks(ctx);
 			inGameNotificationChecks(ctx, world.getServer());
 			noServerSettingsInSingleplayer(ctx);
 		}
@@ -165,35 +169,35 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	private void mainMenuChecks(ClientGameTestContext ctx) {
 		chat(ctx, "/mejta gui");
 		check("/mejta gui opens the menu", waitForMenu(ctx, "MejtaCore"));
-		check("main menu layout", "core_settings".equals(entryId(ctx, 1)) && "installed_addons".equals(entryId(ctx, 3))
-				&& "configuration".equals(entryId(ctx, 5)) && "about".equals(entryId(ctx, 7)));
+		check("main menu: overview with settings, menu style, addons and addon actions", menuHas(ctx,
+				s -> s.cardIds().containsAll(List.of("settings", "server_menu_style", "addon:example", "example_status"))));
+		check("main menu: sidebar lists every addon, Problems and About", menuHas(ctx, s -> s.sidebarPosition("addon:example") != null
+				&& s.sidebarPosition("addon:needs_missing") != null && s.sidebarPosition("problems") != null && s.sidebarPosition("about") != null));
 		check("player inventory untouched", ctx.computeOnClient(mc -> mc.player.containerMenu == mc.player.inventoryMenu));
 		ctx.takeScreenshot("mejtacore-01-main-menu");
 
-		clickSlot(ctx, 3, 0);
-		check("Installed Addons page opens", waitForMenu(ctx, "Installed Addons"));
-		check("Installed Addons lists example", findSlot(ctx, "addon_example") >= 0);
-		check("Installed Addons lists failed addon", findSlot(ctx, "addon_needs_missing") >= 0);
-		check("Problems entry present", findSlot(ctx, "diagnostics") >= 0);
-		ctx.takeScreenshot("mejtacore-02-installed-addons");
+		clickCard(ctx, "addon:example");
+		check("an addon card opens the addon's page", sectionIs(ctx, "addon:example"));
+		check("the addon page has its settings and its own entries", menuHas(ctx,
+				s -> s.cardIds().containsAll(List.of("settings", "example_status", "example_page"))));
+		ctx.takeScreenshot("mejtacore-02-addon-page");
+		clickSidebarEntry(ctx, "addon:needs_missing");
+		check("a failed addon's page says why", sectionIs(ctx, "addon:needs_missing")
+				&& menuHas(ctx, s -> String.join("|", s.headerLines()).contains("missing required addon 'does_not_exist'")));
+		clickSidebarEntry(ctx, "problems");
+		check("Problems lists the recorded problems", sectionIs(ctx, "problems") && menuHas(ctx, s -> s.cardIds().contains("problem_0")));
+		clickSidebarEntry(ctx, "overview");
 
-		clickSlot(ctx, findSlot(ctx, "diagnostics"), 0);
-		check("Problems page opens", waitForMenu(ctx, "Problems"));
-		clickSlot(ctx, navRow(ctx), 0);
-		check("Back returns to Installed Addons", waitForMenu(ctx, "Installed Addons"));
-		clickSlot(ctx, navRow(ctx), 0);
-		check("Back returns to main menu", waitForMenu(ctx, "MejtaCore"));
-
-		clickSlot(ctx, 5, 0);
-		check("Configuration opens the settings editor", waitForSettings(ctx));
+		clickCard(ctx, "settings");
+		check("Settings opens the settings editor", waitForSettings(ctx));
 		check("settings editor lists core and example configs", settingsHas(ctx,
 				s -> s.listsConfig("mejtacore", false) && s.listsConfig("example", false)));
 		check("settings editor opens on MejtaCore's settings", "mejtacore".equals(onSettings(ctx, SettingsScreen::selectedConfigId)));
 		ctx.takeScreenshot("mejtacore-03b-settings-editor");
 		clickSettingsButton(ctx, "done");
-		check("Done returns to the main menu", waitForMenu(ctx, "MejtaCore"));
-		clickSlot(ctx, 7, 0);
-		check("About page opens", waitForMenu(ctx, "About MejtaCore"));
+		check("Done returns to the main menu", waitForMenu(ctx, "MejtaCore") && sectionIs(ctx, "overview"));
+		clickSidebarEntry(ctx, "about");
+		check("About shows the versions", sectionIs(ctx, "about") && menuHas(ctx, s -> s.cardIds().containsAll(List.of("version", "minecraft"))));
 		ctx.takeScreenshot("mejtacore-03-about");
 
 		closeMenu(ctx);
@@ -202,8 +206,9 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		chat(ctx, "/mejtacore");
 		check("/mejtacore (no arguments) opens the menu", waitForMenu(ctx, "MejtaCore"));
 		closeMenu(ctx);
-		chat(ctx, "/mejtacore gui");
-		check("/mejtacore gui opens the menu", waitForMenu(ctx, "MejtaCore"));
+		chat(ctx, "/mejta config example");
+		check("/mejta config <config> opens the editor on that config", waitForSettings(ctx)
+				&& "example".equals(onSettings(ctx, SettingsScreen::selectedConfigId)));
 		closeMenu(ctx);
 	}
 
@@ -211,8 +216,8 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ConfigHandle core = MejtaCore.coreConfig();
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		clickSlot(ctx, 1, 0);
-		check("MejtaCore Settings opens the settings editor", waitForSettings(ctx)
+		clickCard(ctx, "settings");
+		check("Settings opens the editor on MejtaCore's settings", waitForSettings(ctx)
 				&& "mejtacore".equals(onSettings(ctx, SettingsScreen::selectedConfigId)));
 		check("settings are split into categories", settingsHas(ctx, s -> s.listedGroups().contains("Afk")
 				&& s.listedGroups().contains("General")));
@@ -232,15 +237,15 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ctx.getInput().releaseShift();
 		check("shift-click cycles backward (OFF -> NORMAL)", core.get(CoreSettings.MENU_SOUND) == CoreSettings.MenuSound.NORMAL);
 
-		typeSetting(ctx, "menu_rows", "5");
-		check("typing a number and Enter sets it (6 -> 5)", core.get(CoreSettings.MENU_ROWS) == 5);
-		typeSetting(ctx, "menu_rows", "9");
-		check("an out-of-range number is refused", core.get(CoreSettings.MENU_ROWS) == 5);
-		check("and the range is explained", java.util.Objects.toString(onSettings(ctx, s -> s.errorOf("menu_rows"))).contains("3 to 6"));
+		typeSetting(ctx, "afk.auto_minutes", "12");
+		check("typing a number and Enter sets it (5 -> 12)", core.get(CoreSettings.AFK_AUTO_MINUTES) == 12);
+		typeSetting(ctx, "afk.auto_minutes", "999");
+		check("an out-of-range number is refused", core.get(CoreSettings.AFK_AUTO_MINUTES) == 12);
+		check("and the range is explained", java.util.Objects.toString(onSettings(ctx, s -> s.errorOf("afk.auto_minutes"))).contains("0 to 120"));
 		ctx.takeScreenshot("mejtacore-04b-validation");
-		clickSetting(ctx, "menu_rows", SettingsScreen.Part.RESET);
-		check("reset after an invalid value restores the default (6)", core.get(CoreSettings.MENU_ROWS) == 6
-				&& onSettings(ctx, s -> s.errorOf("menu_rows")) == null);
+		clickSetting(ctx, "afk.auto_minutes", SettingsScreen.Part.RESET);
+		check("reset after an invalid value restores the default (5)", core.get(CoreSettings.AFK_AUTO_MINUTES) == 5
+				&& onSettings(ctx, s -> s.errorOf("afk.auto_minutes")) == null);
 
 		typeSearch(ctx, "addon id");
 		check("search narrows the list", settingsHas(ctx, s -> s.listedKeys().equals(List.of("show_addon_ids"))));
@@ -262,12 +267,9 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ConfigHandle config = ExampleAddon.config();
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		clickSlot(ctx, 3, 0);
-		waitForMenu(ctx, "Installed Addons");
-		clickSlot(ctx, findSlot(ctx, "addon_example"), 0);
-		check("addon detail page opens", waitForMenu(ctx, "Example Addon"));
-		check("addon detail shows its own menu entries", findSlot(ctx, "example_status") >= 0);
-		clickSlot(ctx, findSlot(ctx, "settings"), 0);
+		clickSidebarEntry(ctx, "addon:example");
+		check("the sidebar opens an addon's page", sectionIs(ctx, "addon:example"));
+		clickCard(ctx, "settings");
 		check("addon settings open in the editor", waitForSettings(ctx) && "example".equals(onSettings(ctx, SettingsScreen::selectedConfigId)));
 
 		typeSetting(ctx, "radius", "18");
@@ -298,7 +300,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		typeSetting(ctx, "greeting", "Hi tester");
 
 		closeMenu(ctx);
-		check("Escape returns to the addon page", waitForMenu(ctx, "Example Addon"));
+		check("Escape returns to the addon page", waitForMenu(ctx, "MejtaCore") && sectionIs(ctx, "addon:example"));
 		closeMenu(ctx);
 		String file = read(configDir.resolve("example.json"));
 		check("addon settings saved on close", file.contains("\"radius\": 18") && file.contains("\"greeting\": \"Hi tester\""));
@@ -361,35 +363,34 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	private void addonMenuEntryChecks(ClientGameTestContext ctx) {
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		int status = findSlot(ctx, "example_status");
-		check("addon entry appears in main menu", status >= 9);
+		check("addon entry appears in the main menu", menuHas(ctx, s -> s.cardIds().contains("example_status")));
 		clearChat(ctx);
-		clickSlot(ctx, status, 0);
+		clickCard(ctx, "example_status");
 		check("addon entry click action runs", chatContains(ctx, "Hi tester"));
-		clickSlot(ctx, findSlot(ctx, "example_page"), 0);
-		check("addon can open its own page", waitForMenu(ctx, "Example Page"));
+		clickCard(ctx, "example_page");
+		check("addon can open its own page, drawn as cards", waitForMenu(ctx, "Example Page")
+				&& ctx.computeOnClient(mc -> mc.screen instanceof EntryPageScreen));
 		clearChat(ctx);
-		clickSlot(ctx, 0, 0);
+		clickCard(ctx, "hello");
 		check("addon page entry works", chatContains(ctx, "Hello!"));
-		clickSlot(ctx, navRow(ctx), 0);
+		clickFooter(ctx, "back");
 		check("Back from addon page", waitForMenu(ctx, "MejtaCore"));
 		closeMenu(ctx);
 	}
 
-	private void pagingChecks(ClientGameTestContext ctx) {
-		ctx.runOnClient(mc -> MejtaCore.coreConfig().set(CoreSettings.MENU_ROWS, 3));
+	/** 1.7.0: the overview's card switches server menus between screens and chests. */
+	private void menuStyleCardChecks(ClientGameTestContext ctx) {
+		ConfigHandle core = MejtaCore.coreConfig();
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		int nav = navRow(ctx);
-		check("3-row menu has navigation row at slot 18", nav == 18);
-		check("page indicator shown when entries overflow", "nav_page".equals(entryId(ctx, nav + 4)));
-		clickSlot(ctx, nav + 5, 0);
-		check("next page shows addon entries", "example_status".equals(entryId(ctx, 0)));
-		clickSlot(ctx, nav + 3, 0);
-		check("previous page returns", "core_settings".equals(entryId(ctx, 1)));
-		ctx.takeScreenshot("mejtacore-06-three-rows");
+		check("server menus are screens by default", core.get(CoreSettings.SERVER_MENU_SCREENS)
+				&& menuHas(ctx, s -> s.card("server_menu_style").title().getString().endsWith("Screens")));
+		clickCard(ctx, "server_menu_style");
+		check("the menu style card switches to chests", !core.get(CoreSettings.SERVER_MENU_SCREENS)
+				&& menuHas(ctx, s -> s.card("server_menu_style").title().getString().endsWith("Chests")));
+		clickCard(ctx, "server_menu_style");
+		check("and back to screens", core.get(CoreSettings.SERVER_MENU_SCREENS));
 		closeMenu(ctx);
-		ctx.runOnClient(mc -> MejtaCore.coreConfig().set(CoreSettings.MENU_ROWS, 6));
 	}
 
 	private void multiplayerChecks(ClientGameTestContext ctx) {
@@ -608,7 +609,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	private void noServerSettingsInSingleplayer(ClientGameTestContext ctx) {
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
+		clickCard(ctx, "settings");
 		waitForSettings(ctx);
 		check("single-player: no server configs listed (local files are the server's)",
 				settingsHas(ctx, s -> !s.listsConfig("example", true) && s.serverState().isEmpty()));
@@ -628,8 +629,8 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		clickSlot(ctx, findSlot(ctx, "configuration"), 0);
-		check("remote: Configuration opens the settings editor on a server", waitForSettings(ctx));
+		clickCard(ctx, "settings");
+		check("remote: Settings opens the settings editor on a server", waitForSettings(ctx));
 		check("remote: non-op sees 'No permission'", waitUntil(ctx, () -> "No permission".equals(onSettings(ctx, SettingsScreen::serverState))));
 		ctx.takeScreenshot("mejtacore-08-server-settings-denied");
 
@@ -717,29 +718,26 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	private void localCopyChecks(ClientGameTestContext ctx) {
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		clickSlot(ctx, findSlot(ctx, "installed_addons"), 0);
-		waitForMenu(ctx, "Installed Addons");
-		clickSlot(ctx, findSlot(ctx, "addon_example"), 0);
-		waitForMenu(ctx, "Example Addon");
-		clickSlot(ctx, findSlot(ctx, "settings"), 0);
-		check("local copy: a config the server also has opens the SERVER's copy", waitForSettings(ctx)
+		clickCard(ctx, "addon:example");
+		check("local copy: the addon page offers both copies", sectionIs(ctx, "addon:example")
+				&& waitUntil(ctx, () -> menuHas(ctx, s -> s.cardIds().containsAll(List.of("settings", "local_settings")))));
+		clickCard(ctx, "settings");
+		check("local copy: Settings of a config the server also has opens the SERVER's copy", waitForSettings(ctx)
 				&& waitUntil(ctx, () -> settingsHas(ctx, s -> "example".equals(s.selectedConfigId()) && s.showsServerConfig())));
 		check("local copy: the editor lists both copies", settingsHas(ctx, s -> s.listsConfig("example", false)));
 		ctx.takeScreenshot("mejtacore-12-local-config-redirect");
 		closeMenu(ctx);
-		waitForMenu(ctx, "Example Addon");
-		ctx.getInput().holdShift();
-		clickSlot(ctx, findSlot(ctx, "settings"), 0);
-		ctx.getInput().releaseShift();
-		check("local copy: shift-click opens this computer's copy", waitForSettings(ctx)
+		waitForMenu(ctx, "MejtaCore");
+		clickCard(ctx, "local_settings");
+		check("local copy: This Computer's Copy opens this computer's copy", waitForSettings(ctx)
 				&& settingsHas(ctx, s -> "example".equals(s.selectedConfigId()) && !s.showsServerConfig()));
 		closeMenu(ctx);
 		closeMenu(ctx);
 
 		chat(ctx, "/mejta gui");
 		waitForMenu(ctx, "MejtaCore");
-		clickSlot(ctx, findSlot(ctx, "core_settings"), 0);
-		check("local copy: MejtaCore Settings opens this computer's copy on a server",
+		clickCard(ctx, "local_settings");
+		check("local copy: This Computer opens this computer's MejtaCore settings on a server",
 				waitForSettings(ctx) && settingsHas(ctx, s -> "mejtacore".equals(s.selectedConfigId()) && !s.showsServerConfig()));
 		closeMenu(ctx);
 		closeMenu(ctx);
@@ -956,6 +954,9 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 
 	private void serverMenuChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
 		UUID me = ctx.computeOnClient(mc -> mc.player.getUUID());
+		// The chest is what players without MejtaCore get; this client asks for it by turning screens off.
+		ctx.runOnClient(mc -> MejtaCore.coreConfig().set(CoreSettings.SERVER_MENU_SCREENS, false));
+		ctx.waitTicks(5);
 		server.runOnServer(s -> {
 			ServerPlayer p = s.getPlayerList().getPlayer(me);
 			p.getInventory().setItem(0, new ItemStack(Items.DIAMOND, 3));
@@ -1004,6 +1005,45 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ctx.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
 		check("api4: onClose runs once", waitUntil(ctx, () -> ExampleAddon.MENU_CLOSES.get() == closesBefore + 1));
 		server.runOnServer(s -> s.getPlayerList().getPlayer(me).getInventory().setItem(0, ItemStack.EMPTY));
+
+		ctx.runOnClient(mc -> MejtaCore.coreConfig().set(CoreSettings.SERVER_MENU_SCREENS, true));
+		ctx.waitTicks(5);
+		serverMenuScreenChecks(ctx, server);
+	}
+
+	/** 1.7.0: a server menu opens as a MejtaCore screen on a client with MejtaCore. */
+	private void serverMenuScreenChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
+		UUID me = ctx.computeOnClient(mc -> mc.player.getUUID());
+		int clicksBefore = ExampleAddon.MENU_CLICKS.get();
+		int closesBefore = ExampleAddon.MENU_CLOSES.get();
+		chat(ctx, "/mejtaadmin example menu");
+		check("1.7: server menu opens as a MejtaCore screen", waitUntil(ctx, () -> ctx.computeOnClient(mc ->
+				mc.screen instanceof ServerMenuScreen screen && screen.getTitle().getString().equals("Example menu"))));
+		check("1.7: no container is opened on the server", server.computeOnServer(s -> {
+			ServerPlayer p = s.getPlayerList().getPlayer(me);
+			return p.containerMenu == p.inventoryMenu && ScreenMenus.openTitle(p).orElse("").equals("Example menu");
+		}));
+		check("1.7: icons are cards in chest order; a plain icon is not clickable", serverMenuHas(ctx, s ->
+				s.cardIds().equals(List.of("slot_4", "slot_13")) && !s.card("slot_4").clickable() && s.card("slot_13").clickable()));
+		ctx.takeScreenshot("mejtacore-13-server-menu-screen");
+
+		clickCard(ctx, "slot_13");
+		check("1.7: a click runs the button on the server", waitUntil(ctx, () -> ExampleAddon.MENU_CLICKS.get() == clicksBefore + 1)
+				&& ExampleAddon.lastClickType == MenuClick.Type.LEFT);
+		check("1.7: the server's refresh redraws the card", waitUntil(ctx, () -> serverMenuHas(ctx,
+				s -> s.card("slot_13").title().getString().equals("Clicks: " + (clicksBefore + 1)))));
+		ctx.getInput().holdShift();
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof ServerMenuScreen s ? s.cardPosition("slot_13") : null), 1);
+		ctx.getInput().releaseShift();
+		check("1.7: shift-right-click reaches the server as SHIFT_RIGHT", waitUntil(ctx, () -> ExampleAddon.lastClickType == MenuClick.Type.SHIFT_RIGHT));
+		clickCard(ctx, "slot_4");
+		ctx.waitTicks(5);
+		check("1.7: clicking a plain icon does nothing", ExampleAddon.MENU_CLICKS.get() == clicksBefore + 2);
+
+		closeMenu(ctx);
+		check("1.7: closing the screen ends the menu and runs onClose once", waitUntil(ctx,
+				() -> ExampleAddon.MENU_CLOSES.get() == closesBefore + 1)
+				&& server.computeOnServer(s -> ScreenMenus.openTitle(s.getPlayerList().getPlayer(me)).isEmpty()));
 	}
 
 	private void presenceAndSchedulerChecks(ClientGameTestContext ctx, TestDedicatedServerContext server) {
@@ -1097,7 +1137,7 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 	}
 
 	private static boolean statusContains(ClientGameTestContext ctx, String text) {
-		return ctx.computeOnClient(mc -> ChestMenuScreen.currentStatus() != null && ChestMenuScreen.currentStatus().getString().contains(text));
+		return ctx.computeOnClient(mc -> MenuStatus.current() != null && MenuStatus.current().getString().contains(text));
 	}
 
 	/** Waits (up to 40 ticks) for a vanilla container screen with this title, e.g. a server menu. */
@@ -1291,9 +1331,11 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ctx.waitTicks(3);
 	}
 
+	/** Waits (up to 40 ticks) for a MejtaCore menu screen with this title. */
 	private static boolean waitForMenu(ClientGameTestContext ctx, String title) {
 		try {
-			ctx.waitFor(mc -> mc.screen instanceof ChestMenuScreen && mc.screen.getTitle().getString().equals(title), 40);
+			ctx.waitFor(mc -> mc.screen instanceof CardScreen && mc.screen.getTitle().getString().equals(title), 40);
+			ctx.waitTicks(1);
 			return true;
 		} catch (AssertionError | RuntimeException e) {
 			LOG.error("[MejtaTest] expected menu '{}' but screen is {}", title,
@@ -1316,48 +1358,30 @@ public final class MejtaCoreClientGameTest implements FabricClientGameTest {
 		ctx.waitTicks(2);
 	}
 
-	private static int navRow(ClientGameTestContext ctx) {
-		return ctx.computeOnClient(mc -> mc.screen instanceof ChestMenuScreen menu ? menu.navigationRowStart() : -1);
+	/** Whether a MejtaCore menu is open and {@code test} holds for it. */
+	private static boolean menuHas(ClientGameTestContext ctx, java.util.function.Predicate<CardScreen> test) {
+		return ctx.computeOnClient(mc -> mc.screen instanceof CardScreen screen && test.test(screen));
 	}
 
-	private static String entryId(ClientGameTestContext ctx, int slot) {
-		return ctx.computeOnClient(mc -> {
-			if (mc.screen instanceof ChestMenuScreen menu) {
-				MenuEntry entry = menu.entryAt(slot);
-				return entry == null ? null : entry.id();
-			}
-			return null;
-		});
+	private static boolean serverMenuHas(ClientGameTestContext ctx, java.util.function.Predicate<ServerMenuScreen> test) {
+		return ctx.computeOnClient(mc -> mc.screen instanceof ServerMenuScreen screen && test.test(screen));
 	}
 
-	private static int findSlot(ClientGameTestContext ctx, String entryId) {
-		return ctx.computeOnClient(mc -> {
-			if (mc.screen instanceof ChestMenuScreen menu) {
-				for (int slot = 0; slot < 54; slot++) {
-					MenuEntry entry = menu.entryAt(slot);
-					if (entry != null && entry.id().equals(entryId)) {
-						return slot;
-					}
-				}
-			}
-			return -1;
-		});
+	/** Whether the main menu is open on {@code section}. */
+	private static boolean sectionIs(ClientGameTestContext ctx, String section) {
+		return ctx.computeOnClient(mc -> mc.screen instanceof MainMenuScreen menu && menu.section().equals(section));
 	}
 
-	/** Moves the real cursor over a slot and presses a mouse button (0 left, 1 right, 2 middle). */
-	private static void clickSlot(ClientGameTestContext ctx, int slot, int button) {
-		if (slot < 0) {
-			LOG.error("[MejtaTest] cannot click missing slot");
-			return;
-		}
-		double[] pos = ctx.computeOnClient(mc -> {
-			ChestMenuScreen menu = (ChestMenuScreen) mc.screen;
-			double factor = (double) mc.getWindow().getScreenWidth() / mc.getWindow().getGuiScaledWidth();
-			return new double[] {(menu.slotX(slot) + 8) * factor, (menu.slotY(slot) + 8) * factor};
-		});
-		ctx.getInput().setCursorPos(pos[0], pos[1]);
-		ctx.getInput().pressMouse(button);
-		ctx.waitTicks(2);
+	private static void clickCard(ClientGameTestContext ctx, String id) {
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof CardScreen s ? s.cardPosition(id) : null), 0);
+	}
+
+	private static void clickSidebarEntry(ClientGameTestContext ctx, String id) {
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof CardScreen s ? s.sidebarPosition(id) : null), 0);
+	}
+
+	private static void clickFooter(ClientGameTestContext ctx, String id) {
+		clickAt(ctx, ctx.computeOnClient(mc -> mc.screen instanceof CardScreen s ? s.footerPosition(id) : null), 0);
 	}
 
 	private static void clearChat(ClientGameTestContext ctx) {

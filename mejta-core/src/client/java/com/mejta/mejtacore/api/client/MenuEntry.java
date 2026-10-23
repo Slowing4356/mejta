@@ -9,7 +9,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * A clickable icon in a MejtaCore chest-style menu.
+ * A card in a MejtaCore menu: an icon, a title and a description (the first line on the card, all of it in
+ * the tooltip). Entries with an action light up under the mouse.
  *
  * <pre>{@code
  * MenuEntry entry = MenuEntry.builder("status")

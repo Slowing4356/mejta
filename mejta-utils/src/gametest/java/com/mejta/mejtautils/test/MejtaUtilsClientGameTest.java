@@ -52,6 +52,7 @@ import com.mejta.mejtacore.api.permission.MejtaPermission;
 import com.mejta.mejtacore.api.presence.PresenceListener;
 import com.mejta.mejtacore.api.storage.DataStore;
 import com.mejta.mejtacore.audit.AuditTrail;
+import com.mejta.mejtacore.core.CoreSettings;
 import com.mejta.mejtacore.core.MejtaCore;
 import com.mejta.mejtautils.MejtaUtils;
 import com.mejta.mejtautils.UtilsPermissions;
@@ -88,6 +89,8 @@ public final class MejtaUtilsClientGameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext ctx) {
+		// These checks click the chest versions of the menus; MejtaCore's own client test covers the screens.
+		ctx.runOnClient(mc -> MejtaCore.coreConfig().set(CoreSettings.SERVER_MENU_SCREENS, false));
 		check("mejtautils addon active", MejtaCoreAPI.getAddon(MejtaUtils.ID).map(a -> a.state() == AddonState.ACTIVE).orElse(false));
 		try (TestDedicatedServerContext server = ctx.worldBuilder().createServer()) {
 			server.runCommand("difficulty easy");

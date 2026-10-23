@@ -26,6 +26,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.scores.DisplaySlot;
 import net.minecraft.world.scores.Objective;
 
+import com.mejta.mejtacore.core.CoreSettings;
+import com.mejta.mejtacore.core.MejtaCore;
+
 /**
  * End-to-end check with a real client on a dedicated server: the sidebar arrives and shows the player's
  * stats, a big pile of dropped items shows its size and is picked up exactly once by walking over it,
@@ -41,6 +44,8 @@ public final class MejtaSmpClientGameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext ctx) {
+		// These checks click the chest versions of the menus; MejtaCore's own client test covers the screens.
+		ctx.runOnClient(mc -> MejtaCore.coreConfig().set(CoreSettings.SERVER_MENU_SCREENS, false));
 		try (TestDedicatedServerContext server = ctx.worldBuilder().createServer()) {
 			server.runCommand("time set noon");
 			server.runCommand("weather clear");
