@@ -1,5 +1,6 @@
 package com.mejta.mejtamarket.test;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -7,17 +8,20 @@ import com.mojang.authlib.GameProfile;
 
 import net.fabricmc.fabric.api.entity.FakePlayer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.state.BlockState;
 
 import com.mejta.mejtamarket.MarketService;
 import com.mejta.mejtamarket.MejtaMarket;
 import com.mejta.mejtamarket.data.BuyOrder;
 import com.mejta.mejtamarket.data.Lot;
+import com.mejta.mejtamarket.menu.SignInput;
 import com.mejta.mejtamarket.util.MarketItems;
 
 /**
@@ -101,6 +105,16 @@ public class MejtaMarketGameTest {
 		Optional<String> coming = MejtaMarket.bot().searched(buyer, "oak log");
 		helper.assertValueEqual(coming.orElse("none"), "minecraft:oak_log", Component.literal("bot plans to list searched oak logs"));
 		helper.assertTrue(market.demand().of("minecraft:oak_log", System.currentTimeMillis()) > 0.9, Component.literal("search counted as demand"));
-		helper.succeed();
+
+		// Sign input: the typed first line comes back once, trimmed; the world is left alone.
+		String[] typed = {null};
+		BlockPos signPos = SignInput.open(buyer, List.of("a", "b", "c"), t -> typed[0] = t);
+		BlockState blockBefore = level.getBlockState(signPos);
+		helper.assertTrue(SignInput.capture(buyer, signPos, new String[] {"  diamond ", "", "", ""}), Component.literal("sign answer caught"));
+		helper.assertTrue(!SignInput.capture(buyer, signPos, new String[] {"again", "", "", ""}), Component.literal("sign answer caught once"));
+		helper.succeedWhen(() -> {
+			helper.assertValueEqual(typed[0], "diamond", Component.literal("typed text handed back"));
+			helper.assertValueEqual(level.getBlockState(signPos), blockBefore, Component.literal("real block unchanged"));
+		});
 	}
 }

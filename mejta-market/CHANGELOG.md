@@ -1,5 +1,10 @@
 # MejtaMarket changelog
 
+## 1.1.1
+
+- **Search and price signs stay open:** the sign closed at once because giving it its text marked the real block as changed, and the server then sent the real block (air) back. The sign's text is now sent without touching the block.
+- **The bot is visibly active:** it keeps at least 6 listings on sale (`bot.min_listings`), listing about every 30 seconds while it has fewer, and acts every 2 to 6 minutes instead of 4 to 12 (new installs; existing settings files keep their values). Each bot action is written to the server log.
+
 ## 1.1.0
 
 - **Search on a sign:** the menu's search button (and `/ah search` without text) opens a sign to type the search on, on vanilla clients too. Right click the button to clear a search. An empty result says when the bot will bring the item.
