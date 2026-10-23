@@ -64,7 +64,7 @@ import com.mejta.mejtacore.api.config.ConfigHandle;
  * tested against latency.
  *
  * <p>A real client plays on an in-process dedicated server (as a non-op) through
- * {@link LatencySimulator} at several network profiles. For each profile it checks that legitimate
+ * {@link LatencySimulator} at two network profiles. For each profile it checks that legitimate
  * play produces <b>zero</b> flags (idle, walking, jumping, a network freeze, attacking a target that
  * moves away from the player, rapid clicking, the floor disappearing) and measures how quickly
  * crafted cheats are detected. Results are logged and written to {@code mejtaac-stage4-latency.md}.
@@ -76,11 +76,12 @@ public final class MejtaAcStage4GameTest implements FabricClientGameTest {
 	private record Profile(String name, int rttMs, int jitterMs, boolean freeze) {
 	}
 
+	/**
+	 * The two extremes: no added latency, and high latency with jitter and freezes. 150, 300 and 500 ms without
+	 * jitter were also run until MejtaAC 1.1.1 and were dropped to make the suite much shorter.
+	 */
 	private static final List<Profile> PROFILES = List.of(
 			new Profile("0 ms", 0, 0, false),
-			new Profile("150 ms", 150, 0, false),
-			new Profile("300 ms", 300, 0, false),
-			new Profile("500 ms", 500, 0, false),
 			new Profile("300 ms +-80 jitter + 1.5 s freeze", 300, 80, true));
 
 	private record FlagEvent(long nanos, String check, String reason, Confidence confidence) {
