@@ -48,7 +48,7 @@ public final class EconomyCommands {
 	private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(ZoneId.systemDefault());
 	private static final int HISTORY_LINES = 10;
 
-	private enum AdminAction {
+	enum AdminAction {
 		GIVE, TAKE, SET
 	}
 
@@ -97,6 +97,11 @@ public final class EconomyCommands {
 						.requires(MejtaCoreAPI.requires(EconomyPermissions.ADMIN))
 						.then(Commands.argument("player", GameProfileArgument.gameProfile())
 								.executes(c -> adminChange(c, AdminAction.SET, Optional.of(0L)))))
+				.then(Commands.literal("menu")
+						.requires(MejtaCoreAPI.requires(EconomyPermissions.ADMIN))
+						.executes(c -> EconomyMenu.openList(c.getSource().getPlayerOrException(), 0))
+						.then(Commands.argument("player", GameProfileArgument.gameProfile())
+								.executes(c -> EconomyMenu.openPlayer(c.getSource().getPlayerOrException(), profile(c), 0))))
 				.then(Commands.literal("status")
 						.requires(MejtaCoreAPI.requires(EconomyPermissions.ADMIN))
 						.executes(c -> status(c.getSource()))));
@@ -204,7 +209,7 @@ public final class EconomyCommands {
 		return ranking.size();
 	}
 
-	private static int history(CommandSourceStack source, UUID player, String name) {
+	static int history(CommandSourceStack source, UUID player, String name) {
 		if (!cfg(EconomySettings.LOG_TRANSACTIONS)) {
 			source.sendFailure(Component.literal("Transactions are not logged (log.transactions is off)."));
 			return 0;
@@ -261,7 +266,6 @@ public final class EconomyCommands {
 	private static int adminChange(CommandContext<CommandSourceStack> c, AdminAction action, Optional<Long> fixed) throws CommandSyntaxException {
 		CommandSourceStack source = c.getSource();
 		NameAndId target = profile(c);
-		EconomyService eco = MejtaCoreAPI.economy();
 		if (!ready(source)) {
 			return 0;
 		}
@@ -280,6 +284,15 @@ public final class EconomyCommands {
 				amount = parsed.getAsLong();
 			}
 		}
+		return change(source, target, action, amount).success() ? 1 : 0;
+	}
+
+	/**
+	 * Gives, takes or sets a player's money for staff (commands and the menu): audited, logged with the staff
+	 * member's name, and reported to {@code source}.
+	 */
+	static EconomyResult change(CommandSourceStack source, NameAndId target, AdminAction action, long amount) {
+		EconomyService eco = MejtaCoreAPI.economy();
 		eco.ensureAccount(target.id(), Optional.of(target.name()));
 		long before = eco.balance(target.id());
 		String reason = "staff " + action.name().toLowerCase(Locale.ROOT) + " by " + source.getTextName();
@@ -301,11 +314,11 @@ public final class EconomyCommands {
 		if (!r.success()) {
 			source.sendFailure(Component.literal(r.status() == EconomyResult.Status.INSUFFICIENT_FUNDS
 					? target.name() + " only has " + eco.format(r.balance()) + ". Use /eco set to change it to less." : r.message()));
-			return 0;
+			return r;
 		}
 		source.sendSystemMessage(Component.literal(target.name() + ": " + eco.format(before) + " → ").withStyle(ChatFormatting.GRAY)
 				.append(Component.literal(eco.format(r.balance())).withStyle(ChatFormatting.GOLD)));
-		return 1;
+		return r;
 	}
 
 	private static int status(CommandSourceStack source) {
@@ -322,7 +335,7 @@ public final class EconomyCommands {
 
 	// ---------------------------------------------------------------- helpers
 
-	private static boolean ready(CommandSourceStack source) {
+	static boolean ready(CommandSourceStack source) {
 		if (MejtaEconomy.provider().ledger().isEmpty()) {
 			source.sendFailure(Component.literal("The economy is not loaded; see the server log."));
 			return false;
