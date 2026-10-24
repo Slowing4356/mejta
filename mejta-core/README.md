@@ -28,7 +28,7 @@ MejtaCore (mod ID `mejtacore`) is the shared platform of the Mejta mods. MejtaAC
 
 Put these in the server's `mods/` folder and restart:
 
-- `mejtacore-1.9.0.jar`
+- `mejtacore-1.10.0.jar`
 - Fabric API for 26.1.2
 - the Mejta addons you want
 
@@ -466,7 +466,7 @@ You need JDK 25 (`JAVA_HOME` pointing at it). From `mejta-core/`:
 ./gradlew runClient             # a development client with MejtaCore
 ```
 
-`build/libs/` then holds `mejtacore-1.9.0.jar` (install this one), plus sources and javadoc jars.
+`build/libs/` then holds `mejtacore-1.10.0.jar` (install this one), plus sources and javadoc jars.
 
 **Unit tests** (`./gradlew test`) cover logic that needs no running game: secret storage and masking, the data store (ordering, durability, corrupt files, key validation), the audit hash chain, metrics, the config edit path and menu steps.
 

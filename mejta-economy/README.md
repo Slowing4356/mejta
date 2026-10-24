@@ -18,7 +18,7 @@ It is server-side only: players need no mod.
 
 ## Installing
 
-1. Put `mejtacore-1.9.0.jar`, `mejtaeconomy-1.1.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.10.0.jar`, `mejtaeconomy-1.1.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server. The settings file `config/mejta/mejtaeconomy.json` is created on first start; every setting can also be changed in game in MejtaCore's settings editor (`/mejta config mejtaeconomy`, or `/mejtaadmin config` without client mods).
 
 Only one economy addon can be active. If another one registered first, MejtaEconomy fails to initialize and says so in `/mejtacore addons`.

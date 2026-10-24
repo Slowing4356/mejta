@@ -16,7 +16,7 @@ MejtaPerf (mod ID `mejtaperf`) helps you find out why a server lags. It runs on 
 
 ## Installing
 
-Put `mejtacore-1.9.0.jar`, `mejtaperf-1.0.0.jar` and Fabric API in the server's `mods/` folder, then restart. The settings file `config/mejta/mejtaperf.json` is created on first start.
+Put `mejtacore-1.10.0.jar`, `mejtaperf-1.0.0.jar` and Fabric API in the server's `mods/` folder, then restart. The settings file `config/mejta/mejtaperf.json` is created on first start.
 
 ## Commands
 
@@ -105,7 +105,7 @@ Files are written whole (via a temporary file), and only the newest `reports.kee
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.9.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.10.0 first
 cd ../mejta-perf && ./gradlew build              # compile and run unit tests
 ./gradlew runClientGameTest                      # client game test
 ```

@@ -16,7 +16,7 @@ It never talks to MejtaAC directly. MejtaAC publishes notifications to MejtaCore
 
 ## Installing
 
-1. Put `mejtacore-1.9.0.jar`, `mejtadiscord-1.0.0.jar` and Fabric API in the server's `mods/` folder.
+1. Put `mejtacore-1.10.0.jar`, `mejtadiscord-1.0.0.jar` and Fabric API in the server's `mods/` folder.
 2. Start the server once. Players need nothing.
 3. Set it up as below.
 
@@ -169,7 +169,7 @@ The automated tests never contact Discord. Before relying on it, check real deli
 ## Building and testing
 
 ```bash
-cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.9.0 first
+cd mejta-core && ./gradlew publishToMavenLocal   # MejtaCore 1.10.0 first
 cd ../mejta-discord && ./gradlew build           # compile and run unit tests
 ./gradlew runClientGameTest                      # client game test
 ```
